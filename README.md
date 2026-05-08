@@ -38,7 +38,7 @@ Add the GitHub Packages repository if needed:
 ```kotlin
 repositories {
     maven {
-        url = uri("https://maven.pkg.github.com/assinafy/android-sdk")
+        url = uri("https://maven.pkg.github.com/assinafy/mobile-android-sdk")
         credentials {
             username = System.getenv("GITHUB_ACTOR")
             password = System.getenv("GITHUB_TOKEN")
