@@ -2,13 +2,13 @@ package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
+import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.Workspace
 import com.assinafy.sdk.models.WorkspaceListItem
 import com.assinafy.sdk.request.CreateWorkspaceRequest
 import com.assinafy.sdk.request.UpdateWorkspaceRequest
-import com.assinafy.sdk.util.ResponseHandler
 
 class WorkspaceResource(
     http: ApiHttpClient,
@@ -17,8 +17,11 @@ class WorkspaceResource(
 ) : BaseResource(http, defaultAccountId, logger) {
 
     suspend fun create(request: CreateWorkspaceRequest): Workspace {
+        if (request.name.isBlank()) {
+            throw ValidationException("Workspace name is required")
+        }
         return call("Failed to create workspace", Workspace::class.java) {
-            http.post("/accounts", ResponseHandler.GSON.toJson(request))
+            http.post("/accounts", toJson(request))
         }
     }
 
@@ -31,19 +34,22 @@ class WorkspaceResource(
     suspend fun get(accountId: String): Workspace {
         val id = requireId(accountId, "Account ID")
         return call("Failed to fetch workspace", Workspace::class.java) {
-            http.get("/accounts/$id")
+            http.get("/accounts/${pathSegment(id)}")
         }
     }
 
     suspend fun update(accountId: String, request: UpdateWorkspaceRequest): Workspace {
         val id = requireId(accountId, "Account ID")
+        if (request.name?.isBlank() == true) {
+            throw ValidationException("Workspace name is required")
+        }
         return call("Failed to update workspace", Workspace::class.java) {
-            http.put("/accounts/$id", ResponseHandler.GSON.toJson(request))
+            http.put("/accounts/${pathSegment(id)}", toJson(request))
         }
     }
 
     suspend fun delete(accountId: String) {
         val id = requireId(accountId, "Account ID")
-        callVoid("Failed to delete workspace") { http.delete("/accounts/$id") }
+        callVoid("Failed to delete workspace") { http.delete("/accounts/${pathSegment(id)}") }
     }
 }

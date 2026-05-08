@@ -19,6 +19,12 @@ class WebhookVerifierTest {
     }
 
     @Test
+    fun `verify accepts prefixed uppercase hex signatures`() {
+        val verifier = WebhookVerifier(secret)
+        assertThat(verifier.verify(payload, "sha256=${signature.uppercase()}")).isTrue
+    }
+
+    @Test
     fun `verify returns false for mismatched signature`() {
         val verifier = WebhookVerifier(secret)
         assertThat(verifier.verify(payload, "deadbeef")).isFalse

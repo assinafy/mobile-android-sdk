@@ -19,3 +19,9 @@ data class Assignment(
     @SerializedName("summary") val summary: AssignmentSummary? = null,
     @SerializedName("signing_urls") val signingUrls: Map<String, String>? = null,
 )
+
+data class ResendEmailResponse(
+    @SerializedName("is_sent") val isSent: Boolean? = null,
+    @SerializedName("document_id") val documentId: String? = null,
+    @SerializedName("signer_id") val signerId: String? = null,
+)

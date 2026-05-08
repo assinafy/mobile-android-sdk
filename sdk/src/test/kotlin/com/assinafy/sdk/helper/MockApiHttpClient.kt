@@ -62,6 +62,11 @@ class MockApiHttpClient(
         return binaryResponse
     }
 
+    override suspend fun postSignature(path: String, imageData: ByteArray): HttpRawResponse {
+        calls.add(Call("POST_SIGNATURE", path))
+        return nextResponse()
+    }
+
     fun lastCall(): Call = calls.last()
     fun callCount(): Int = calls.size
 }

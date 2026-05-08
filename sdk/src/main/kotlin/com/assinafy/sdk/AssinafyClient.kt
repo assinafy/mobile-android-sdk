@@ -23,8 +23,7 @@ data class UploadAndRequestSignaturesResult(
     val signerIds: List<String>,
 )
 
-class AssinafyClient private constructor(
-    private val logger: Logger,
+class AssinafyClient(
     val documents: DocumentResource,
     val signers: SignerResource,
     val workspaces: WorkspaceResource,
@@ -32,41 +31,13 @@ class AssinafyClient private constructor(
     val webhooks: WebhookResource,
     val templates: TemplateResource,
     val webhookVerifier: WebhookVerifier,
+    private val logger: Logger,
 ) {
-    constructor(config: AssinafyClientConfig) : this(
-        config = config,
-        http = OkHttpApiClient(
-            normaliseBaseUrl(config.baseUrl),
-            config.apiKey,
-            config.token,
-            config.timeoutMs,
-        ),
-    )
-
-    internal constructor(config: AssinafyClientConfig, http: ApiHttpClient) : this(
-        logger = config.logger ?: NoOpLogger,
-        documents = DocumentResource(http, config.accountId, config.logger ?: NoOpLogger),
-        signers = SignerResource(http, config.accountId, config.logger ?: NoOpLogger),
-        workspaces = WorkspaceResource(http, null, config.logger ?: NoOpLogger),
-        assignments = AssignmentResource(http, config.accountId, config.logger ?: NoOpLogger),
-        webhooks = WebhookResource(http, config.accountId, config.logger ?: NoOpLogger),
-        templates = TemplateResource(http, config.accountId, config.logger ?: NoOpLogger),
-        webhookVerifier = WebhookVerifier(config.webhookSecret),
-    ) {
-        if (config.apiKey.isNullOrBlank() && config.token.isNullOrBlank()) {
-            throw ValidationException(
-                "An API key (config.apiKey) or legacy access token (config.token) is required.",
-            )
-        }
-    }
-
     suspend fun uploadAndRequestSignatures(request: UploadAndRequestSignaturesRequest): UploadAndRequestSignaturesResult {
-        if (request.signers.isEmpty()) {
-            throw ValidationException("At least one signer is required")
-        }
+        validateUploadRequest(request)
         logger.info("Starting upload + signature workflow", mapOf("signerCount" to request.signers.size))
 
-        val document: DocumentUploadResponse = documents.upload(
+        val document = documents.upload(
             request.fileData,
             request.fileName,
             request.metadata,
@@ -77,23 +48,24 @@ class AssinafyClient private constructor(
             documents.waitUntilReady(document.id)
         }
 
-        val signerIds = mutableListOf<String>()
-        for (entry in request.signers) {
+        val signerIds = request.signers.map { signer ->
             val created = signers.create(
                 CreateSignerRequest(
-                    fullName = entry.name,
-                    email = entry.email,
-                    whatsappPhoneNumber = entry.whatsappPhoneNumber,
+                    fullName = signer.name.trim(),
+                    email = signer.email.trim(),
+                    whatsappPhoneNumber = signer.whatsappPhoneNumber,
+                    cpf = signer.cpf,
+                    metadata = signer.metadata,
                 ),
                 request.accountId,
             )
-            signerIds.add(created.id)
+            created.id
         }
 
         val assignment = assignments.create(
             document.id,
             CreateAssignmentRequest(
-                method = "virtual",
+                method = AssignmentMethod.VIRTUAL,
                 signers = signerIds.map { SignerReference.ofId(it) },
                 message = request.message,
                 expiresAt = request.expiresAt,
@@ -105,14 +77,76 @@ class AssinafyClient private constructor(
         return UploadAndRequestSignaturesResult(document, assignment, signerIds)
     }
 
-    companion object {
+    private fun validateUploadRequest(request: UploadAndRequestSignaturesRequest) {
+        if (request.signers.isEmpty()) {
+            throw ValidationException("At least one signer is required")
+        }
+        request.signers.forEachIndexed { index, signer ->
+            if (signer.name.isBlank()) {
+                throw ValidationException("Signer name is required", mapOf("index" to index))
+            }
+            if (signer.email.isBlank()) {
+                throw ValidationException("Signer email is required", mapOf("index" to index))
+            }
+        }
+    }
+
+    companion object Factory {
         fun create(
             apiKey: String,
             accountId: String,
-            config: AssinafyClientConfig = AssinafyClientConfig(),
-        ): AssinafyClient = AssinafyClient(config.copy(apiKey = apiKey, accountId = accountId))
+            baseUrl: String = SdkConstants.DEFAULT_BASE_URL,
+            webhookSecret: String? = null,
+            timeoutMs: Long = SdkConstants.DEFAULT_TIMEOUT_MS,
+            logger: Logger? = null,
+        ): AssinafyClient {
+            val config = AssinafyClientConfig(
+                apiKey = apiKey,
+                accountId = accountId,
+                baseUrl = baseUrl,
+                webhookSecret = webhookSecret,
+                timeoutMs = timeoutMs,
+                logger = logger,
+            )
+            return create(config)
+        }
 
-        internal fun normaliseBaseUrl(url: String): String =
-            if (url.endsWith("/")) url.dropLast(1) else url
+        fun create(config: AssinafyClientConfig): AssinafyClient {
+            validateConfig(config)
+            val httpClient = createHttpClient(config)
+            val logger = config.logger ?: NoOpLogger
+            return AssinafyClient(
+                documents = DocumentResource(httpClient, config.accountId, logger),
+                signers = SignerResource(httpClient, config.accountId, logger),
+                workspaces = WorkspaceResource(httpClient, null, logger),
+                assignments = AssignmentResource(httpClient, config.accountId, logger),
+                webhooks = WebhookResource(httpClient, config.accountId, logger),
+                templates = TemplateResource(httpClient, config.accountId, logger),
+                webhookVerifier = WebhookVerifier(config.webhookSecret),
+                logger = logger,
+            )
+        }
+
+        private fun createHttpClient(config: AssinafyClientConfig): ApiHttpClient =
+            OkHttpApiClient(
+                config.baseUrl,
+                config.apiKey,
+                config.token,
+                config.timeoutMs,
+            )
+
+        private fun validateConfig(config: AssinafyClientConfig) {
+            if (config.apiKey.isNullOrBlank() && config.token.isNullOrBlank()) {
+                throw ValidationException(
+                    "An API key (config.apiKey) or legacy access token (config.token) is required.",
+                )
+            }
+            if (config.baseUrl.isBlank()) {
+                throw ValidationException("Base URL is required")
+            }
+            if (config.timeoutMs <= 0) {
+                throw ValidationException("Timeout must be greater than zero")
+            }
+        }
     }
 }

@@ -13,7 +13,12 @@ class WebhookVerifier(private val webhookSecret: String? = null) {
     fun verify(payload: ByteArray, signature: String): Boolean {
         if (webhookSecret.isNullOrBlank() || signature.isBlank()) return false
         val expected = computeHmac(payload, webhookSecret)
-        val provided = signature.trim()
+        val trimmed = signature.trim()
+        val provided = if (trimmed.startsWith("sha256=", ignoreCase = true)) {
+            trimmed.substringAfter("=")
+        } else {
+            trimmed
+        }.lowercase()
         if (expected.length != provided.length) return false
         return MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), provided.toByteArray(Charsets.UTF_8))
     }

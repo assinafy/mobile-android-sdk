@@ -1,7 +1,10 @@
 package com.assinafy.sdk.http
 
+import com.assinafy.sdk.exceptions.ApiException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -10,6 +13,8 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 class OkHttpApiClient private constructor(
     private val client: OkHttpClient,
@@ -31,7 +36,7 @@ class OkHttpApiClient private constructor(
             .addInterceptor { chain ->
                 val builder = chain.request().newBuilder()
                     .header("Accept", "application/json")
-                    .header("User-Agent", "assinafy-android-sdk/1.0.0")
+                    .header("User-Agent", SdkConstants.USER_AGENT)
                 when {
                     !apiKey.isNullOrBlank() -> builder.header("X-Api-Key", apiKey)
                     !token.isNullOrBlank() -> builder.header("Authorization", "Bearer $token")
@@ -47,17 +52,13 @@ class OkHttpApiClient private constructor(
 
     override suspend fun get(path: String, queryParams: Map<String, Any?>): HttpRawResponse =
         withContext(Dispatchers.IO) {
-            val urlBuilder = (baseUrl + path).toHttpUrl().newBuilder()
-            queryParams.forEach { (k, v) ->
-                if (v != null) urlBuilder.addQueryParameter(k, v.toString())
-            }
-            execute(Request.Builder().url(urlBuilder.build()).get().build())
+            execute(Request.Builder().url(url(path, queryParams)).get().build())
         }
 
     override suspend fun post(path: String, jsonBody: String?): HttpRawResponse =
         withContext(Dispatchers.IO) {
             val body = (jsonBody ?: "{}").toRequestBody(JSON)
-            execute(Request.Builder().url(baseUrl + path).post(body).build())
+            execute(Request.Builder().url(url(path)).post(body).build())
         }
 
     override suspend fun postMultipart(
@@ -73,26 +74,59 @@ class OkHttpApiClient private constructor(
             .addFormDataPart("name", name)
             .also { if (metadata != null) it.addFormDataPart("metadata", metadata) }
             .build()
-        execute(Request.Builder().url(baseUrl + path).post(form).build())
+        execute(Request.Builder().url(url(path)).post(form).build())
     }
 
     override suspend fun put(path: String, jsonBody: String?): HttpRawResponse =
         withContext(Dispatchers.IO) {
             val body = (jsonBody ?: "{}").toRequestBody(JSON)
-            execute(Request.Builder().url(baseUrl + path).put(body).build())
+            execute(Request.Builder().url(url(path)).put(body).build())
         }
 
     override suspend fun delete(path: String): HttpRawResponse =
         withContext(Dispatchers.IO) {
-            execute(Request.Builder().url(baseUrl + path).delete().build())
+            execute(Request.Builder().url(url(path)).delete().build())
         }
 
     override suspend fun getBinary(path: String): ByteArray =
-        withContext(Dispatchers.IO) {
-            client.newCall(Request.Builder().url(baseUrl + path).get().build()).execute().use { r ->
-                r.body?.bytes() ?: ByteArray(0)
-            }
+        suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(Request.Builder().url(url(path)).get().build())
+            call.enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                    continuation.resumeWithException(e)
+                }
+
+                override fun onResponse(call: okhttp3.Call, response: Response) {
+                    response.use { r ->
+                        val body = r.body?.bytes() ?: ByteArray(0)
+                        if (!r.isSuccessful) {
+                            val errorBody = body.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
+                            continuation.resumeWithException(ApiException.fromResponse(r.code, errorBody))
+                        } else {
+                            continuation.resume(body)
+                        }
+                    }
+                }
+            })
+            continuation.invokeOnCancellation { call.cancel() }
         }
+
+    override suspend fun postSignature(path: String, imageData: ByteArray): HttpRawResponse =
+        withContext(Dispatchers.IO) {
+            val form = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart("signature", "signature.png", imageData.toRequestBody(PNG))
+                .build()
+            execute(Request.Builder().url(url(path)).post(form).build())
+        }
+
+    private fun url(path: String, queryParams: Map<String, Any?> = emptyMap()): HttpUrl {
+        val builder = (baseUrl + path).toHttpUrl().newBuilder()
+        queryParams.forEach { (name, value) ->
+            if (value != null) builder.addQueryParameter(name, value.toString())
+        }
+        return builder.build()
+    }
 
     private fun execute(request: Request): HttpRawResponse =
         client.newCall(request).execute().use { r ->
@@ -107,9 +141,9 @@ class OkHttpApiClient private constructor(
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val PDF = "application/pdf".toMediaType()
+        private val PNG = "image/png".toMediaType()
 
-        private fun normaliseBaseUrl(url: String): String =
-            if (url.endsWith("/")) url.dropLast(1) else url
+        private fun normaliseBaseUrl(url: String): String = url.trim().trimEnd('/')
 
         internal fun forTesting(client: OkHttpClient, baseUrl: String): OkHttpApiClient =
             OkHttpApiClient(client, baseUrl, Unit)

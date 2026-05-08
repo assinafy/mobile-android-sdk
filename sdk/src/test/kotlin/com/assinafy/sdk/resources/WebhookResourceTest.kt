@@ -102,6 +102,17 @@ class WebhookResourceTest {
     }
 
     @Test
+    fun `register throws when url is not http`() {
+        assertThatThrownBy {
+            runBlocking {
+                WebhookResource(MockApiHttpClient(), "acc").register(
+                    RegisterWebhookRequest(url = "ftp://example.com", email = "ops@example.com"),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
     fun `register throws when email is blank`() {
         assertThatThrownBy {
             runBlocking {

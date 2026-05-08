@@ -17,7 +17,7 @@ class TemplateResource(
     suspend fun list(params: ListParams = ListParams(), accountId: String? = null): PaginatedResult<TemplateListItem> {
         val id = accountId(accountId)
         return callList("Failed to list templates", TemplateListItem::class.java) {
-            http.get("/accounts/$id/templates", params.toQueryMap())
+            http.get("/accounts/${pathSegment(id)}/templates", params.toQueryMap())
         }
     }
 
@@ -25,7 +25,7 @@ class TemplateResource(
         val id = accountId(accountId)
         val tmplId = requireId(templateId, "Template ID")
         return call("Failed to fetch template", Template::class.java) {
-            http.get("/accounts/$id/templates/$tmplId")
+            http.get("/accounts/${pathSegment(id)}/templates/${pathSegment(tmplId)}")
         }
     }
 }

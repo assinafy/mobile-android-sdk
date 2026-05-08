@@ -149,4 +149,43 @@ class SignerResourceTest {
         assertThat(postCall.body).contains("whatsapp_phone_number")
         assertThat(postCall.body).contains("+5548999990000")
     }
+
+    @Test
+    fun `getSelf sends signer access code as query params`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
+
+        SignerResource(mock, "acc").getSelf("access+/=")
+
+        val call = mock.lastCall()
+        assertThat(call.path).isEqualTo("/signers/self")
+        assertThat(call.queryParams["signer-access-code"]).isEqualTo("access+/=")
+    }
+
+    @Test
+    fun `uploadSignature encodes signer access code and type`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+
+        SignerResource(mock, "acc").uploadSignature("access+/=", "drawn signature", byteArrayOf(1))
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("POST_SIGNATURE")
+        assertThat(call.path).isEqualTo("/signature?signer-access-code=access%2B%2F%3D&type=drawn%20signature")
+    }
+
+    @Test
+    fun `uploadSignature rejects empty image data`() {
+        assertThatThrownBy {
+            runBlocking { SignerResource(MockApiHttpClient(), "acc").uploadSignature("access", "drawn", ByteArray(0)) }
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `downloadSignature encodes path and query values`() = runTest {
+        val mock = MockApiHttpClient(binaryResponse = byteArrayOf(1))
+
+        SignerResource(mock, "acc").downloadSignature("access+/=", "drawn signature")
+
+        assertThat(mock.lastCall().path).isEqualTo("/signature/drawn%20signature?signer-access-code=access%2B%2F%3D")
+    }
 }

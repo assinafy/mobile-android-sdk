@@ -7,5 +7,7 @@ data class Signer(
     @SerializedName("full_name") val fullName: String,
     @SerializedName("email") val email: String? = null,
     @SerializedName("whatsapp_phone_number") val whatsappPhoneNumber: String? = null,
+    @SerializedName("cpf") val cpf: String? = null,
     @SerializedName("has_accepted_terms") val hasAcceptedTerms: Boolean? = null,
+    @SerializedName("metadata") val metadata: Map<String, Any>? = null,
 )

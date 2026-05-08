@@ -2,12 +2,12 @@ package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
-import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.Assignment
+import com.assinafy.sdk.models.ResendEmailResponse
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.SignerReference
-import com.assinafy.sdk.util.ResponseHandler
+import com.assinafy.sdk.util.ApiValidator
 
 class AssignmentResource(
     http: ApiHttpClient,
@@ -17,12 +17,10 @@ class AssignmentResource(
 
     suspend fun create(documentId: String, request: CreateAssignmentRequest): Assignment {
         val docId = requireId(documentId, "Document ID")
-        if (request.signers.isEmpty()) {
-            throw ValidationException("At least one signer is required")
-        }
+        ApiValidator.requireAtLeastOne(request.signers, "signer")
         logger.info("Creating assignment", mapOf("documentId" to docId, "signers" to request.signers.size))
         return call("Failed to create assignment", Assignment::class.java) {
-            http.post("/documents/$docId/assignments", ResponseHandler.GSON.toJson(normalise(request)))
+            http.post("/documents/${pathSegment(docId)}/assignments", toJson(normalise(request)))
         }
     }
 
@@ -30,8 +28,8 @@ class AssignmentResource(
         val docId = requireId(documentId, "Document ID")
         return callMap("Failed to estimate assignment cost") {
             http.post(
-                "/documents/$docId/assignments/estimate-cost",
-                ResponseHandler.GSON.toJson(normalise(request, allowWithoutId = true)),
+                "/documents/${pathSegment(docId)}/assignments/estimate-cost",
+                toJson(normalise(request, allowWithoutId = true)),
             )
         }
     }
@@ -39,20 +37,23 @@ class AssignmentResource(
     suspend fun resetExpiration(documentId: String, assignmentId: String, expiresAt: String): Assignment {
         val docId = requireId(documentId, "Document ID")
         val asgId = requireId(assignmentId, "Assignment ID")
+        val expiration = requireId(expiresAt, "Expiration date")
         return call("Failed to update assignment expiration", Assignment::class.java) {
             http.put(
-                "/documents/$docId/assignments/$asgId/reset-expiration",
-                ResponseHandler.GSON.toJson(mapOf("expires_at" to expiresAt)),
+                "/documents/${pathSegment(docId)}/assignments/${pathSegment(asgId)}/reset-expiration",
+                toJson(mapOf("expires_at" to expiration)),
             )
         }
     }
 
-    suspend fun resendNotification(documentId: String, assignmentId: String, signerId: String): Map<String, Any> {
+    suspend fun resendNotification(documentId: String, assignmentId: String, signerId: String): ResendEmailResponse {
         val docId = requireId(documentId, "Document ID")
         val asgId = requireId(assignmentId, "Assignment ID")
         val sid = requireId(signerId, "Signer ID")
-        return callMap("Failed to resend signer notification") {
-            http.put("/documents/$docId/assignments/$asgId/signers/$sid/resend")
+        return call("Failed to resend signer notification", ResendEmailResponse::class.java) {
+            http.put(
+                "/documents/${pathSegment(docId)}/assignments/${pathSegment(asgId)}/signers/${pathSegment(sid)}/resend",
+            )
         }
     }
 
@@ -61,18 +62,21 @@ class AssignmentResource(
         val asgId = requireId(assignmentId, "Assignment ID")
         val sid = requireId(signerId, "Signer ID")
         return callMap("Failed to estimate resend cost") {
-            http.post("/documents/$docId/assignments/$asgId/signers/$sid/estimate-resend-cost")
+            http.post(
+                "/documents/${pathSegment(docId)}/assignments/${pathSegment(asgId)}/signers/${pathSegment(sid)}/estimate-resend-cost",
+            )
         }
     }
 
     suspend fun cancel(documentId: String, reason: String, accountId: String? = null): Map<String, Any> {
         val docId = requireId(documentId, "Document ID")
+        val cancellationReason = requireId(reason, "Cancellation reason")
         val accId = accountId(accountId)
-        logger.info("Cancelling signature request", mapOf("documentId" to docId, "reason" to reason))
+        logger.info("Cancelling signature request", mapOf("documentId" to docId))
         return callMap("Failed to cancel signature request") {
             http.post(
-                "/accounts/$accId/signature-requests/$docId/cancel",
-                ResponseHandler.GSON.toJson(mapOf("document_id" to docId, "reason" to reason)),
+                "/accounts/${pathSegment(accId)}/signature-requests/${pathSegment(docId)}/cancel",
+                toJson(mapOf("document_id" to docId, "reason" to cancellationReason)),
             )
         }
     }
@@ -83,7 +87,7 @@ class AssignmentResource(
     ): Map<String, Any?> {
         val signers = request.signers.map { ref -> normaliseRef(ref, allowWithoutId) }
         return buildMap {
-            put("method", request.method)
+            put("method", requireId(request.method, "Assignment method"))
             put("signers", signers)
             request.message?.let { put("message", it) }
             request.expiresAt?.let { put("expires_at", it) }
@@ -99,7 +103,7 @@ class AssignmentResource(
             ref.notificationMethods?.let { put("notification_methods", it) }
         }
         if (result.isEmpty() && !allowWithoutId) {
-            throw ValidationException("Invalid signer reference: id is required")
+            throw com.assinafy.sdk.exceptions.ValidationException("Invalid signer reference: id is required")
         }
         return result
     }

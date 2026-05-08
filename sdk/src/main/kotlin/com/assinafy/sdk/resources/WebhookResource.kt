@@ -10,7 +10,8 @@ import com.assinafy.sdk.models.WebhookEventTypeInfo
 import com.assinafy.sdk.models.WebhookSubscription
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.RegisterWebhookRequest
-import com.assinafy.sdk.util.ResponseHandler
+import com.assinafy.sdk.util.requireValidEmail
+import java.net.URI
 
 private val DEFAULT_EVENTS = listOf(
     "document_ready",
@@ -27,25 +28,25 @@ class WebhookResource(
 ) : BaseResource(http, defaultAccountId, logger) {
 
     suspend fun register(request: RegisterWebhookRequest, accountId: String? = null): WebhookSubscription {
-        if (request.url.isBlank()) throw ValidationException("Webhook URL is required")
-        if (request.email.isBlank()) throw ValidationException("Webhook email is required")
+        val webhookUrl = requireHttpUrl(request.url)
+        val webhookEmail = requireValidEmail(request.email, "Webhook email")
         val id = accountId(accountId)
         val body = mapOf(
-            "url" to request.url,
-            "email" to request.email,
+            "url" to webhookUrl,
+            "email" to webhookEmail,
             "events" to (request.events?.takeIf { it.isNotEmpty() } ?: DEFAULT_EVENTS),
             "is_active" to request.isActive,
         )
-        logger.info("Registering webhook", mapOf("url" to request.url))
+        logger.info("Registering webhook", mapOf("eventCount" to (request.events?.size ?: DEFAULT_EVENTS.size)))
         return call("Failed to register webhook", WebhookSubscription::class.java) {
-            http.put("/accounts/$id/webhooks/subscriptions", ResponseHandler.GSON.toJson(body))
+            http.put("/accounts/${pathSegment(id)}/webhooks/subscriptions", toJson(body))
         }
     }
 
     suspend fun get(accountId: String? = null): WebhookSubscription? {
         val id = accountId(accountId)
         return callOptional("Failed to fetch webhook subscription", WebhookSubscription::class.java) {
-            http.get("/accounts/$id/webhooks/subscriptions")
+            http.get("/accounts/${pathSegment(id)}/webhooks/subscriptions")
         }
     }
 
@@ -53,7 +54,7 @@ class WebhookResource(
         val id = accountId(accountId)
         logger.info("Deleting webhook subscription")
         callVoid("Failed to delete webhook subscription") {
-            http.delete("/accounts/$id/webhooks/subscriptions")
+            http.delete("/accounts/${pathSegment(id)}/webhooks/subscriptions")
         }
     }
 
@@ -61,7 +62,7 @@ class WebhookResource(
         val id = accountId(accountId)
         logger.info("Inactivating webhook subscription")
         return call("Failed to inactivate webhook subscription", WebhookSubscription::class.java) {
-            http.put("/accounts/$id/webhooks/inactivate")
+            http.put("/accounts/${pathSegment(id)}/webhooks/inactivate")
         }
     }
 
@@ -78,7 +79,7 @@ class WebhookResource(
     ): PaginatedResult<WebhookDispatch> {
         val id = accountId(accountId)
         return callList("Failed to list webhook dispatches", WebhookDispatch::class.java) {
-            http.get("/accounts/$id/webhooks", params.toQueryMap())
+            http.get("/accounts/${pathSegment(id)}/webhooks", params.toQueryMap())
         }
     }
 
@@ -86,7 +87,21 @@ class WebhookResource(
         val id = accountId(accountId)
         val did = requireId(dispatchId, "Dispatch ID")
         return call("Failed to retry webhook dispatch", WebhookDispatch::class.java) {
-            http.post("/accounts/$id/webhooks/$did/retry")
+            http.post("/accounts/${pathSegment(id)}/webhooks/${pathSegment(did)}/retry")
         }
+    }
+
+    private fun requireHttpUrl(url: String): String {
+        val normalized = requireId(url, "Webhook URL")
+        val uri = try {
+            URI(normalized)
+        } catch (e: Exception) {
+            throw ValidationException("Invalid webhook URL", mapOf("url" to url))
+        }
+        val scheme = uri.scheme?.lowercase()
+        if ((scheme != "https" && scheme != "http") || uri.host.isNullOrBlank()) {
+            throw ValidationException("Invalid webhook URL", mapOf("url" to url))
+        }
+        return normalized
     }
 }

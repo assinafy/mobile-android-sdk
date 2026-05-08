@@ -1,25 +1,22 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
+import com.assinafy.sdk.SdkConstants
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.DocumentActivity
 import com.assinafy.sdk.models.DocumentDetails
 import com.assinafy.sdk.models.DocumentListItem
+import com.assinafy.sdk.models.DocumentStatusInfo
 import com.assinafy.sdk.models.DocumentUploadResponse
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.SigningProgress
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.TemplateSigner
-import com.assinafy.sdk.util.ResponseHandler
 import kotlinx.coroutines.delay
-
-private const val MAX_UPLOAD_BYTES = 25 * 1024 * 1024L
-
-private val READY_STATUSES = setOf("metadata_ready", "pending_signature", "certificated")
-private val FAILED_STATUSES = setOf("failed", "rejected_by_signer", "rejected_by_user", "expired")
 
 class DocumentResource(
     http: ApiHttpClient,
@@ -38,11 +35,11 @@ class DocumentResource(
         logger.info("Uploading document", mapOf("fileName" to fileName, "size" to fileData.size))
         val document = call("Document upload failed", DocumentUploadResponse::class.java) {
             http.postMultipart(
-                "/accounts/$id/documents",
+                "/accounts/${pathSegment(id)}/documents",
                 fileName,
                 fileData,
                 fileName,
-                metadata?.let { ResponseHandler.GSON.toJson(it) },
+                metadata?.let { toJson(it) },
             )
         }
         if (document.id.isBlank()) {
@@ -55,14 +52,14 @@ class DocumentResource(
     suspend fun list(params: ListParams = ListParams(), accountId: String? = null): PaginatedResult<DocumentListItem> {
         val id = accountId(accountId)
         return callList("Failed to list documents", DocumentListItem::class.java) {
-            http.get("/accounts/$id/documents", params.toQueryMap())
+            http.get("/accounts/${pathSegment(id)}/documents", params.toQueryMap())
         }
     }
 
     suspend fun details(documentId: String): DocumentDetails {
         val id = requireId(documentId, "Document ID")
         return call("Failed to fetch document details", DocumentDetails::class.java) {
-            http.get("/documents/$id")
+            http.get("/documents/${pathSegment(id)}")
         }
     }
 
@@ -70,8 +67,8 @@ class DocumentResource(
 
     suspend fun waitUntilReady(
         documentId: String,
-        maxWaitMs: Long = 30_000L,
-        pollIntervalMs: Long = 2_000L,
+        maxWaitMs: Long = SdkConstants.DEFAULT_MAX_WAIT_MS,
+        pollIntervalMs: Long = SdkConstants.DEFAULT_POLL_INTERVAL_MS,
     ): DocumentDetails {
         val id = requireId(documentId, "Document ID")
         val deadline = System.currentTimeMillis() + maxWaitMs
@@ -82,8 +79,8 @@ class DocumentResource(
             try {
                 val doc = details(id)
                 logger.debug("Document status check", mapOf("attempts" to attempts, "status" to doc.status))
-                if (doc.status in READY_STATUSES) return doc
-                if (doc.status in FAILED_STATUSES) {
+                if (doc.status in DocumentStatus.READY) return doc
+                if (doc.status in DocumentStatus.FAILED) {
                     throw ValidationException(
                         "Document processing failed with status: ${doc.status}",
                         mapOf("status" to doc.status),
@@ -102,17 +99,18 @@ class DocumentResource(
         )
     }
 
-    suspend fun download(documentId: String, artifactName: String = "certificated"): ByteArray {
+    suspend fun download(documentId: String, artifactName: String = DocumentArtifact.CERTIFICATED): ByteArray {
         val id = requireId(documentId, "Document ID")
+        val artifact = requireId(artifactName, "Artifact name")
         return callBinary("Failed to download document") {
-            http.getBinary("/documents/$id/download/$artifactName")
+            http.getBinary("/documents/${pathSegment(id)}/download/${pathSegment(artifact)}")
         }
     }
 
     suspend fun thumbnail(documentId: String): ByteArray {
         val id = requireId(documentId, "Document ID")
         return callBinary("Failed to download document thumbnail") {
-            http.getBinary("/documents/$id/thumbnail")
+            http.getBinary("/documents/${pathSegment(id)}/thumbnail")
         }
     }
 
@@ -120,22 +118,21 @@ class DocumentResource(
         val docId = requireId(documentId, "Document ID")
         val pid = requireId(pageId, "Page ID")
         return callBinary("Failed to download page") {
-            http.getBinary("/documents/$docId/pages/$pid/download")
+            http.getBinary("/documents/${pathSegment(docId)}/pages/${pathSegment(pid)}/download")
         }
     }
 
     suspend fun activities(documentId: String): List<DocumentActivity> {
         val id = requireId(documentId, "Document ID")
-        @Suppress("UNCHECKED_CAST")
         val result = callList("Failed to fetch document activities", DocumentActivity::class.java) {
-            http.get("/documents/$id/activities")
+            http.get("/documents/${pathSegment(id)}/activities")
         }
         return result.data
     }
 
     suspend fun delete(documentId: String) {
         val id = requireId(documentId, "Document ID")
-        callVoid("Failed to delete document") { http.delete("/documents/$id") }
+        callVoid("Failed to delete document") { http.delete("/documents/${pathSegment(id)}") }
     }
 
     suspend fun createFromTemplate(
@@ -147,9 +144,9 @@ class DocumentResource(
         val tmplId = requireId(templateId, "Template ID")
         val accId = accountId(accountId)
         logger.info("Creating document from template", mapOf("templateId" to tmplId, "accountId" to accId))
-        val body = ResponseHandler.GSON.toJson(options.copy(signers = signers))
+        val body = toJson(options.copy(signers = signers))
         return call("Failed to create document from template", DocumentDetails::class.java) {
-            http.post("/accounts/$accId/templates/$tmplId/documents", body)
+            http.post("/accounts/${pathSegment(accId)}/templates/${pathSegment(tmplId)}/documents", body)
         }
     }
 
@@ -160,20 +157,20 @@ class DocumentResource(
     ): Map<String, Any> {
         val tmplId = requireId(templateId, "Template ID")
         val accId = accountId(accountId)
-        val body = ResponseHandler.GSON.toJson(mapOf("signers" to signers))
+        val body = toJson(mapOf("signers" to signers))
         return callMap("Failed to estimate cost from template") {
-            http.post("/accounts/$accId/templates/$tmplId/documents/estimate-cost", body)
+            http.post("/accounts/${pathSegment(accId)}/templates/${pathSegment(tmplId)}/documents/estimate-cost", body)
         }
     }
 
     suspend fun verify(hash: String): Map<String, Any> {
         val h = requireId(hash, "Signature hash")
-        return callMap("Failed to verify document") { http.get("/documents/$h/verify") }
+        return callMap("Failed to verify document") { http.get("/documents/${pathSegment(h)}/verify") }
     }
 
     suspend fun isFullySigned(documentId: String): Boolean {
         val doc = details(documentId)
-        if (doc.status == "certificated") return true
+        if (doc.status in DocumentStatus.READY) return true
         val summary = doc.assignment?.summary ?: return false
         return summary.signerCount > 0 && summary.signerCount == summary.completedCount
     }
@@ -188,15 +185,37 @@ class DocumentResource(
         return SigningProgress(signed, total, pending, percentage)
     }
 
+    suspend fun getStatuses(): List<DocumentStatusInfo> {
+        val result = callList("Failed to fetch document statuses", DocumentStatusInfo::class.java) {
+            http.get("/documents/statuses")
+        }
+        return result.data
+    }
+
+    suspend fun confirmSignerData(
+        documentId: String,
+        signerAccessCode: String,
+        data: Map<String, Any>,
+    ) {
+        val docId = requireId(documentId, "Document ID")
+        val code = requireId(signerAccessCode, "Signer access code")
+        callVoid("Failed to confirm signer data") {
+            http.put(
+                "/documents/${pathSegment(docId)}/signers/confirm-data${queryString("signer-access-code" to code)}",
+                toJson(data),
+            )
+        }
+    }
+
     private fun validateUpload(fileData: ByteArray, fileName: String) {
         if (fileData.isEmpty()) throw ValidationException("File data is empty", mapOf("fileName" to fileName))
         if (!fileName.lowercase().endsWith(".pdf")) {
             throw ValidationException("Only PDF files are supported", mapOf("fileName" to fileName))
         }
-        if (fileData.size > MAX_UPLOAD_BYTES) {
+        if (fileData.size > SdkConstants.MAX_UPLOAD_BYTES) {
             throw ValidationException(
                 "File size exceeds maximum allowed (25MB)",
-                mapOf("fileSize" to fileData.size, "maxSize" to MAX_UPLOAD_BYTES),
+                mapOf("fileSize" to fileData.size, "maxSize" to SdkConstants.MAX_UPLOAD_BYTES),
             )
         }
     }

@@ -1,9 +1,10 @@
 package com.assinafy.sdk.request
 
+import com.assinafy.sdk.AssignmentMethod
 import com.google.gson.annotations.SerializedName
 
 data class CreateAssignmentRequest(
-    @SerializedName("method") val method: String = "virtual",
+    @SerializedName("method") val method: String = AssignmentMethod.VIRTUAL,
     @SerializedName("signers") val signers: List<SignerReference>,
     @SerializedName("message") val message: String? = null,
     @SerializedName("expires_at") val expiresAt: String? = null,

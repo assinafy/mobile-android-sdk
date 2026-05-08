@@ -1,7 +1,9 @@
-FROM ubuntu:24.04
+ARG ANDROID_BUILD_PLATFORM=linux/amd64
+FROM --platform=$ANDROID_BUILD_PLATFORM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ANDROID_HOME=/opt/android-sdk
+ENV GRADLE_OPTS=-Dorg.gradle.vfs.watch=false
 ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools
 
 RUN apt-get update && apt-get install -y \
@@ -14,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 
 RUN mkdir -p ${ANDROID_HOME} && \
     cd ${ANDROID_HOME} && \
-    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -O cmdline-tools.zip && \
     unzip -q cmdline-tools.zip && \
     mkdir -p cmdline-tools/latest && \
     mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true && \
@@ -30,4 +32,4 @@ WORKDIR /app
 COPY . .
 RUN chmod +x gradlew
 
-CMD ["gradle", ":sdk:build", "--no-daemon"]
+CMD ["./gradlew", ":sdk:build", "--no-daemon"]

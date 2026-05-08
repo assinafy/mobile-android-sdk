@@ -15,30 +15,30 @@ import com.google.gson.reflect.TypeToken
 import java.io.IOException
 
 object ResponseHandler {
+    private val GSON: Gson = Gson()
 
-    val GSON: Gson = Gson()
+    fun toJson(value: Any): String = GSON.toJson(value)
 
     fun <T> handle(response: HttpRawResponse, type: Class<T>): T {
-        validateHttpStatus(response)
+        validateSuccess(response)
         return parseEnvelope(response.body, type)
     }
 
     fun handleMap(response: HttpRawResponse): Map<String, Any> {
-        validateHttpStatus(response)
+        validateSuccess(response)
         return parseEnvelopeAsMap(response.body)
     }
 
     fun <T> handleList(response: HttpRawResponse, elementType: Class<T>): PaginatedResult<T> {
-        validateHttpStatus(response)
-        val data = parseListData(response.body, elementType)
-        val meta = parsePaginationMeta(response.headers)
-        return PaginatedResult(data, meta)
+        validateSuccess(response)
+        return PaginatedResult(
+            data = parseListData(response.body, elementType),
+            meta = parsePaginationMeta(response.headers),
+        )
     }
 
     fun handleVoid(response: HttpRawResponse) {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-            throw ApiException.fromResponse(response.statusCode, tryParseBody(response.body))
-        }
+        validateSuccess(response)
     }
 
     fun toSdkException(e: Exception, label: String): AssinafyException = when (e) {
@@ -47,8 +47,8 @@ object ResponseHandler {
         else -> AssinafyException("$label: ${e.message}", emptyMap(), e)
     }
 
-    private fun validateHttpStatus(response: HttpRawResponse) {
-        if (response.statusCode < 200 || response.statusCode >= 300) {
+    private fun validateSuccess(response: HttpRawResponse) {
+        if (response.statusCode !in 200..299) {
             throw ApiException.fromResponse(response.statusCode, tryParseBody(response.body))
         }
     }
@@ -56,7 +56,7 @@ object ResponseHandler {
     private fun tryParseBody(body: String?): Any? {
         if (body.isNullOrBlank()) return null
         return try {
-            GSON.fromJson<Map<String, Any>>(body, object : TypeToken<Map<String, Any>>() {}.type)
+            GSON.fromJson(body, object : TypeToken<Map<String, Any>>() {}.type)
         } catch (e: Exception) {
             body
         }
@@ -93,14 +93,14 @@ object ResponseHandler {
                 if (envelope.status in 200..299) {
                     val dataNode = envelope.data
                     return if (dataNode is JsonObject) {
-                        dataNode.asMap()
+                        dataNode.toPlainMap()
                     } else {
                         mapOf("data" to GSON.fromJson<Any>(dataNode, Any::class.java))
                     }
                 }
                 throw ApiException.fromResponse(envelope.status, envelope.asMap())
             }
-            (root as? JsonObject)?.asMap() ?: emptyMap()
+            (root as? JsonObject)?.toPlainMap() ?: emptyMap()
         } catch (e: AssinafyException) {
             throw e
         } catch (e: Exception) {
@@ -108,7 +108,7 @@ object ResponseHandler {
         }
     }
 
-    private class Envelope(val status: Int, val data: JsonElement) {
+    private class Envelope(private val status: Int, private val data: JsonElement) {
         fun asMap(): Map<String, Any> = GSON.fromJson(
             JsonParser.parseString(GSON.toJson(this)),
             object : TypeToken<Map<String, Any>>() {}.type,
@@ -124,7 +124,8 @@ object ResponseHandler {
         }
     }
 
-    private fun JsonObject.asMap(): Map<String, Any> = GSON.fromJson(this, object : TypeToken<Map<String, Any>>() {}.type)
+    private fun JsonObject.toPlainMap(): Map<String, Any> =
+        GSON.fromJson(this, object : TypeToken<Map<String, Any>>() {}.type)
 
     private fun <T> parseListData(body: String?, elementType: Class<T>): List<T> {
         if (body.isNullOrBlank()) return emptyList()
@@ -132,7 +133,7 @@ object ResponseHandler {
             val root = JsonParser.parseString(body)
             val envelope = parseEnvelopeOrNull(root)
             if (envelope != null) {
-                if (envelope.status < 200 || envelope.status >= 300) {
+                if (envelope.status !in 200..299) {
                     throw ApiException.fromResponse(envelope.status, envelope.asMap())
                 }
                 return extractArray(envelope.data, elementType)
@@ -162,14 +163,14 @@ object ResponseHandler {
 
     private fun parsePaginationMeta(headers: Map<String, String>): PaginationMeta? {
         if (headers.isEmpty()) return null
-        val currentPage = parseIntHeader(headers, "x-pagination-current-page")
-        val perPage = parseIntHeader(headers, "x-pagination-per-page")
-        val total = parseIntHeader(headers, "x-pagination-total-count")
-        val lastPage = parseIntHeader(headers, "x-pagination-page-count")
-        if (currentPage == null && perPage == null && total == null && lastPage == null) return null
-        return PaginationMeta(currentPage, lastPage, perPage, total)
+        val currentPage = headers["x-pagination-current-page"]?.trim()?.toIntOrNull()
+        val perPage = headers["x-pagination-per-page"]?.trim()?.toIntOrNull()
+        val total = headers["x-pagination-total-count"]?.trim()?.toIntOrNull()
+        val lastPage = headers["x-pagination-page-count"]?.trim()?.toIntOrNull()
+        return if (listOf(currentPage, perPage, total, lastPage).all { it == null }) {
+            null
+        } else {
+            PaginationMeta(currentPage, lastPage, perPage, total)
+        }
     }
-
-    private fun parseIntHeader(headers: Map<String, String>, name: String): Int? =
-        headers[name]?.trim()?.toIntOrNull()
 }

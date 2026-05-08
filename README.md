@@ -6,10 +6,12 @@ Covers documents, signers, assignments, webhooks, workspaces, templates, and the
 
 ## Requirements
 
-- Android SDK (API 21+, targeting API 35)
+- Android SDK API 21+ at runtime; built against Android 15 (API 35)
 - JDK 17+ (for building)
-- Kotlin 2.0+
+- Kotlin 2.3+
 - Kotlin Coroutines
+
+Consumer apps still own their `targetSdkVersion` and Google Play compliance; this library only sets its runtime floor and compile SDK.
 
 ## Installation
 
@@ -237,12 +239,13 @@ when (type) {
 ```kotlin
 val (data, meta) = client.templates.list(ListParams(search = "NDA", perPage = 20))
 val template = client.templates.get(templateId)
+val role = requireNotNull(template.roles?.firstOrNull()) { "Template has no signer roles" }
 
 client.documents.createFromTemplate(
     templateId,
     listOf(
         TemplateSigner(
-            roleId = template.roles!![0].id,
+            roleId = role.id,
             id = signerId,
             verificationMethod = "Email",
             notificationMethods = listOf("Email"),
@@ -342,7 +345,7 @@ class DocumentViewModel(
 ### Requirements
 
 - JDK 17+
-- Android SDK (API 35 for building)
+- Android SDK Platform 35 for building
 - Set `ANDROID_HOME` environment variable to your Android SDK path
 
 ### Building with Docker (Recommended)
@@ -350,10 +353,10 @@ class DocumentViewModel(
 ```bash
 # Build the SDK (includes tests)
 docker build -t assinafy-sdk .
-docker run --rm -e JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 assinafy-sdk /app/gradlew :sdk:build --no-daemon
+docker run --rm --platform linux/amd64 assinafy-sdk ./gradlew :sdk:build --no-daemon
 
 # Run tests only
-docker run --rm -e JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64 assinafy-sdk /app/gradlew :sdk:test --no-daemon
+docker run --rm --platform linux/amd64 assinafy-sdk ./gradlew :sdk:test --no-daemon
 ```
 
 ### Building Locally

@@ -100,4 +100,14 @@ class DocumentResourceTest {
         assertThat(progress.pending).isEqualTo(2)
         assertThat(progress.percentage).isEqualTo(33.33)
     }
+
+    @Test
+    fun `confirmSignerData encodes signer access code`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+
+        DocumentResource(mock, "acc").confirmSignerData("doc-1", "access+/=", mapOf("cpf" to "123"))
+
+        assertThat(mock.lastCall().path)
+            .isEqualTo("/documents/doc-1/signers/confirm-data?signer-access-code=access%2B%2F%3D")
+    }
 }

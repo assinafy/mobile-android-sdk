@@ -7,4 +7,5 @@ interface ApiHttpClient {
     suspend fun put(path: String, jsonBody: String? = null): HttpRawResponse
     suspend fun delete(path: String): HttpRawResponse
     suspend fun getBinary(path: String): ByteArray
+    suspend fun postSignature(path: String, imageData: ByteArray): HttpRawResponse
 }

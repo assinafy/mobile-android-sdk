@@ -15,6 +15,8 @@ data class UploadAndRequestSignaturesRequest(
         val name: String,
         val email: String,
         val whatsappPhoneNumber: String? = null,
+        val cpf: String? = null,
+        val metadata: Map<String, Any>? = null,
     )
 
     override fun equals(other: Any?): Boolean {
@@ -35,6 +37,12 @@ data class UploadAndRequestSignaturesRequest(
         var result = fileData.contentHashCode()
         result = 31 * result + fileName.hashCode()
         result = 31 * result + signers.hashCode()
+        result = 31 * result + (message?.hashCode() ?: 0)
+        result = 31 * result + (metadata?.hashCode() ?: 0)
+        result = 31 * result + waitForReady.hashCode()
+        result = 31 * result + (expiresAt?.hashCode() ?: 0)
+        result = 31 * result + (copyReceivers?.hashCode() ?: 0)
+        result = 31 * result + (accountId?.hashCode() ?: 0)
         return result
     }
 }

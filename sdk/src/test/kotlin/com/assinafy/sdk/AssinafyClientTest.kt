@@ -37,6 +37,13 @@ class AssinafyClientTest {
     }
 
     @Test
+    fun `rejects invalid timeout`() {
+        assertThatThrownBy {
+            AssinafyClient(AssinafyClientConfig(apiKey = "k", accountId = "acc", timeoutMs = 0))
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
     fun `static create() builds a configured client`() {
         val client = AssinafyClient.create("k", "acc", AssinafyClientConfig(webhookSecret = "s"))
         assertThat(client.documents).isNotNull
@@ -69,6 +76,40 @@ class AssinafyClientTest {
                 )
             }
         }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `uploadAndRequestSignatures throws when signer data is blank`() {
+        val mock = MockApiHttpClient()
+        val client = AssinafyClient(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
+
+        assertThatThrownBy {
+            runBlocking {
+                client.uploadAndRequestSignatures(
+                    UploadAndRequestSignaturesRequest(
+                        fileData = ByteArray(100),
+                        fileName = "test.pdf",
+                        signers = listOf(
+                            UploadAndRequestSignaturesRequest.SignerEntry(name = "", email = "john@example.com"),
+                        ),
+                    ),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `uploadAndRequestSignaturesRequest hashCode includes all equality fields`() {
+        val left = UploadAndRequestSignaturesRequest(
+            fileData = byteArrayOf(1),
+            fileName = "test.pdf",
+            signers = listOf(UploadAndRequestSignaturesRequest.SignerEntry("John", "john@example.com")),
+            message = "A",
+        )
+        val right = left.copy(message = "B")
+
+        assertThat(left).isNotEqualTo(right)
+        assertThat(left.hashCode()).isNotEqualTo(right.hashCode())
     }
 
     @Test

@@ -4,12 +4,8 @@ data class AssinafyClientConfig(
     val apiKey: String? = null,
     val token: String? = null,
     val accountId: String? = null,
-    val baseUrl: String = DEFAULT_BASE_URL,
+    val baseUrl: String = SdkConstants.DEFAULT_BASE_URL,
     val webhookSecret: String? = null,
-    val timeoutMs: Long = 30_000L,
+    val timeoutMs: Long = SdkConstants.DEFAULT_TIMEOUT_MS,
     val logger: Logger? = null,
-) {
-    companion object {
-        const val DEFAULT_BASE_URL = "https://api.assinafy.com.br/v1"
-    }
-}
+)

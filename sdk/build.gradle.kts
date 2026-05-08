@@ -1,6 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.library")
-    kotlin("android")
+    id("org.jetbrains.kotlin.android")
 }
 
 group = "com.assinafy"
@@ -10,6 +12,7 @@ val okHttpVersion = "4.12.0"
 val gsonVersion = "2.10.1"
 val coroutinesVersion = "1.8.1"
 val junitVersion = "5.10.2"
+val junitPlatformVersion = "1.10.2"
 val mockWebServerVersion = "4.12.0"
 val assertjVersion = "3.25.3"
 
@@ -19,16 +22,24 @@ android {
 
     defaultConfig {
         minSdk = 21
-        consumerProguardFiles("consumer-rules.pro")
+        targetSdk = 35
+        proguardFiles(
+            getDefaultProguardFile("proguard-android-optimize.txt"),
+            "proguard-rules.pro",
+        )
     }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
 
-    kotlinOptions {
-        jvmTarget = "17"
+kotlin {
+    jvmToolchain(17)
+
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
@@ -41,6 +52,8 @@ dependencies {
     testImplementation("com.squareup.okhttp3:mockwebserver:$mockWebServerVersion")
     testImplementation("org.assertj:assertj-core:$assertjVersion")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:$junitPlatformVersion")
 }
 
 tasks.withType<Test>().configureEach {

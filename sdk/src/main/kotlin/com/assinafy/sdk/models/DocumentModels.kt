@@ -55,20 +55,21 @@ data class DocumentUploadResponse(
 )
 
 data class DocumentDetails(
-    @SerializedName("resource") val resource: String = "document",
+    @SerializedName("resource") val resource: String? = null,
     @SerializedName("id") val id: String,
     @SerializedName("account_id") val accountId: String,
     @SerializedName("name") val name: String,
     @SerializedName("status") val status: String,
     @SerializedName("assignment") val assignment: Assignment? = null,
+    @SerializedName("download_url") val downloadUrl: String? = null,
+    @SerializedName("download_final_url") val downloadFinalUrl: String? = null,
     @SerializedName("signing_url") val signingUrl: String? = null,
     @SerializedName("artifacts") val artifacts: DocumentArtifacts? = null,
-    @SerializedName("pages") val pages: List<Any> = emptyList(),
+    @SerializedName("pages") val pages: List<DocumentPage> = emptyList(),
     @SerializedName("created_at") val createdAt: String,
     @SerializedName("updated_at") val updatedAt: String,
     @SerializedName("is_closed") val isClosed: Boolean = false,
     @SerializedName("decline_reason") val declineReason: String? = null,
-    @SerializedName("declined_by") val declinedBy: Signer? = null,
     @SerializedName("activities") val activities: List<DocumentActivity>? = null,
 )
 
@@ -77,4 +78,9 @@ data class SigningProgress(
     val total: Int,
     val pending: Int,
     val percentage: Double,
+)
+
+data class DocumentStatusInfo(
+    @SerializedName("code") val code: String,
+    @SerializedName("deletable") val deletable: Boolean? = null,
 )
