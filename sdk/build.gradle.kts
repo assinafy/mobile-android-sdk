@@ -3,6 +3,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("org.jlleitschuh.gradle.ktlint") version "14.0.1"
+    `maven-publish`
 }
 
 group = "com.assinafy"
@@ -32,6 +34,35 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
+
+publishing {
+    publications {
+        register<MavenPublication>("release") {
+            groupId = project.group.toString()
+            artifactId = "assinafy-android-sdk"
+            version = project.version.toString()
+            afterEvaluate {
+                from(components["release"])
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/assinafy/mobile-android-sdk")
+            credentials {
+                username = System.getenv("GITHUB_ACTOR")
+                password = System.getenv("GITHUB_TOKEN")
+            }
+        }
     }
 }
 

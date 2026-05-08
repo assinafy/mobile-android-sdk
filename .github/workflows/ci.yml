@@ -6,25 +6,29 @@ on:
   pull_request:
     branches: [main, develop]
 
+# Cancel superseded PR runs; let push runs on protected branches finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Least-privilege default. Jobs elevate where needed.
+permissions:
+  contents: read
+
 env:
   JAVA_VERSION: '21'
   ANDROID_PLATFORM: '35'
   ANDROID_BUILD_TOOLS: '35.0.0'
-  NODE_VERSION: '24'
 
 jobs:
   build:
     name: Build and Test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
@@ -33,37 +37,22 @@ jobs:
           distribution: temurin
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
-          platform: ${{ env.ANDROID_PLATFORM }}
-          build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
 
       - name: Build SDK
         run: ./gradlew :sdk:assembleDebug
-        env:
-          CI: true
 
       - name: Run tests
         run: ./gradlew :sdk:test
-        env:
-          CI: true
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: sdk/build/reports/tests/test/
@@ -72,15 +61,11 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
@@ -89,32 +74,19 @@ jobs:
           distribution: temurin
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
-          platform: ${{ env.ANDROID_PLATFORM }}
-          build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
 
       - name: Run lint
         run: ./gradlew :sdk:lintDebug
-        env:
-          CI: true
 
       - name: Upload lint results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: lint-results
           path: sdk/build/reports/lint-results/
@@ -123,16 +95,12 @@ jobs:
   check:
     name: Code Check
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.event_name == 'pull_request'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
@@ -141,23 +109,12 @@ jobs:
           distribution: temurin
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
-          platform: ${{ env.ANDROID_PLATFORM }}
-          build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
 
       - name: Check formatting
         run: ./gradlew :sdk:ktlintCheck
@@ -168,6 +125,7 @@ jobs:
   publish-snapshot:
     name: Publish Snapshot
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     permissions:
       contents: read
@@ -177,11 +135,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v5
         with:
@@ -189,23 +142,12 @@ jobs:
           distribution: temurin
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
-          platform: ${{ env.ANDROID_PLATFORM }}
-          build-tools: ${{ env.ANDROID_BUILD_TOOLS }}
+          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
 
-      - name: Cache Gradle packages
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
 
       - name: Publish snapshot
         run: ./gradlew :sdk:publish
