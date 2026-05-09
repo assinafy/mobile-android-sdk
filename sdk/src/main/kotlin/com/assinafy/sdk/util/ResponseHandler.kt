@@ -41,7 +41,7 @@ object ResponseHandler {
         validateSuccess(response)
     }
 
-    fun toSdkException(e: Exception, label: String): AssinafyException = when (e) {
+    fun toSdkException(e: Throwable, label: String): AssinafyException = when (e) {
         is AssinafyException -> e
         is IOException -> NetworkException("$label: ${e.message}", e)
         else -> AssinafyException("$label: ${e.message}", emptyMap(), e)
@@ -108,7 +108,7 @@ object ResponseHandler {
         }
     }
 
-    private class Envelope(private val status: Int, private val data: JsonElement) {
+    private class Envelope(val status: Int, val data: JsonElement) {
         fun asMap(): Map<String, Any> = GSON.fromJson(
             JsonParser.parseString(GSON.toJson(this)),
             object : TypeToken<Map<String, Any>>() {}.type,

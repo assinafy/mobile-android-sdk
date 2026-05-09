@@ -1,5 +1,6 @@
 package com.assinafy.sdk.http
 
+import com.assinafy.sdk.SdkConstants
 import com.assinafy.sdk.exceptions.ApiException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine

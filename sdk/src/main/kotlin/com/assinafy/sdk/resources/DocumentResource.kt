@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.DocumentArtifact
 import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
