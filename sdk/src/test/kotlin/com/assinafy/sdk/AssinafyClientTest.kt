@@ -15,13 +15,13 @@ class AssinafyClientTest {
     @Test
     fun `throws when no credentials are provided`() {
         assertThatThrownBy {
-            AssinafyClient(AssinafyClientConfig(accountId = "acc"))
+            AssinafyClient.create(AssinafyClientConfig(accountId = "acc"))
         }.isInstanceOf(ValidationException::class.java)
     }
 
     @Test
     fun `accepts apiKey credentials`() {
-        val client = AssinafyClient(AssinafyClientConfig(apiKey = "k", accountId = "acc"))
+        val client = AssinafyClient.create(AssinafyClientConfig(apiKey = "k", accountId = "acc"))
         assertThat(client.documents).isNotNull
         assertThat(client.signers).isNotNull
         assertThat(client.workspaces).isNotNull
@@ -32,26 +32,26 @@ class AssinafyClientTest {
 
     @Test
     fun `accepts legacy token credentials`() {
-        val client = AssinafyClient(AssinafyClientConfig(token = "t", accountId = "acc"))
+        val client = AssinafyClient.create(AssinafyClientConfig(token = "t", accountId = "acc"))
         assertThat(client.documents).isNotNull
     }
 
     @Test
     fun `rejects invalid timeout`() {
         assertThatThrownBy {
-            AssinafyClient(AssinafyClientConfig(apiKey = "k", accountId = "acc", timeoutMs = 0))
+            AssinafyClient.create(AssinafyClientConfig(apiKey = "k", accountId = "acc", timeoutMs = 0))
         }.isInstanceOf(ValidationException::class.java)
     }
 
     @Test
     fun `static create() builds a configured client`() {
-        val client = AssinafyClient.create("k", "acc", AssinafyClientConfig(webhookSecret = "s"))
+        val client = AssinafyClient.create(apiKey = "k", accountId = "acc", webhookSecret = "s")
         assertThat(client.documents).isNotNull
     }
 
     @Test
     fun `accepts baseUrl with trailing slash`() {
-        val client = AssinafyClient(
+        val client = AssinafyClient.create(
             AssinafyClientConfig(
                 apiKey = "k",
                 accountId = "acc",
@@ -64,7 +64,7 @@ class AssinafyClientTest {
     @Test
     fun `uploadAndRequestSignatures throws when no signers provided`() {
         val mock = MockApiHttpClient()
-        val client = AssinafyClient(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
+        val client = AssinafyClient.create(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
         assertThatThrownBy {
             runBlocking {
                 client.uploadAndRequestSignatures(
@@ -81,7 +81,7 @@ class AssinafyClientTest {
     @Test
     fun `uploadAndRequestSignatures throws when signer data is blank`() {
         val mock = MockApiHttpClient()
-        val client = AssinafyClient(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
+        val client = AssinafyClient.create(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
 
         assertThatThrownBy {
             runBlocking {
@@ -130,7 +130,7 @@ class AssinafyClientTest {
             HttpRawResponse(200, """{"status":200,"data":{"id":"asg-1","method":"virtual","signers":[]}}""", emptyMap()),
         )
 
-        val client = AssinafyClient(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
+        val client = AssinafyClient.create(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
         val result = client.uploadAndRequestSignatures(
             UploadAndRequestSignaturesRequest(
                 fileData = ByteArray(100),

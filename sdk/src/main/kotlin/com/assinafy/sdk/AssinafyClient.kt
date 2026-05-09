@@ -113,7 +113,11 @@ class AssinafyClient(
 
         fun create(config: AssinafyClientConfig): AssinafyClient {
             validateConfig(config)
-            val httpClient = createHttpClient(config)
+            return create(config, createHttpClient(config))
+        }
+
+        internal fun create(config: AssinafyClientConfig, httpClient: ApiHttpClient): AssinafyClient {
+            validateConfig(config)
             val logger = config.logger ?: NoOpLogger
             return AssinafyClient(
                 documents = DocumentResource(httpClient, config.accountId, logger),
