@@ -78,6 +78,16 @@ class SignerResourceTest {
     }
 
     @Test
+    fun `list passes per-page using hyphenated query key`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, emptyListJson, emptyMap()))
+        SignerResource(mock, "acc").list(ListParams(perPage = 25))
+
+        val call = mock.calls.first { it.method == "GET" }
+        assertThat(call.queryParams["per-page"]).isEqualTo(25)
+        assertThat(call.queryParams.containsKey("per_page")).isFalse
+    }
+
+    @Test
     fun `list returns meta parsed from X-Pagination headers`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(

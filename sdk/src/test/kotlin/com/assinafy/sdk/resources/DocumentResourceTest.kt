@@ -102,6 +102,23 @@ class DocumentResourceTest {
     }
 
     @Test
+    fun `activities parses payload, origin object, and ISO timestamp`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            successResponse(
+                """[{"id":42,"event":"document_uploaded","message":"Documento criado.","payload":[],"origin":{"ip":"1.2.3.4","user-agent":"assinafy-android-sdk/1.0"},"created_at":"2026-05-11T23:58:21Z"}]""",
+            ),
+        )
+
+        val activities = DocumentResource(mock, "acc").activities("doc-1")
+
+        assertThat(activities).hasSize(1)
+        assertThat(activities[0].id).isEqualTo(42L)
+        assertThat(activities[0].createdAt).isEqualTo("2026-05-11T23:58:21Z")
+        assertThat(activities[0].origin?.get("ip")).isEqualTo("1.2.3.4")
+    }
+
+    @Test
     fun `confirmSignerData encodes signer access code`() = runTest {
         val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
 

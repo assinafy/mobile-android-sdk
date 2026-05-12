@@ -53,13 +53,6 @@ class AssignmentResourceTest {
     }
 
     @Test
-    fun `cancel requires an account id`() {
-        assertThatThrownBy {
-            runBlocking { AssignmentResource(MockApiHttpClient()).cancel("doc", "reason") }
-        }.isInstanceOf(ValidationException::class.java)
-    }
-
-    @Test
     fun `resendNotification requires all three IDs`() {
         val resource = AssignmentResource(MockApiHttpClient(), "acc")
         assertThatThrownBy {
@@ -101,5 +94,41 @@ class AssignmentResourceTest {
         AssignmentResource(mock, "acc").resetExpiration("doc-1", "asg-1", "2026-12-31T00:00:00Z")
 
         assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/assignments/asg-1/reset-expiration")
+    }
+
+    @Test
+    fun `signing_urls is parsed as a list of {signer_id,url} objects`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            successResponse(
+                """{"id":"asg-1","method":"virtual","signers":[],"signing_urls":[{"signer_id":"s1","url":"https://x/1"},{"signer_id":"s2","url":"https://x/2"}]}""",
+            ),
+        )
+        val asg = AssignmentResource(mock, "acc").create(
+            "doc-1",
+            CreateAssignmentRequest(signers = listOf(SignerReference.ofId("s1"))),
+        )
+        val urls = requireNotNull(asg.signingUrls)
+        assertThat(urls).hasSize(2)
+        assertThat(urls[0].signerId).isEqualTo("s1")
+        assertThat(urls[1].url).isEqualTo("https://x/2")
+    }
+
+    @Test
+    fun `copy_receivers in response is parsed as signer objects`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            successResponse(
+                """{"id":"asg-1","method":"virtual","signers":[],"copy_receivers":[{"id":"cr1","full_name":"Obs One","email":"obs1@x.com"}]}""",
+            ),
+        )
+        val asg = AssignmentResource(mock, "acc").create(
+            "doc-1",
+            CreateAssignmentRequest(signers = listOf(SignerReference.ofId("s1"))),
+        )
+        val copies = requireNotNull(asg.copyReceivers)
+        assertThat(copies).hasSize(1)
+        assertThat(copies[0].id).isEqualTo("cr1")
+        assertThat(copies[0].fullName).isEqualTo("Obs One")
     }
 }

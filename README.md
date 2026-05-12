@@ -181,7 +181,6 @@ client.assignments.estimateCost(documentId, CreateAssignmentRequest(
 client.assignments.resetExpiration(documentId, assignmentId, "2025-06-30T00:00:00Z")
 client.assignments.resendNotification(documentId, assignmentId, signerId)
 client.assignments.estimateResendCost(documentId, assignmentId, signerId)
-client.assignments.cancel(documentId, "No longer needed")
 ```
 
 ### Webhooks

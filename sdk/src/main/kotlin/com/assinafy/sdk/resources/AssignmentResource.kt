@@ -8,6 +8,7 @@ import com.assinafy.sdk.models.ResendEmailResponse
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.SignerReference
 import com.assinafy.sdk.util.ApiValidator
+import com.assinafy.sdk.exceptions.ValidationException
 
 class AssignmentResource(
     http: ApiHttpClient,
@@ -68,19 +69,6 @@ class AssignmentResource(
         }
     }
 
-    suspend fun cancel(documentId: String, reason: String, accountId: String? = null): Map<String, Any> {
-        val docId = requireId(documentId, "Document ID")
-        val cancellationReason = requireId(reason, "Cancellation reason")
-        val accId = accountId(accountId)
-        logger.info("Cancelling signature request", mapOf("documentId" to docId))
-        return callMap("Failed to cancel signature request") {
-            http.post(
-                "/accounts/${pathSegment(accId)}/signature-requests/${pathSegment(docId)}/cancel",
-                toJson(mapOf("document_id" to docId, "reason" to cancellationReason)),
-            )
-        }
-    }
-
     private fun normalise(
         request: CreateAssignmentRequest,
         allowWithoutId: Boolean = false,
@@ -103,7 +91,7 @@ class AssignmentResource(
             ref.notificationMethods?.let { put("notification_methods", it) }
         }
         if (result.isEmpty() && !allowWithoutId) {
-            throw com.assinafy.sdk.exceptions.ValidationException("Invalid signer reference: id is required")
+            throw ValidationException("Invalid signer reference: id is required")
         }
         return result
     }

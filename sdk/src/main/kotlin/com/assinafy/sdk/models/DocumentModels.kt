@@ -20,9 +20,10 @@ data class DocumentPage(
 data class DocumentActivity(
     @SerializedName("id") val id: Long,
     @SerializedName("event") val event: String,
-    @SerializedName("message") val message: String,
-    @SerializedName("origin") val origin: String,
-    @SerializedName("created_at") val createdAt: Long,
+    @SerializedName("message") val message: String? = null,
+    @SerializedName("payload") val payload: Any? = null,
+    @SerializedName("origin") val origin: Map<String, Any>? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
 )
 
 data class DocumentListItem(

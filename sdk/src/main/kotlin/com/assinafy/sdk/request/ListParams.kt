@@ -8,7 +8,7 @@ data class ListParams(
 ) {
     fun toQueryMap(): Map<String, Any?> = buildMap {
         page?.let { put("page", it) }
-        perPage?.let { put("per_page", it) }
+        perPage?.let { put("per-page", it) }
         search?.let { put("search", it) }
         sort?.let { put("sort", it) }
     }
