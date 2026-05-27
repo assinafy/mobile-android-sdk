@@ -2,6 +2,45 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [1.0.2] - 2026-05-27
+
+Full audit against the live `https://api.assinafy.com.br/v1` contract.
+
+### Fixed
+- **Duplicate-signer recovery.** `SignerResource.create` now treats the live duplicate-email error
+  (HTTP **400**, previously only 409 was handled) as a signal to return the existing signer, keeping
+  the call idempotent even under a create race.
+- **`DocumentResource.isFullySigned`** no longer reports `true` for documents that are merely
+  `metadata_ready` / `pending_signature`. It now requires the `certificated` status (or a complete
+  assignment summary).
+- **`AssignmentResource.resetExpiration`** accepts `null` to clear the expiration. The body is
+  serialized with an explicit `{"expires_at": null}` (the default serializer dropped the key, so the
+  clear never reached the API).
+- **Signature upload** now matches the documented contract: the image is sent as a raw binary body
+  with `Content-Type: image/png` or `image/jpeg` (was multipart form data). `uploadSignature` gained
+  a `contentType` parameter (defaults to `image/png`).
+
+### Added
+- **Tags.** New `client.tags` resource (`list`, `create`, `update`, `delete`, with case-insensitive
+  names and `force` delete) plus per-document attachment on `DocumentResource`
+  (`listTags`, `addTags`, `replaceTags`, `detachTag`). `Tag` model added.
+- **Assignment lifecycle.** `AssignmentResource.decline` and `listWhatsappNotifications`;
+  `SignerReference.step` for sequential signing.
+- **List filters.** `ListParams` gained `status`, `method`, and `tags` (serialized as a comma-separated
+  `tags` value) for the documents/templates list endpoints.
+- **Model completeness.** `DocumentDetails`/`DocumentListItem`/`DocumentUploadResponse` now surface
+  `tags`, `signing_url`, and `template_id` as returned by the live API.
+
+### Changed
+- `AssinafyClient` constructor gained a `tags: TagResource` parameter (the factory wires it
+  automatically). `ApiHttpClient.postSignature` takes a `contentType` argument.
+
+### Tooling
+- Added a project `.editorconfig` pinning ktlint to the IntelliJ IDEA code style so formatting is
+  deterministic across ktlint versions (the CI `ktlintCheck` gate previously had no config and was
+  non-deterministic). Version constant and Gradle `version` aligned to `1.0.2`. Removed the unused
+  `targetSdk` from the library module (consumers own their own `targetSdkVersion`).
+
 ## [1.0.1] - 2026-05-11
 
 ### Fixed

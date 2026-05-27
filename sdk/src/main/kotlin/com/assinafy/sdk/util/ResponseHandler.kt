@@ -7,6 +7,7 @@ import com.assinafy.sdk.http.HttpRawResponse
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.PaginationMeta
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
@@ -16,8 +17,16 @@ import java.io.IOException
 
 object ResponseHandler {
     private val GSON: Gson = Gson()
+    private val GSON_WITH_NULLS: Gson = GsonBuilder().serializeNulls().create()
 
     fun toJson(value: Any): String = GSON.toJson(value)
+
+    /**
+     * Serializes [value] while keeping explicit `null` entries (e.g. `{"expires_at": null}`).
+     * Use this for request bodies where a `null` value is semantically meaningful, since the
+     * default serializer omits null entries entirely.
+     */
+    fun toJsonAllowNulls(value: Any): String = GSON_WITH_NULLS.toJson(value)
 
     fun <T> handle(response: HttpRawResponse, type: Class<T>): T {
         validateSuccess(response)
@@ -124,8 +133,7 @@ object ResponseHandler {
         }
     }
 
-    private fun JsonObject.toPlainMap(): Map<String, Any> =
-        GSON.fromJson(this, object : TypeToken<Map<String, Any>>() {}.type)
+    private fun JsonObject.toPlainMap(): Map<String, Any> = GSON.fromJson(this, object : TypeToken<Map<String, Any>>() {}.type)
 
     private fun <T> parseListData(body: String?, elementType: Class<T>): List<T> {
         if (body.isNullOrBlank()) return emptyList()

@@ -23,8 +23,7 @@ class MockApiHttpClient(
         responseQueue.addLast(response)
     }
 
-    private fun nextResponse(): HttpRawResponse =
-        if (responseQueue.isEmpty()) defaultResponse else responseQueue.removeFirst()
+    private fun nextResponse(): HttpRawResponse = if (responseQueue.isEmpty()) defaultResponse else responseQueue.removeFirst()
 
     override suspend fun get(path: String, queryParams: Map<String, Any?>): HttpRawResponse {
         calls.add(Call("GET", path, queryParams = queryParams))
@@ -62,8 +61,8 @@ class MockApiHttpClient(
         return binaryResponse
     }
 
-    override suspend fun postSignature(path: String, imageData: ByteArray): HttpRawResponse {
-        calls.add(Call("POST_SIGNATURE", path))
+    override suspend fun postSignature(path: String, imageData: ByteArray, contentType: String): HttpRawResponse {
+        calls.add(Call("POST_SIGNATURE", path, body = contentType))
         return nextResponse()
     }
 

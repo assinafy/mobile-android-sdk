@@ -12,6 +12,7 @@ import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest
 import com.assinafy.sdk.resources.AssignmentResource
 import com.assinafy.sdk.resources.DocumentResource
 import com.assinafy.sdk.resources.SignerResource
+import com.assinafy.sdk.resources.TagResource
 import com.assinafy.sdk.resources.TemplateResource
 import com.assinafy.sdk.resources.WebhookResource
 import com.assinafy.sdk.resources.WorkspaceResource
@@ -30,6 +31,7 @@ class AssinafyClient(
     val assignments: AssignmentResource,
     val webhooks: WebhookResource,
     val templates: TemplateResource,
+    val tags: TagResource,
     val webhookVerifier: WebhookVerifier,
     private val logger: Logger,
 ) {
@@ -126,18 +128,18 @@ class AssinafyClient(
                 assignments = AssignmentResource(httpClient, config.accountId, logger),
                 webhooks = WebhookResource(httpClient, config.accountId, logger),
                 templates = TemplateResource(httpClient, config.accountId, logger),
+                tags = TagResource(httpClient, config.accountId, logger),
                 webhookVerifier = WebhookVerifier(config.webhookSecret),
                 logger = logger,
             )
         }
 
-        private fun createHttpClient(config: AssinafyClientConfig): ApiHttpClient =
-            OkHttpApiClient(
-                config.baseUrl,
-                config.apiKey,
-                config.token,
-                config.timeoutMs,
-            )
+        private fun createHttpClient(config: AssinafyClientConfig): ApiHttpClient = OkHttpApiClient(
+            config.baseUrl,
+            config.apiKey,
+            config.token,
+            config.timeoutMs,
+        )
 
         private fun validateConfig(config: AssinafyClientConfig) {
             if (config.apiKey.isNullOrBlank() && config.token.isNullOrBlank()) {

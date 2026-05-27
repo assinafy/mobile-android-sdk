@@ -1,7 +1,7 @@
 package com.assinafy.sdk
 
 object SdkConstants {
-    const val VERSION = "1.0.0"
+    const val VERSION = "1.0.2"
     const val USER_AGENT = "assinafy-android-sdk/$VERSION"
     const val DEFAULT_BASE_URL = "https://api.assinafy.com.br/v1"
     const val DEFAULT_TIMEOUT_MS = 30_000L
@@ -11,12 +11,22 @@ object SdkConstants {
 }
 
 object DocumentStatus {
+    /** Terminal state for a document whose signatures are complete and certificate is issued. */
+    const val CERTIFICATED = "certificated"
+
+    /**
+     * Statuses at which a document has finished metadata processing and can proceed to an
+     * assignment (or is already past that point). Used by [waitUntilReady].
+     */
     val READY = setOf("metadata_ready", "pending_signature", "certificated")
+
+    /** Terminal non-success statuses that stop a [waitUntilReady] poll loop. */
     val FAILED = setOf("failed", "rejected_by_signer", "rejected_by_user", "expired")
 }
 
 object AssignmentMethod {
     const val VIRTUAL = "virtual"
+    const val COLLECT = "collect"
 }
 
 object DocumentArtifact {

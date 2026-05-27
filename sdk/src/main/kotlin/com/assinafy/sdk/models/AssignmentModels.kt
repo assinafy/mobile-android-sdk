@@ -33,3 +33,18 @@ data class ResendEmailResponse(
     @SerializedName("document_id") val documentId: String? = null,
     @SerializedName("signer_id") val signerId: String? = null,
 )
+
+data class WhatsappNotificationButton(
+    @SerializedName("text") val text: String,
+    @SerializedName("url") val url: String? = null,
+)
+
+/** A rendered WhatsApp message sent for an assignment (see `whatsapp-notifications`). */
+data class WhatsappNotification(
+    @SerializedName("sent_at") val sentAt: Long? = null,
+    @SerializedName("header") val header: String? = null,
+    @SerializedName("body") val body: String? = null,
+    @SerializedName("buttons") val buttons: List<WhatsappNotificationButton> = emptyList(),
+    @SerializedName("phone_number") val phoneNumber: String? = null,
+    @SerializedName("signer_id") val signerId: String? = null,
+)

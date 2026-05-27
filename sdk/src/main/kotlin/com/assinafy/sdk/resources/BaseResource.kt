@@ -16,18 +16,17 @@ abstract class BaseResource(
     protected val defaultAccountId: String? = null,
     protected val logger: Logger = NoOpLogger,
 ) {
-    protected fun accountId(explicit: String? = null): String =
-        ApiValidator.requireAccountId(explicit, defaultAccountId)
+    protected fun accountId(explicit: String? = null): String = ApiValidator.requireAccountId(explicit, defaultAccountId)
 
-    protected fun requireId(value: String?, name: String): String =
-        ApiValidator.requireNonBlank(value, name)
+    protected fun requireId(value: String?, name: String): String = ApiValidator.requireNonBlank(value, name)
 
     protected fun pathSegment(value: String): String = UrlEncoding.pathSegment(value)
 
-    protected fun queryString(vararg params: Pair<String, Any?>): String =
-        UrlEncoding.queryString(*params)
+    protected fun queryString(vararg params: Pair<String, Any?>): String = UrlEncoding.queryString(*params)
 
     protected fun toJson(value: Any): String = ResponseHandler.toJson(value)
+
+    protected fun toJsonAllowNulls(value: Any): String = ResponseHandler.toJsonAllowNulls(value)
 
     protected suspend fun <T> call(
         label: String,
@@ -47,13 +46,11 @@ abstract class BaseResource(
         if (e is ApiException && e.statusCode == 404) null else throw e
     }
 
-    protected suspend fun callVoid(label: String, request: suspend () -> HttpRawResponse) =
-        runCatching {
-            ResponseHandler.handleVoid(request())
-        }.getOrElse { e -> throw e.coerceAsSdkException(label) }
+    protected suspend fun callVoid(label: String, request: suspend () -> HttpRawResponse) = runCatching {
+        ResponseHandler.handleVoid(request())
+    }.getOrElse { e -> throw e.coerceAsSdkException(label) }
 
-    protected suspend fun callBinary(label: String, request: suspend () -> ByteArray): ByteArray =
-        runCatching { request() }.getOrElse { e -> throw e.coerceAsSdkException(label) }
+    protected suspend fun callBinary(label: String, request: suspend () -> ByteArray): ByteArray = runCatching { request() }.getOrElse { e -> throw e.coerceAsSdkException(label) }
 
     protected suspend fun <T> callList(
         label: String,

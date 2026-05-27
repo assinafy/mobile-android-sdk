@@ -17,8 +17,7 @@ class AssignmentResourceTest {
     private val gson = Gson()
     private val assignmentJson = """{"id":"asg-1","method":"virtual","signers":[]}"""
 
-    private fun successResponse(data: String) =
-        HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
+    private fun successResponse(data: String) = HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
 
     @Test
     fun `create posts to documents endpoint with normalised body`() = runTest {
@@ -80,6 +79,7 @@ class AssignmentResourceTest {
         assertThat(call.path).isEqualTo("/documents/doc-1/assignments/estimate-cost")
         @Suppress("UNCHECKED_CAST")
         val body = gson.fromJson(call.body, Map::class.java) as Map<String, Any>
+
         @Suppress("UNCHECKED_CAST")
         val signer = (body["signers"] as List<Map<String, Any>>)[0]
         assertThat(signer["verification_method"]).isEqualTo("Whatsapp")
@@ -94,6 +94,71 @@ class AssignmentResourceTest {
         AssignmentResource(mock, "acc").resetExpiration("doc-1", "asg-1", "2026-12-31T00:00:00Z")
 
         assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/assignments/asg-1/reset-expiration")
+    }
+
+    @Test
+    fun `resetExpiration with null sends explicit null to clear expiration`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse(assignmentJson))
+
+        AssignmentResource(mock, "acc").resetExpiration("doc-1", "asg-1", null)
+
+        // Default Gson omits nulls; the API requires the key present, so it must be serialized.
+        assertThat(mock.lastCall().body).isEqualTo("""{"expires_at":null}""")
+    }
+
+    @Test
+    fun `create serializes the sequential signing step field`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse(assignmentJson))
+
+        AssignmentResource(mock, "acc").create(
+            "doc-1",
+            CreateAssignmentRequest(
+                signers = listOf(
+                    SignerReference(id = "s1", step = 1),
+                    SignerReference(id = "s2", step = 2),
+                ),
+            ),
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val body = gson.fromJson(mock.lastCall().body, Map::class.java) as Map<String, Any>
+
+        @Suppress("UNCHECKED_CAST")
+        val signers = body["signers"] as List<Map<String, Any>>
+        assertThat(signers[0]["step"]).isEqualTo(1.0)
+        assertThat(signers[1]["step"]).isEqualTo(2.0)
+    }
+
+    @Test
+    fun `decline puts to reject endpoint with access code and reason`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"data":[]}""", emptyMap()))
+
+        AssignmentResource(mock, "acc").decline("doc-1", "asg-1", "code+1", "Not agreed")
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("PUT")
+        assertThat(call.path).isEqualTo("/documents/doc-1/assignments/asg-1/reject?signer-access-code=code%2B1")
+        assertThat(call.body).contains("Not agreed")
+    }
+
+    @Test
+    fun `listWhatsappNotifications parses rendered messages`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            successResponse(
+                """[{"sent_at":1710000000,"header":"H","body":"B","buttons":[{"text":"Abrir"}],"phone_number":"+5511999990001","signer_id":"s1"}]""",
+            ),
+        )
+
+        val notifications = AssignmentResource(mock, "acc").listWhatsappNotifications("doc-1", "asg-1")
+
+        assertThat(mock.lastCall().path)
+            .isEqualTo("/documents/doc-1/assignments/asg-1/whatsapp-notifications")
+        assertThat(notifications).hasSize(1)
+        assertThat(notifications[0].phoneNumber).isEqualTo("+5511999990001")
+        assertThat(notifications[0].buttons[0].text).isEqualTo("Abrir")
     }
 
     @Test

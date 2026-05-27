@@ -10,7 +10,7 @@ object ApiValidator {
         return value.trim()
     }
 
-    fun requireAccountId(explicit: String?, default: String?, resourceName: String = "Resource"): String {
+    fun requireAccountId(explicit: String?, default: String?): String {
         val id = explicit ?: default
         if (id.isNullOrBlank()) {
             throw ValidationException(

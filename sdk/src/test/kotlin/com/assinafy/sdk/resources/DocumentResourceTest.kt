@@ -14,8 +14,7 @@ class DocumentResourceTest {
     private val docUploadJson = """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"metadata_ready","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false,"decline_reason":null,"declined_by":null}"""
     private val docDetailsJson = """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"metadata_ready","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false}"""
 
-    private fun successResponse(data: String) =
-        HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
+    private fun successResponse(data: String) = HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
 
     @Test
     fun `upload validates file extension`() {
@@ -83,6 +82,71 @@ class DocumentResourceTest {
             successResponse("""{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"certificated","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":true}"""),
         )
         assertThat(DocumentResource(mock, "acc").isFullySigned("doc-1")).isTrue
+    }
+
+    @Test
+    fun `isFullySigned is false while document is only metadata_ready`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse(docDetailsJson)) // status = metadata_ready, no assignment
+        assertThat(DocumentResource(mock, "acc").isFullySigned("doc-1")).isFalse
+    }
+
+    @Test
+    fun `isFullySigned is true when assignment summary is complete`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            successResponse(
+                """{"id":"doc-1","account_id":"acc","name":"t.pdf","status":"pending_signature","created_at":"x","updated_at":"x","is_closed":false,"assignment":{"id":"a","method":"virtual","signers":[],"summary":{"signer_count":2,"completed_count":2,"signers":[]}}}""",
+            ),
+        )
+        assertThat(DocumentResource(mock, "acc").isFullySigned("doc-1")).isTrue
+    }
+
+    @Test
+    fun `listTags hits account-scoped endpoint`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("""[{"id":"t1","name":"Contracts","color":"ff8800"}]"""))
+
+        val tags = DocumentResource(mock, "acc").listTags("doc-1")
+
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/documents/doc-1/tags")
+        assertThat(tags).hasSize(1)
+        assertThat(tags[0].name).isEqualTo("Contracts")
+    }
+
+    @Test
+    fun `addTags posts tag names and returns resulting set`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("""[{"id":"t1","name":"Urgent","color":null}]"""))
+
+        val tags = DocumentResource(mock, "acc").addTags("doc-1", listOf("Urgent"))
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("POST")
+        assertThat(call.path).isEqualTo("/accounts/acc/documents/doc-1/tags")
+        assertThat(call.body).contains("Urgent")
+        assertThat(tags[0].name).isEqualTo("Urgent")
+    }
+
+    @Test
+    fun `replaceTags puts the full tag set`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("[]"))
+
+        DocumentResource(mock, "acc").replaceTags("doc-1", emptyList())
+
+        assertThat(mock.lastCall().method).isEqualTo("PUT")
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/documents/doc-1/tags")
+    }
+
+    @Test
+    fun `detachTag deletes the doc-tag link`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"data":{"detached":true}}""", emptyMap()))
+
+        DocumentResource(mock, "acc").detachTag("doc-1", "t1")
+
+        assertThat(mock.lastCall().method).isEqualTo("DELETE")
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/documents/doc-1/tags/t1")
     }
 
     @Test

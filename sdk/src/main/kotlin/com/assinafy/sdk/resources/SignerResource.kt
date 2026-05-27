@@ -12,6 +12,8 @@ import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.UpdateSignerRequest
 import com.assinafy.sdk.util.requireValidEmail
 
+private val DUPLICATE_STATUS_CODES = setOf(400, 409)
+
 class SignerResource(
     http: ApiHttpClient,
     defaultAccountId: String? = null,
@@ -35,7 +37,9 @@ class SignerResource(
                 http.post("/accounts/${pathSegment(id)}/signers", toJson(normalise(normalizedRequest)))
             }
         } catch (e: ApiException) {
-            if (e.statusCode == 409 && normalizedEmail != null) {
+            // The API rejects a duplicate email with 400 (and historically 409). If we lost a race
+            // with a concurrent create, fall back to the existing signer instead of failing.
+            if (e.statusCode in DUPLICATE_STATUS_CODES && normalizedEmail != null) {
                 val duplicate = findByEmail(normalizedEmail, id)
                 if (duplicate != null) {
                     logger.info("Signer already exists, using existing signer", mapOf("signerId" to duplicate.id))
@@ -118,7 +122,19 @@ class SignerResource(
         }
     }
 
-    suspend fun uploadSignature(signerAccessCode: String, type: String, imageData: ByteArray) {
+    /**
+     * Uploads the signer's signature or initial image.
+     *
+     * @param type `"signature"` or `"initial"`.
+     * @param imageData Raw PNG or JPEG bytes.
+     * @param contentType MIME type of [imageData] — `image/png` (default) or `image/jpeg`.
+     */
+    suspend fun uploadSignature(
+        signerAccessCode: String,
+        type: String,
+        imageData: ByteArray,
+        contentType: String = "image/png",
+    ) {
         val code = requireId(signerAccessCode, "Signer access code")
         val signatureType = requireId(type, "Signature type")
         if (imageData.isEmpty()) {
@@ -129,6 +145,7 @@ class SignerResource(
             http.postSignature(
                 "/signature${queryString("signer-access-code" to code, "type" to signatureType)}",
                 imageData,
+                contentType,
             )
         }
     }
@@ -141,20 +158,18 @@ class SignerResource(
         }
     }
 
-    private fun normalise(request: CreateSignerRequest): Map<String, Any> =
-        buildMap {
-            request.fullName?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("full_name", it) }
-            request.email?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
-            request.whatsappPhoneNumber?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
-            request.cpf?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("cpf", it) }
-            request.metadata?.let { put("metadata", it) }
-        }
+    private fun normalise(request: CreateSignerRequest): Map<String, Any> = buildMap {
+        request.fullName?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("full_name", it) }
+        request.email?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
+        request.whatsappPhoneNumber?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
+        request.cpf?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("cpf", it) }
+        request.metadata?.let { put("metadata", it) }
+    }
 
-    private fun normaliseUpdate(request: UpdateSignerRequest): Map<String, Any?> =
-        buildMap {
-            request.fullName?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("full_name", it) }
-            request.email?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
-            request.whatsappPhoneNumber?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
-            request.cpf?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("cpf", it) }
-        }
+    private fun normaliseUpdate(request: UpdateSignerRequest): Map<String, Any?> = buildMap {
+        request.fullName?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("full_name", it) }
+        request.email?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
+        request.whatsappPhoneNumber?.trim { it.isWhitespace() }?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
+        request.cpf?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("cpf", it) }
+    }
 }

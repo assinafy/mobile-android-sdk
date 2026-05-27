@@ -15,8 +15,7 @@ class WebhookResourceTest {
 
     private val gson = Gson()
 
-    private fun successResponse(data: String) =
-        HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
+    private fun successResponse(data: String) = HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
 
     @Test
     fun `register default events include document_prepared`() = runTest {
@@ -31,6 +30,7 @@ class WebhookResourceTest {
 
         @Suppress("UNCHECKED_CAST")
         val body = gson.fromJson(mock.lastCall().body, Map::class.java) as Map<String, Any>
+
         @Suppress("UNCHECKED_CAST")
         val events = body["events"] as List<String>
         assertThat(events).contains("document_ready", "document_prepared", "signer_signed_document")

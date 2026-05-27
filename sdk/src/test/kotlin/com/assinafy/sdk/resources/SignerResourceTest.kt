@@ -146,6 +146,37 @@ class SignerResourceTest {
     }
 
     @Test
+    fun `create falls back to existing signer when API rejects duplicate with 400`() = runTest {
+        val mock = MockApiHttpClient()
+        // 1) proactive findByEmail finds nothing
+        mock.enqueue(HttpRawResponse(200, emptyListJson, emptyMap()))
+        // 2) POST loses the race and the API returns the live duplicate error (HTTP 400)
+        mock.enqueue(
+            HttpRawResponse(400, """{"status":400,"message":"Um signatário com este e-mail já existe.","data":null}""", emptyMap()),
+        )
+        // 3) recovery findByEmail now returns the existing signer
+        mock.enqueue(
+            HttpRawResponse(200, """{"status":200,"data":[{"id":"existing","full_name":"John","email":"john@example.com"}]}""", emptyMap()),
+        )
+
+        val result = SignerResource(mock, "acc").create(CreateSignerRequest("John", "john@example.com"))
+
+        assertThat(result.id).isEqualTo("existing")
+    }
+
+    @Test
+    fun `uploadSignature sends raw binary with the given content type`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+
+        SignerResource(mock, "acc").uploadSignature("code", "initial", byteArrayOf(1, 2), "image/jpeg")
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("POST_SIGNATURE")
+        assertThat(call.path).isEqualTo("/signature?signer-access-code=code&type=initial")
+        assertThat(call.body).isEqualTo("image/jpeg")
+    }
+
+    @Test
     fun `create maps whatsapp_phone_number in request body`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(HttpRawResponse(200, emptyListJson, emptyMap()))

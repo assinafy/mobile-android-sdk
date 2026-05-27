@@ -25,10 +25,8 @@ class WorkspaceResource(
         }
     }
 
-    suspend fun list(): PaginatedResult<WorkspaceListItem> {
-        return callList("Failed to list workspaces", WorkspaceListItem::class.java) {
-            http.get("/accounts")
-        }
+    suspend fun list(): PaginatedResult<WorkspaceListItem> = callList("Failed to list workspaces", WorkspaceListItem::class.java) {
+        http.get("/accounts")
     }
 
     suspend fun get(accountId: String): Workspace {

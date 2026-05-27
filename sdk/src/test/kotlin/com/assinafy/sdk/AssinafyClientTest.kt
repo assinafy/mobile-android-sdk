@@ -27,6 +27,8 @@ class AssinafyClientTest {
         assertThat(client.workspaces).isNotNull
         assertThat(client.assignments).isNotNull
         assertThat(client.webhooks).isNotNull
+        assertThat(client.templates).isNotNull
+        assertThat(client.tags).isNotNull
         assertThat(client.webhookVerifier).isNotNull
     }
 

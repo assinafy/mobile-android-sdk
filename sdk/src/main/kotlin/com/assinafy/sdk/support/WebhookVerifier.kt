@@ -23,23 +23,19 @@ class WebhookVerifier(private val webhookSecret: String? = null) {
         return MessageDigest.isEqual(expected.toByteArray(Charsets.UTF_8), provided.toByteArray(Charsets.UTF_8))
     }
 
-    fun verify(payload: String, signature: String): Boolean =
-        verify(payload.toByteArray(Charsets.UTF_8), signature)
+    fun verify(payload: String, signature: String): Boolean = verify(payload.toByteArray(Charsets.UTF_8), signature)
 
-    fun extractEvent(payload: ByteArray): WebhookPayload? =
-        extractEvent(payload.toString(Charsets.UTF_8))
+    fun extractEvent(payload: ByteArray): WebhookPayload? = extractEvent(payload.toString(Charsets.UTF_8))
 
-    fun extractEvent(payload: String): WebhookPayload? =
-        try {
-            gson.fromJson(payload, WebhookPayload::class.java)
-        } catch (e: Exception) {
-            null
-        }
+    fun extractEvent(payload: String): WebhookPayload? = try {
+        gson.fromJson(payload, WebhookPayload::class.java)
+    } catch (e: Exception) {
+        null
+    }
 
     fun getEventType(event: WebhookPayload?): String? = event?.event ?: event?.type
 
-    fun getEventData(event: WebhookPayload?): Map<String, Any> =
-        event?.payload ?: emptyMap()
+    fun getEventData(event: WebhookPayload?): Map<String, Any> = event?.payload ?: emptyMap()
 
     private fun computeHmac(data: ByteArray, secret: String): String {
         val mac = Mac.getInstance("HmacSHA256")

@@ -1,0 +1,30 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+indent_style = space
+indent_size = 4
+# Pin ktlint to the IntelliJ IDEA code style so formatting is deterministic across ktlint
+# versions and matches the kotlin.code.style=official compiler setting used by this project.
+ktlint_code_style = intellij_idea
+# Line length is not enforced; readability of URL paths/JSON fixtures is favored over hard wrapping.
+max_line_length = off
+ktlint_standard_no-wildcard-imports = enabled
+# Disabled stylistic rules that conflict with this codebase's established conventions:
+#  - function-signature / function-expression-body: the code uses concise expression bodies with
+#    trailing-lambda calls (e.g. `= withContext(IO) { ... }`); these rules do not converge on that form.
+#  - filename: model files are grouped by domain (SignerModels.kt, DocumentModels.kt, TagModels.kt, ...).
+ktlint_standard_function-signature = disabled
+ktlint_standard_function-expression-body = disabled
+ktlint_standard_filename = disabled
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false

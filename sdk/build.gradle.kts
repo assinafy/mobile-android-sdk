@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.assinafy"
-version = "1.0.0"
+version = "1.0.2"
 
 val okHttpVersion = "4.12.0"
 val gsonVersion = "2.10.1"
@@ -24,7 +24,7 @@ android {
 
     defaultConfig {
         minSdk = 21
-        targetSdk = 35
+        // No targetSdk here: a library does not own it — the consuming app sets its own targetSdkVersion.
         proguardFiles(
             getDefaultProguardFile("proguard-android-optimize.txt"),
             "proguard-rules.pro",

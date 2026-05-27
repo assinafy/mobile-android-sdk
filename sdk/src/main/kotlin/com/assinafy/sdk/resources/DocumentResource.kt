@@ -14,6 +14,7 @@ import com.assinafy.sdk.models.DocumentStatusInfo
 import com.assinafy.sdk.models.DocumentUploadResponse
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.SigningProgress
+import com.assinafy.sdk.models.Tag
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.TemplateSigner
@@ -171,7 +172,7 @@ class DocumentResource(
 
     suspend fun isFullySigned(documentId: String): Boolean {
         val doc = details(documentId)
-        if (doc.status in DocumentStatus.READY) return true
+        if (doc.status == DocumentStatus.CERTIFICATED) return true
         val summary = doc.assignment?.summary ?: return false
         return summary.signerCount > 0 && summary.signerCount == summary.completedCount
     }
@@ -205,6 +206,58 @@ class DocumentResource(
                 "/documents/${pathSegment(docId)}/signers/confirm-data${queryString("signer-access-code" to code)}",
                 toJson(data),
             )
+        }
+    }
+
+    /** Lists the tags currently attached to a document. */
+    suspend fun listTags(documentId: String, accountId: String? = null): List<Tag> {
+        val accId = accountId(accountId)
+        val docId = requireId(documentId, "Document ID")
+        val result = callList("Failed to list document tags", Tag::class.java) {
+            http.get("/accounts/${pathSegment(accId)}/documents/${pathSegment(docId)}/tags")
+        }
+        return result.data
+    }
+
+    /**
+     * Replaces the document's tag set with [tagNames]. Names that don't yet exist are created
+     * automatically. An empty list detaches all tags. Returns the resulting tag set.
+     */
+    suspend fun replaceTags(documentId: String, tagNames: List<String>, accountId: String? = null): List<Tag> {
+        val accId = accountId(accountId)
+        val docId = requireId(documentId, "Document ID")
+        val result = callList("Failed to replace document tags", Tag::class.java) {
+            http.put(
+                "/accounts/${pathSegment(accId)}/documents/${pathSegment(docId)}/tags",
+                toJson(mapOf("tags" to tagNames)),
+            )
+        }
+        return result.data
+    }
+
+    /**
+     * Attaches [tagNames] to a document without removing existing tags (idempotent). Unknown names
+     * are created automatically. Returns the resulting tag set.
+     */
+    suspend fun addTags(documentId: String, tagNames: List<String>, accountId: String? = null): List<Tag> {
+        val accId = accountId(accountId)
+        val docId = requireId(documentId, "Document ID")
+        val result = callList("Failed to attach document tags", Tag::class.java) {
+            http.post(
+                "/accounts/${pathSegment(accId)}/documents/${pathSegment(docId)}/tags",
+                toJson(mapOf("tags" to tagNames)),
+            )
+        }
+        return result.data
+    }
+
+    /** Detaches a single tag from a document. The tag itself is not deleted. */
+    suspend fun detachTag(documentId: String, tagId: String, accountId: String? = null) {
+        val accId = accountId(accountId)
+        val docId = requireId(documentId, "Document ID")
+        val tag = requireId(tagId, "Tag ID")
+        callVoid("Failed to detach document tag") {
+            http.delete("/accounts/${pathSegment(accId)}/documents/${pathSegment(docId)}/tags/${pathSegment(tag)}")
         }
     }
 

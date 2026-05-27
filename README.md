@@ -2,7 +2,7 @@
 
 Kotlin SDK for the [Assinafy API](https://api.assinafy.com.br/v1/docs) — a Brazilian digital signature platform.
 
-Covers documents, signers, assignments, webhooks, workspaces, templates, and the high-level `uploadAndRequestSignatures` helper. All operations use Kotlin coroutines (`suspend` functions) for non-blocking I/O.
+Covers documents, signers, assignments, webhooks, workspaces, templates, tags, and the high-level `uploadAndRequestSignatures` helper. All operations use Kotlin coroutines (`suspend` functions) for non-blocking I/O.
 
 ## Requirements
 
@@ -21,7 +21,7 @@ Add the dependency to your module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:1.0.0")
+    implementation("com.assinafy:assinafy-android-sdk:1.0.2")
 }
 ```
 
@@ -29,7 +29,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.assinafy:assinafy-android-sdk:1.0.0'
+    implementation 'com.assinafy:assinafy-android-sdk:1.0.2'
 }
 ```
 
@@ -134,10 +134,18 @@ client.documents.thumbnail(doc.id)
 client.documents.downloadPage(doc.id, pageId)
 client.documents.isFullySigned(doc.id)
 client.documents.getSigningProgress(doc.id)
+client.documents.getStatuses()
 client.documents.delete(doc.id)
+
+// Tags attached to a document
+client.documents.listTags(doc.id)
+client.documents.addTags(doc.id, listOf("Contracts", "2026-Q1"))   // append (unknown names auto-created)
+client.documents.replaceTags(doc.id, listOf("Archived"))           // replace whole set ([] detaches all)
+client.documents.detachTag(doc.id, tagId)                          // remove one link (tag itself kept)
 ```
 
 Uploads are validated locally: only `.pdf` files up to 25 MB are accepted.
+`isFullySigned()` reports `true` only once the document is `certificated` (or every signer in the assignment summary has completed).
 
 ### Signers
 
@@ -157,9 +165,17 @@ client.signers.update(signerId, UpdateSignerRequest(fullName = "Johnny Doe"))
 client.signers.delete(signerId)
 
 val existing = client.signers.findByEmail("john@example.com")
+
+// Signer-facing flows (authenticated by the signer access code, not the API key):
+client.signers.getSelf(signerAccessCode)
+client.signers.acceptTerms(signerAccessCode)
+client.signers.verifyEmail(signerAccessCode, verificationCode)
+client.signers.uploadSignature(signerAccessCode, type = "signature", imageData = pngBytes)        // image/png by default
+client.signers.uploadSignature(signerAccessCode, type = "initial", imageData = jpegBytes, contentType = "image/jpeg")
+client.signers.downloadSignature(signerAccessCode, type = "signature")
 ```
 
-`signers.create()` is idempotent by email: it reuses an existing signer when the same email is already in the workspace.
+`signers.create()` is idempotent by email: it reuses an existing signer when the same email is already in the workspace (and recovers from the API's duplicate-email error if a concurrent create wins the race).
 
 ### Assignments
 
@@ -168,7 +184,11 @@ val assignment = client.assignments.create(
     documentId,
     CreateAssignmentRequest(
         method = "virtual",
-        signers = listOf(SignerReference.ofId("signer-1"), SignerReference.ofId("signer-2")),
+        signers = listOf(
+            // `step` controls sequential signing: step 2 is notified only after step 1 finishes.
+            SignerReference(id = "signer-1", verificationMethod = "Email", notificationMethods = listOf("Email"), step = 1),
+            SignerReference(id = "signer-2", verificationMethod = "Whatsapp", notificationMethods = listOf("Whatsapp"), step = 2),
+        ),
         message = "Please review and sign",
         expiresAt = "2024-12-31T23:59:00Z",
         copyReceivers = listOf("observer-id"),
@@ -179,8 +199,11 @@ client.assignments.estimateCost(documentId, CreateAssignmentRequest(
     signers = listOf(SignerReference(verificationMethod = "Whatsapp"))
 ))
 client.assignments.resetExpiration(documentId, assignmentId, "2025-06-30T00:00:00Z")
+client.assignments.resetExpiration(documentId, assignmentId, null)   // clear expiration (never expires)
 client.assignments.resendNotification(documentId, assignmentId, signerId)
 client.assignments.estimateResendCost(documentId, assignmentId, signerId)
+client.assignments.listWhatsappNotifications(documentId, assignmentId)
+client.assignments.decline(documentId, assignmentId, signerAccessCode, reason = "Terms not acceptable")
 ```
 
 ### Webhooks
@@ -210,7 +233,12 @@ client.webhooks.retryDispatch(dispatchId)
 
 ### Webhook Verification
 
-Webhook payloads are signed with HMAC-SHA256. Assinafy sends the hex digest in the `X-Assinafy-Signature` header.
+Assinafy delivers each event as an HTTP `POST` of JSON to your endpoint and expects any `2xx`
+response (see the [delivery contract](https://api.assinafy.com.br/v1/docs)). `WebhookVerifier` is an
+optional convenience helper for deployments that protect that endpoint with a shared-secret
+HMAC-SHA256 signature: configure `webhookSecret` on the client and pass the raw request body plus the
+signature header your gateway sends. It also parses the event envelope regardless of whether a secret
+is configured.
 
 ```kotlin
 // In your server endpoint handler:
@@ -270,6 +298,20 @@ client.workspaces.get(accountId)
 client.workspaces.update(accountId, UpdateWorkspaceRequest(name = "Renamed"))
 client.workspaces.delete(accountId)
 ```
+
+### Tags
+
+Workspace-scoped labels (unique, case-insensitive) that can be attached to documents and templates.
+
+```kotlin
+val tag = client.tags.create("Contracts", color = "ff8800")
+client.tags.list(search = "contract")
+client.tags.update(tag.id, name = "Sales Contracts")
+client.tags.update(tag.id, clearColor = true)        // remove the color
+client.tags.delete(tag.id, force = true)             // detach from everything, then delete
+```
+
+Per-document attachment lives on the document resource (`listTags`, `addTags`, `replaceTags`, `detachTag`).
 
 ## High-Level Helper
 
