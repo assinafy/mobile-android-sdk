@@ -3,7 +3,8 @@ package com.assinafy.sdk.models
 import com.google.gson.annotations.SerializedName
 
 data class DocumentArtifacts(
-    @SerializedName("original") val original: String,
+    @SerializedName("original") val original: String? = null,
+    @SerializedName("thumbnail") val thumbnail: String? = null,
     @SerializedName("certificated") val certificated: String? = null,
     @SerializedName("certificate-page") val certificatePage: String? = null,
     @SerializedName("bundle") val bundle: String? = null,
@@ -11,10 +12,10 @@ data class DocumentArtifacts(
 
 data class DocumentPage(
     @SerializedName("id") val id: String,
-    @SerializedName("number") val number: Int,
-    @SerializedName("height") val height: Int,
-    @SerializedName("width") val width: Int,
-    @SerializedName("download_url") val downloadUrl: String,
+    @SerializedName("number") val number: Int? = null,
+    @SerializedName("height") val height: Int? = null,
+    @SerializedName("width") val width: Int? = null,
+    @SerializedName("download_url") val downloadUrl: String? = null,
 )
 
 data class DocumentActivity(
@@ -36,7 +37,7 @@ data class DocumentListItem(
     @SerializedName("artifacts") val artifacts: DocumentArtifacts? = null,
     @SerializedName("signing_url") val signingUrl: String? = null,
     @SerializedName("tags") val tags: List<Tag> = emptyList(),
-    @SerializedName("created_at") val createdAt: String,
+    @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("updated_at") val updatedAt: String? = null,
     @SerializedName("is_closed") val isClosed: Boolean? = null,
 )
@@ -53,8 +54,8 @@ data class DocumentUploadResponse(
     @SerializedName("signing_url") val signingUrl: String? = null,
     @SerializedName("tags") val tags: List<Tag> = emptyList(),
     @SerializedName("pages") val pages: List<DocumentPage> = emptyList(),
-    @SerializedName("created_at") val createdAt: String,
-    @SerializedName("updated_at") val updatedAt: String,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null,
     @SerializedName("is_closed") val isClosed: Boolean = false,
     @SerializedName("decline_reason") val declineReason: String? = null,
     @SerializedName("declined_by") val declinedBy: Signer? = null,
@@ -74,8 +75,8 @@ data class DocumentDetails(
     @SerializedName("artifacts") val artifacts: DocumentArtifacts? = null,
     @SerializedName("tags") val tags: List<Tag> = emptyList(),
     @SerializedName("pages") val pages: List<DocumentPage> = emptyList(),
-    @SerializedName("created_at") val createdAt: String,
-    @SerializedName("updated_at") val updatedAt: String,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null,
     @SerializedName("is_closed") val isClosed: Boolean = false,
     @SerializedName("decline_reason") val declineReason: String? = null,
     @SerializedName("declined_by") val declinedBy: Signer? = null,

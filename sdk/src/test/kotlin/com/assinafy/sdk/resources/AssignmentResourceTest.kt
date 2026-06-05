@@ -180,6 +180,53 @@ class AssignmentResourceTest {
     }
 
     @Test
+    fun `resendNotification puts to the signer resend endpoint and parses the response`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("""{"is_sent":true,"document_id":"doc-1","signer_id":"s1"}"""))
+
+        val result = AssignmentResource(mock, "acc").resendNotification("doc-1", "asg-1", "s1")
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("PUT")
+        assertThat(call.path).isEqualTo("/documents/doc-1/assignments/asg-1/signers/s1/resend")
+        assertThat(result.isSent).isTrue
+        assertThat(result.signerId).isEqualTo("s1")
+    }
+
+    @Test
+    fun `estimateResendCost posts to the estimate-resend-cost endpoint`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("""{"total":0,"breakdown":[],"credit_balance":0,"has_sufficient_credits":true}"""))
+
+        val cost = AssignmentResource(mock, "acc").estimateResendCost("doc-1", "asg-1", "s1")
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("POST")
+        assertThat(call.path).isEqualTo("/documents/doc-1/assignments/asg-1/signers/s1/estimate-resend-cost")
+        assertThat(cost["has_sufficient_credits"]).isEqualTo(true)
+    }
+
+    @Test
+    fun `listWhatsappNotifications hits the whatsapp-notifications endpoint`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("[]"))
+
+        AssignmentResource(mock, "acc").listWhatsappNotifications("doc-1", "asg-1")
+
+        assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/assignments/asg-1/whatsapp-notifications")
+    }
+
+    @Test
+    fun `resetExpiration with a value serializes the trimmed date`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse(assignmentJson))
+
+        AssignmentResource(mock, "acc").resetExpiration("doc-1", "asg-1", "  2026-12-31T00:00:00Z  ")
+
+        assertThat(mock.lastCall().body).isEqualTo("""{"expires_at":"2026-12-31T00:00:00Z"}""")
+    }
+
+    @Test
     fun `copy_receivers in response is parsed as signer objects`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(

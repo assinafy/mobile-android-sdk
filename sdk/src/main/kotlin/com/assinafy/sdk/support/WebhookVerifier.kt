@@ -6,10 +6,17 @@ import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+/**
+ * Verifies and parses webhook deliveries. [verify] checks an HMAC-SHA256 signature against the raw
+ * body using the configured secret (constant-time comparison; accepts an optional `sha256=` prefix
+ * and any hex case). [extractEvent] parses the JSON envelope into a [WebhookPayload] regardless of
+ * whether a secret is configured. Intended to run on a JVM/server receiver — keep the secret server-side.
+ */
 class WebhookVerifier(private val webhookSecret: String? = null) {
 
     private val gson = Gson()
 
+    /** Returns true iff [signature] is a valid HMAC-SHA256 of [payload]; false if no secret is configured. */
     fun verify(payload: ByteArray, signature: String): Boolean {
         if (webhookSecret.isNullOrBlank() || signature.isBlank()) return false
         val expected = computeHmac(payload, webhookSecret)

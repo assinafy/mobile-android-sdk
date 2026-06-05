@@ -95,11 +95,15 @@ class OkHttpApiClient private constructor(
             override fun onResponse(call: okhttp3.Call, response: Response) {
                 response.use { r ->
                     val body = r.body?.bytes() ?: ByteArray(0)
-                    if (!r.isSuccessful) {
-                        val errorBody = body.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
-                        continuation.resumeWithException(ApiException.fromResponse(r.code, errorBody))
-                    } else {
-                        continuation.resume(body)
+                    when {
+                        !r.isSuccessful -> {
+                            val errorBody = body.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
+                            continuation.resumeWithException(ApiException.fromResponse(r.code, errorBody))
+                        }
+                        body.isEmpty() -> continuation.resumeWithException(
+                            ApiException("Empty binary response", r.code),
+                        )
+                        else -> continuation.resume(body)
                     }
                 }
             }

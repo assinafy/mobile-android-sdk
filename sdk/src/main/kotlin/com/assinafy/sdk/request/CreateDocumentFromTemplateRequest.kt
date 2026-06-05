@@ -7,5 +7,6 @@ data class CreateDocumentFromTemplateRequest(
     @SerializedName("name") val name: String? = null,
     @SerializedName("message") val message: String? = null,
     @SerializedName("expires_at") val expiresAt: String? = null,
-    @SerializedName("editor_fields") val editorFields: List<Any>? = null,
+    /** Template editor field overrides. Each entry is a free-form object keyed by field name. */
+    @SerializedName("editor_fields") val editorFields: List<Map<String, Any?>>? = null,
 )

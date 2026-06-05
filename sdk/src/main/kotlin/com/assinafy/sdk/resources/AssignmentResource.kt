@@ -11,12 +11,22 @@ import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.SignerReference
 import com.assinafy.sdk.util.ApiValidator
 
+/**
+ * Assignment (signature request) operations scoped to a document: create, cost estimation,
+ * expiration management, decline, resend, and WhatsApp notification listing.
+ */
 class AssignmentResource(
     http: ApiHttpClient,
     defaultAccountId: String? = null,
     logger: Logger = NoOpLogger,
 ) : BaseResource(http, defaultAccountId, logger) {
 
+    /**
+     * Creates an assignment (`POST /documents/{documentId}/assignments`). The response includes the
+     * per-signer `signing_urls` and a `summary`.
+     *
+     * @throws com.assinafy.sdk.exceptions.ValidationException if no signers are provided.
+     */
     suspend fun create(documentId: String, request: CreateAssignmentRequest): Assignment {
         val docId = requireId(documentId, "Document ID")
         ApiValidator.requireAtLeastOne(request.signers, "signer")
@@ -26,6 +36,7 @@ class AssignmentResource(
         }
     }
 
+    /** Estimates the credit cost of an assignment (`POST .../assignments/estimate-cost`); signer ids are optional here. */
     suspend fun estimateCost(documentId: String, request: CreateAssignmentRequest): Map<String, Any> {
         val docId = requireId(documentId, "Document ID")
         return callMap("Failed to estimate assignment cost") {
@@ -76,6 +87,7 @@ class AssignmentResource(
         return result.data
     }
 
+    /** Resends the signature notification to one signer (`PUT .../assignments/{id}/signers/{signerId}/resend`). */
     suspend fun resendNotification(documentId: String, assignmentId: String, signerId: String): ResendEmailResponse {
         val docId = requireId(documentId, "Document ID")
         val asgId = requireId(assignmentId, "Assignment ID")
@@ -87,6 +99,7 @@ class AssignmentResource(
         }
     }
 
+    /** Estimates the cost of resending a notification (`POST .../signers/{signerId}/estimate-resend-cost`). */
     suspend fun estimateResendCost(documentId: String, assignmentId: String, signerId: String): Map<String, Any> {
         val docId = requireId(documentId, "Document ID")
         val asgId = requireId(assignmentId, "Assignment ID")

@@ -104,4 +104,32 @@ class ResponseHandlerTest {
         val result = ResponseHandler.handleList(response, TestModel::class.java)
         assertThat(result.data).isEmpty()
     }
+
+    @Test
+    fun `handle throws when a typed value is expected but the body is empty`() {
+        val response = HttpRawResponse(200, "", emptyMap())
+        assertThatThrownBy {
+            ResponseHandler.handle(response, TestModel::class.java)
+        }.isInstanceOf(AssinafyException::class.java)
+            .hasMessageContaining("Empty response body")
+    }
+
+    @Test
+    fun `handleList parses pagination from mixed-case headers`() {
+        val response = HttpRawResponse(
+            200,
+            """{"status":200,"data":[]}""",
+            mapOf(
+                "X-Pagination-Current-Page" to "3",
+                "X-Pagination-Per-Page" to "10",
+                "X-Pagination-Total-Count" to "55",
+                "X-Pagination-Page-Count" to "6",
+            ),
+        )
+        val result = ResponseHandler.handleList(response, TestModel::class.java)
+        assertThat(result.meta?.currentPage).isEqualTo(3)
+        assertThat(result.meta?.perPage).isEqualTo(10)
+        assertThat(result.meta?.total).isEqualTo(55)
+        assertThat(result.meta?.lastPage).isEqualTo(6)
+    }
 }

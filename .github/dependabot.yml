@@ -1,0 +1,17 @@
+version: 2
+updates:
+  # Keep the SHA-pinned GitHub Actions current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+
+  # Keep Gradle/Maven dependencies current.
+  - package-ecosystem: "gradle"
+    directory: "/sdk"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"

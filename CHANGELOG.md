@@ -2,6 +2,54 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [1.0.3] - 2026-06-05
+
+Production-readiness audit verified end-to-end against the live `https://sandbox.assinafy.com.br/v1`
+API. Every endpoint the SDK calls was confirmed against the live contract; no working functionality
+was removed.
+
+### Fixed
+- **Consumer ProGuard/R8 rules now ship in the AAR.** The Gson keep rules were only wired via
+  `proguardFiles` (the library's own, effectively no-op minification) and never reached consuming
+  apps, so any app with `minifyEnabled = true` would strip the reflectively-populated model fields in
+  release builds. They are now declared with `consumerProguardFiles` and hardened
+  (`@SerializedName` members, Gson `TypeToken`, broader `-keepattributes`).
+- **Binary error messages were swallowed.** `getBinary` passed a raw `String` error body to
+  `ApiException.fromResponse`, which only understood a `Map`, so every download/thumbnail/page/signature
+  failure reported the generic "API request failed". `fromResponse` now parses a JSON or plain-string
+  body, and an empty successful binary response surfaces a clear error.
+- **Gson null-safety.** Genuinely-optional model fields (`DocumentPage` dimensions/`download_url`,
+  `Signer.fullName`, document timestamps) are now nullable so Gson cannot inject `null` into a
+  non-null Kotlin field and NPE later. `ResponseHandler.handle` now throws a clear error on an empty
+  body instead of returning `null as T`.
+- **`findByEmail` pages through all results** instead of only the first 100, so the idempotent
+  `signers.create` dedup is reliable for large signer sets.
+- Pagination header parsing is now case-insensitive; `ApiException` no longer coerces a null
+  `responseData` into an empty string in its context map.
+
+### Added
+- **Full request/response payload reference in the README** (real sandbox payloads) plus KDoc across
+  the public API.
+- Constants for stringly-typed values: `DocumentArtifact.CERTIFICATE_PAGE`/`BUNDLE`, `SignatureType`,
+  and `WebhookEvent`; `RegisterWebhookRequest.DEFAULT_EVENTS` and `Logger.NONE` are now public.
+- `DocumentArtifacts.thumbnail` and assignment-context fields on `Signer` (`completed`,
+  `verificationMethod`, `notificationMethods`, `step`, `notified`).
+- Typed `ConfirmSignerDataRequest` overload for `DocumentResource.confirmSignerData`.
+- **Opt-in `LiveIntegrationTest`** that exercises the real API when `ASSINAFY_API_KEY` /
+  `ASSINAFY_ACCOUNT_ID` are set (skipped by default). Unit-test coverage expanded to 140 tests,
+  including the OkHttp transport, `TemplateResource`, `waitUntilReady`, and webhook 404 handling.
+
+### Changed
+- The `AssinafyClient` primary constructor is now `internal`; construct via `AssinafyClient.create(...)`.
+- `entries` / `editor_fields` request fields are typed as `List<Map<String, Any?>>` (R8-safe).
+- `DEFAULT_MAX_WAIT_MS` raised to 120s (decoupled from the per-request timeout) for upload readiness.
+- Dependency bumps: Gson 2.11.0, coroutines 1.9.0, JUnit 5.11.4, AssertJ 3.27.3.
+
+### Tooling
+- CI hardened: first-party GitHub Actions pinned to commit SHAs, Gradle wrapper validation added,
+  formatting/dependency checks run on push, and `publish-snapshot` now `needs` the verification jobs
+  and publishes a unique per-run `-SNAPSHOT` coordinate. Added Dependabot for Actions and Gradle.
+
 ## [1.0.2] - 2026-05-27
 
 Full audit against the live `https://api.assinafy.com.br/v1` contract.

@@ -117,6 +117,59 @@ class SignerResourceTest {
     }
 
     @Test
+    fun `findByEmail pages through results until it finds a match`() = runTest {
+        val mock = MockApiHttpClient()
+        // Page 1: no match, but pagination meta says there are 2 pages.
+        mock.enqueue(
+            HttpRawResponse(
+                200,
+                """{"status":200,"data":[{"id":"x","full_name":"Other","email":"other@example.com"}]}""",
+                mapOf("x-pagination-current-page" to "1", "x-pagination-page-count" to "2"),
+            ),
+        )
+        // Page 2: the match.
+        mock.enqueue(
+            HttpRawResponse(
+                200,
+                """{"status":200,"data":[{"id":"target","full_name":"John","email":"john@example.com"}]}""",
+                mapOf("x-pagination-current-page" to "2", "x-pagination-page-count" to "2"),
+            ),
+        )
+
+        val signer = SignerResource(mock, "acc").findByEmail("john@example.com")
+
+        assertThat(signer?.id).isEqualTo("target")
+        assertThat(mock.calls.count { it.method == "GET" }).isEqualTo(2)
+        assertThat(mock.calls.last().queryParams["page"]).isEqualTo(2)
+    }
+
+    @Test
+    fun `acceptTerms puts the access code to the accept-terms endpoint`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(HttpRawResponse(200, """{"status":200,"data":{"accepted":true}}""", emptyMap()))
+
+        SignerResource(mock, "acc").acceptTerms("code-1")
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("PUT")
+        assertThat(call.path).isEqualTo("/signers/accept-terms")
+        assertThat(call.body).contains("code-1")
+    }
+
+    @Test
+    fun `verifyEmail posts the codes to the verify endpoint`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(HttpRawResponse(200, """{"status":200,"data":{"verified":true}}""", emptyMap()))
+
+        SignerResource(mock, "acc").verifyEmail("code-1", "123456")
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("POST")
+        assertThat(call.path).isEqualTo("/verify")
+        assertThat(call.body).contains("code-1").contains("123456")
+    }
+
+    @Test
     fun `findByEmail returns a matching signer case-insensitively`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(

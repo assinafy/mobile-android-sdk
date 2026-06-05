@@ -18,13 +18,19 @@ import com.assinafy.sdk.resources.WebhookResource
 import com.assinafy.sdk.resources.WorkspaceResource
 import com.assinafy.sdk.support.WebhookVerifier
 
+/** Result of [AssinafyClient.uploadAndRequestSignatures]: the uploaded document, the created assignment, and the signer ids. */
 data class UploadAndRequestSignaturesResult(
     val document: DocumentUploadResponse,
     val assignment: Assignment,
     val signerIds: List<String>,
 )
 
-class AssinafyClient(
+/**
+ * Entry point to the Assinafy API. Construct it via [AssinafyClient.create]; the resource groups
+ * ([documents], [signers], [assignments], [webhooks], [templates], [tags], [workspaces]) and the
+ * [webhookVerifier] are exposed as properties. All network methods are `suspend` functions.
+ */
+class AssinafyClient internal constructor(
     val documents: DocumentResource,
     val signers: SignerResource,
     val workspaces: WorkspaceResource,
@@ -35,6 +41,13 @@ class AssinafyClient(
     val webhookVerifier: WebhookVerifier,
     private val logger: Logger,
 ) {
+    /**
+     * High-level workflow: uploads a PDF, optionally waits for it to become ready, reuses-or-creates
+     * each signer by email, and creates a `virtual` assignment for them.
+     *
+     * @return the uploaded document, the created assignment, and the resolved signer ids.
+     * @throws com.assinafy.sdk.exceptions.ValidationException if no signers are given or a signer is missing name/email.
+     */
     suspend fun uploadAndRequestSignatures(request: UploadAndRequestSignaturesRequest): UploadAndRequestSignaturesResult {
         validateUploadRequest(request)
         logger.info("Starting upload + signature workflow", mapOf("signerCount" to request.signers.size))
@@ -94,6 +107,7 @@ class AssinafyClient(
     }
 
     companion object Factory {
+        /** Convenience factory from individual parameters. See [AssinafyClientConfig] for details. */
         fun create(
             apiKey: String,
             accountId: String,
@@ -113,7 +127,10 @@ class AssinafyClient(
             return create(config)
         }
 
+        /** Builds a client from a [AssinafyClientConfig]; validates the config and wires the resources. */
         fun create(config: AssinafyClientConfig): AssinafyClient {
+            // Validate before constructing the HTTP client so an invalid config surfaces as a
+            // ValidationException rather than a lower-level OkHttp error (e.g. a negative timeout).
             validateConfig(config)
             return create(config, createHttpClient(config))
         }

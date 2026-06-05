@@ -1,8 +1,11 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.DocumentArtifact
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
+import com.assinafy.sdk.request.ConfirmSignerDataRequest
+import com.assinafy.sdk.request.TemplateSigner
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
@@ -191,4 +194,107 @@ class DocumentResourceTest {
         assertThat(mock.lastCall().path)
             .isEqualTo("/documents/doc-1/signers/confirm-data?signer-access-code=access%2B%2F%3D")
     }
+
+    @Test
+    fun `confirmSignerData typed overload serializes contract body keys`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+
+        DocumentResource(mock, "acc").confirmSignerData(
+            "doc-1",
+            "code",
+            ConfirmSignerDataRequest(email = "a@b.com", hasAcceptedTerms = true),
+        )
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("PUT")
+        assertThat(call.body).contains("\"email\":\"a@b.com\"").contains("\"has_accepted_terms\":true")
+    }
+
+    @Test
+    fun `download defaults to the certificated artifact and honors an explicit one`() = runTest {
+        val mock = MockApiHttpClient(binaryResponse = byteArrayOf(1, 2, 3))
+
+        DocumentResource(mock, "acc").download("doc-1")
+        assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/download/certificated")
+
+        DocumentResource(mock, "acc").download("doc-1", DocumentArtifact.ORIGINAL)
+        assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/download/original")
+    }
+
+    @Test
+    fun `getStatuses parses the statuses catalog`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            successResponse("""[{"code":"metadata_ready","deletable":true},{"code":"uploading","deletable":false}]"""),
+        )
+
+        val statuses = DocumentResource(mock, "acc").getStatuses()
+
+        assertThat(mock.lastCall().path).isEqualTo("/documents/statuses")
+        assertThat(statuses).hasSize(2)
+        assertThat(statuses[0].code).isEqualTo("metadata_ready")
+        assertThat(statuses[0].deletable).isTrue
+    }
+
+    @Test
+    fun `waitUntilReady returns the document once it reaches a ready status`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse(docStatus("uploading")))
+        mock.enqueue(successResponse(docStatus("metadata_processing")))
+        mock.enqueue(successResponse(docStatus("metadata_ready")))
+
+        val doc = DocumentResource(mock, "acc").waitUntilReady("doc-1", pollIntervalMs = 1L)
+
+        assertThat(doc.status).isEqualTo("metadata_ready")
+        assertThat(mock.callCount()).isEqualTo(3)
+    }
+
+    @Test
+    fun `waitUntilReady throws when the document enters a failed status`() {
+        val mock = MockApiHttpClient()
+        mock.enqueue(HttpRawResponse(200, """{"status":200,"data":${docStatus("failed")}}""", emptyMap()))
+        assertThatThrownBy {
+            runBlocking { DocumentResource(mock, "acc").waitUntilReady("doc-1", pollIntervalMs = 1L) }
+        }.isInstanceOf(ValidationException::class.java).hasMessageContaining("failed")
+    }
+
+    @Test
+    fun `waitUntilReady throws a timeout after polling a never-ready document`() {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"data":${docStatus("uploading")}}""", emptyMap()))
+        assertThatThrownBy {
+            runBlocking { DocumentResource(mock, "acc").waitUntilReady("doc-1", maxWaitMs = 40L, pollIntervalMs = 10L) }
+        }.isInstanceOf(ValidationException::class.java).hasMessageContaining("Timeout")
+        // Proves it actually polled the never-ready document before timing out.
+        assertThat(mock.callCount()).isGreaterThanOrEqualTo(1)
+    }
+
+    @Test
+    fun `createFromTemplate posts to the template documents endpoint with signers`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse(docDetailsJson))
+
+        DocumentResource(mock, "acc").createFromTemplate(
+            "tpl-1",
+            listOf(TemplateSigner(roleId = "r1", id = "s1", verificationMethod = "Email")),
+        )
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("POST")
+        assertThat(call.path).isEqualTo("/accounts/acc/templates/tpl-1/documents")
+        assertThat(call.body).contains("\"role_id\":\"r1\"").contains("\"id\":\"s1\"")
+    }
+
+    @Test
+    fun `verify gets the public verify endpoint`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("""{"valid":true}"""))
+
+        val result = DocumentResource(mock, "acc").verify("hash-123")
+
+        assertThat(mock.lastCall().path).isEqualTo("/documents/hash-123/verify")
+        assertThat(result["valid"]).isEqualTo(true)
+    }
+
+    private fun docStatus(status: String) =
+        """{"id":"doc-1","account_id":"acc","name":"t.pdf","status":"$status","created_at":"x","updated_at":"x","is_closed":false}"""
 }

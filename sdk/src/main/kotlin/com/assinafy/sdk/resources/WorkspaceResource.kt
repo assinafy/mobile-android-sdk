@@ -10,12 +10,14 @@ import com.assinafy.sdk.models.WorkspaceListItem
 import com.assinafy.sdk.request.CreateWorkspaceRequest
 import com.assinafy.sdk.request.UpdateWorkspaceRequest
 
+/** Workspace (account) management. A "workspace" and an "account" are the same entity in the API. */
 class WorkspaceResource(
     http: ApiHttpClient,
     defaultAccountId: String? = null,
     logger: Logger = NoOpLogger,
 ) : BaseResource(http, defaultAccountId, logger) {
 
+    /** Creates a workspace (`POST /accounts`). */
     suspend fun create(request: CreateWorkspaceRequest): Workspace {
         if (request.name.isBlank()) {
             throw ValidationException("Workspace name is required")
@@ -25,10 +27,12 @@ class WorkspaceResource(
         }
     }
 
+    /** Lists the workspaces accessible to the credential (`GET /accounts`). */
     suspend fun list(): PaginatedResult<WorkspaceListItem> = callList("Failed to list workspaces", WorkspaceListItem::class.java) {
         http.get("/accounts")
     }
 
+    /** Fetches a workspace by id (`GET /accounts/{accountId}`). */
     suspend fun get(accountId: String): Workspace {
         val id = requireId(accountId, "Account ID")
         return call("Failed to fetch workspace", Workspace::class.java) {
@@ -36,6 +40,7 @@ class WorkspaceResource(
         }
     }
 
+    /** Updates a workspace (`PUT /accounts/{accountId}`). */
     suspend fun update(accountId: String, request: UpdateWorkspaceRequest): Workspace {
         val id = requireId(accountId, "Account ID")
         if (request.name?.isBlank() == true) {
@@ -46,6 +51,7 @@ class WorkspaceResource(
         }
     }
 
+    /** Deletes a workspace (`DELETE /accounts/{accountId}`). */
     suspend fun delete(accountId: String) {
         val id = requireId(accountId, "Account ID")
         callVoid("Failed to delete workspace") { http.delete("/accounts/${pathSegment(id)}") }

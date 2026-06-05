@@ -19,7 +19,7 @@ class TagResource(
     /** Lists workspace tags, ordered alphabetically, optionally filtered by a case-insensitive [search]. */
     suspend fun list(search: String? = null, accountId: String? = null): List<Tag> {
         val accId = accountId(accountId)
-        val query = buildMap<String, Any?> { search?.takeIf { it.isNotBlank() }?.let { put("search", it) } }
+        val query = search?.takeIf { it.isNotBlank() }?.let { mapOf("search" to it) } ?: emptyMap()
         val result = callList("Failed to list tags", Tag::class.java) {
             http.get("/accounts/${pathSegment(accId)}/tags", query)
         }

@@ -21,7 +21,7 @@ Add the dependency to your module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:1.0.2")
+    implementation("com.assinafy:assinafy-android-sdk:1.0.3")
 }
 ```
 
@@ -29,7 +29,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.assinafy:assinafy-android-sdk:1.0.2'
+    implementation 'com.assinafy:assinafy-android-sdk:1.0.3'
 }
 ```
 
@@ -54,7 +54,7 @@ import com.assinafy.sdk.AssinafyClient
 import com.assinafy.sdk.AssinafyClientConfig
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest
 
-val client = AssinafyClient(
+val client = AssinafyClient.create(
     AssinafyClientConfig(
         apiKey = BuildConfig.ASSINAFY_API_KEY,
         accountId = BuildConfig.ASSINAFY_ACCOUNT_ID,
@@ -91,11 +91,14 @@ println("Assignment ID: ${result.assignment.id}")
 
 ```kotlin
 // Preferred: X-Api-Key header
-AssinafyClient(AssinafyClientConfig(apiKey = "k_xxx", accountId = "acc_xxx"))
+AssinafyClient.create(AssinafyClientConfig(apiKey = "k_xxx", accountId = "acc_xxx"))
 
 // Legacy: Authorization: Bearer <token>
-AssinafyClient(AssinafyClientConfig(token = "jwt_xxx", accountId = "acc_xxx"))
+AssinafyClient.create(AssinafyClientConfig(token = "jwt_xxx", accountId = "acc_xxx"))
 ```
+
+> Construct the client through the `AssinafyClient.create(...)` factory (it validates the config and
+> wires the resources). The constructor is internal.
 
 ## Configuration
 
@@ -170,9 +173,16 @@ val existing = client.signers.findByEmail("john@example.com")
 client.signers.getSelf(signerAccessCode)
 client.signers.acceptTerms(signerAccessCode)
 client.signers.verifyEmail(signerAccessCode, verificationCode)
-client.signers.uploadSignature(signerAccessCode, type = "signature", imageData = pngBytes)        // image/png by default
-client.signers.uploadSignature(signerAccessCode, type = "initial", imageData = jpegBytes, contentType = "image/jpeg")
-client.signers.downloadSignature(signerAccessCode, type = "signature")
+client.signers.uploadSignature(signerAccessCode, type = SignatureType.SIGNATURE, imageData = pngBytes)        // image/png by default
+client.signers.uploadSignature(signerAccessCode, type = SignatureType.INITIAL, imageData = jpegBytes, contentType = "image/jpeg")
+client.signers.downloadSignature(signerAccessCode, type = SignatureType.SIGNATURE)
+
+// Signer confirms their contact data + terms (also access-code authenticated):
+client.documents.confirmSignerData(
+    documentId,
+    signerAccessCode,
+    ConfirmSignerDataRequest(email = "john@example.com", whatsappPhoneNumber = "+5548999990000", hasAcceptedTerms = true),
+)
 ```
 
 `signers.create()` is idempotent by email: it reuses an existing signer when the same email is already in the workspace (and recovers from the API's duplicate-email error if a concurrent create wins the race).
@@ -233,6 +243,10 @@ client.webhooks.retryDispatch(dispatchId)
 
 ### Webhook Verification
 
+> Note: webhooks are delivered to your **backend**, not the device. Run `WebhookVerifier` on a
+> JVM/server receiver (this same artifact works server-side) and keep `webhookSecret` on the server
+> only — never bundle it in a shipped Android app.
+
 Assinafy delivers each event as an HTTP `POST` of JSON to your endpoint and expects any `2xx`
 response (see the [delivery contract](https://api.assinafy.com.br/v1/docs)). `WebhookVerifier` is an
 optional convenience helper for deployments that protect that endpoint with a shared-secret
@@ -261,6 +275,12 @@ when (type) {
 }
 ```
 
+`getEventData(event)` returns the event's `payload` field, which the live API leaves empty for most
+event types — so it usually yields an empty map. For the real event content read the envelope fields
+on the `WebhookPayload` returned by `extractEvent(rawBody)`: `event?.subject`, `event?.obj` (the
+JSON `object` field), `event?.origin`, and `event?.createdAt`. Event ids are available as constants
+in `WebhookEvent` (and `RegisterWebhookRequest.DEFAULT_EVENTS` is the SDK's default subscription).
+
 ### Templates
 
 ```kotlin
@@ -268,18 +288,24 @@ val (data, meta) = client.templates.list(ListParams(search = "NDA", perPage = 20
 val template = client.templates.get(templateId)
 val role = requireNotNull(template.roles?.firstOrNull()) { "Template has no signer roles" }
 
+val templateSigners = listOf(
+    TemplateSigner(
+        roleId = role.id,
+        id = signerId,
+        verificationMethod = "Email",
+        notificationMethods = listOf("Email"),
+    )
+)
+
+// Simplest form (uses the default options object):
+client.documents.createFromTemplate(templateId, templateSigners)
+
+// With a custom name/message — pass the SAME signer list in the options object:
 client.documents.createFromTemplate(
     templateId,
-    listOf(
-        TemplateSigner(
-            roleId = role.id,
-            id = signerId,
-            verificationMethod = "Email",
-            notificationMethods = listOf("Email"),
-        )
-    ),
+    templateSigners,
     CreateDocumentFromTemplateRequest(
-        signers = emptyList(),
+        signers = templateSigners,
         name = "NDA - John Doe",
         message = "Please sign at your earliest convenience.",
     ),
@@ -337,6 +363,137 @@ result.document    // DocumentUploadResponse
 result.assignment  // Assignment
 result.signerIds   // List<String>
 ```
+
+## API Reference — request & response payloads
+
+Every JSON response is wrapped in an envelope: `{"status": <int>, "message": <string>, "data": <object|array>}`.
+The SDK unwraps `data` for you and returns the typed model. **List pagination is carried in
+`X-Pagination-*` response headers** (not the body) and exposed as `PaginatedResult.meta`. The page-size
+query parameter is the hyphenated **`per-page`**. All examples below are real sandbox payloads.
+
+Base URLs: production `https://api.assinafy.com.br/v1`, sandbox `https://sandbox.assinafy.com.br/v1`.
+Auth header: `X-Api-Key: <key>` (or `Authorization: Bearer <jwt>`).
+
+### Documents
+
+**`upload(fileData, fileName, metadata?, accountId?)`** → `POST /accounts/{accountId}/documents` (multipart)
+
+Request parts: `file` (`application/pdf`), `name` (string), `metadata` (JSON string, optional). Response:
+
+```json
+{ "status": 200, "message": "", "data": {
+  "resource": "document", "id": "1031fc8e022e1b772886ec81543c", "account_id": "102d25a489f34a275d31a16045fd",
+  "template_id": null, "name": "contract.pdf", "status": "uploaded",
+  "artifacts": { "original": "https://.../documents/1031.../download/original" },
+  "tags": [], "pages": [], "is_closed": false, "created_at": "2026-06-05T19:26:54Z", "updated_at": "2026-06-05T19:26:54Z"
+} }
+```
+
+**`list(params, accountId?)`** → `GET /accounts/{accountId}/documents?status&method&search&tags&sort&page&per-page`
+→ `data: [DocumentListItem]`; meta from `X-Pagination-Current-Page|Per-Page|Total-Count|Page-Count`.
+
+**`details(id)` / `get(id)`** → `GET /documents/{id}` → `DocumentDetails` (adds `assignment`, `pages`, `download_url`/`download_final_url` once certificated).
+
+**`waitUntilReady(id, maxWaitMs=120_000, pollIntervalMs=2_000)`** — polls `details` through `uploaded → metadata_processing → metadata_ready`; throws on `failed`/`rejected_*`/`expired` or timeout.
+
+**`activities(id)`** → `GET /documents/{id}/activities` →
+
+```json
+{ "status": 200, "data": [
+  { "id": 42, "event": "document_uploaded", "message": "Documento criado.",
+    "payload": [], "origin": { "ip": "1.2.3.4", "user-agent": "assinafy-android-sdk/1.0.3" },
+    "created_at": "2026-05-11T23:58:21Z" } ] }
+```
+
+**`getStatuses()`** → `GET /documents/statuses` → `data: [{ "code": "metadata_ready", "deletable": true }, ...]`
+(codes: `uploading, uploaded, metadata_processing, metadata_ready, certificating, certificated, pending_signature, expired, rejected_by_signer, rejected_by_user, failed`).
+
+**`download(id, artifact=DocumentArtifact.CERTIFICATED)`** → `GET /documents/{id}/download/{artifact}` → raw bytes.
+**`thumbnail(id)`** → `GET /documents/{id}/thumbnail`. **`downloadPage(id, pageId)`** → `GET /documents/{id}/pages/{pageId}/download`.
+
+**Document tags** — `listTags`/`addTags`/`replaceTags` use `GET`/`POST`/`PUT /accounts/{acc}/documents/{id}/tags`
+with body `{"tags": ["Contracts", "2026-Q1"]}` (unknown names auto-created); `detachTag` →
+`DELETE /accounts/{acc}/documents/{id}/tags/{tagId}` → `{"detached": true}`. All tag responses return the resulting set:
+
+```json
+{ "status": 200, "data": [ { "id": "1031...", "name": "Contracts", "color": "ff8800",
+  "created_at": "2026-06-05T19:27:45Z", "updated_at": "2026-06-05T19:27:45Z" } ] }
+```
+
+### Signers
+
+**`create(CreateSignerRequest, accountId?)`** → `POST /accounts/{acc}/signers`
+Request `{"full_name": "John Doe", "email": "john@example.com", "whatsapp_phone_number": "+5548999990000", "cpf": "12345678900"}`
+(idempotent by email — reuses an existing signer and recovers from the API's duplicate-email `400`). Response:
+
+```json
+{ "status": 200, "data": { "resource": "signer", "id": "19e6b92e7895332ed9708535d8c",
+  "full_name": "John Doe", "email": "john@example.com", "whatsapp_phone_number": null, "has_accepted_terms": false } }
+```
+
+**`list` / `get` / `update` / `delete`** → `GET|GET|PUT|DELETE /accounts/{acc}/signers[/{id}]`. **`findByEmail(email)`** pages through `search` results.
+
+Signer-facing (authenticated by `signer-access-code`, not the API key): **`getSelf`** `GET /signers/self?signer-access-code=`,
+**`acceptTerms`** `PUT /signers/accept-terms`, **`verifyEmail`** `POST /verify`, **`uploadSignature`**
+`POST /signature?signer-access-code=&type=` (raw `image/png`/`image/jpeg` body — not multipart), **`downloadSignature`** `GET /signature/{type}?signer-access-code=`.
+
+### Assignments
+
+**`create(documentId, CreateAssignmentRequest)`** → `POST /documents/{documentId}/assignments`
+
+```json
+// request
+{ "method": "virtual",
+  "signers": [ { "id": "19e6...", "verification_method": "Email", "notification_methods": ["Email"], "step": 1 },
+               { "id": "1030...", "verification_method": "Email", "notification_methods": ["Email"], "step": 1 } ],
+  "message": "Please sign", "expires_at": "2026-12-31T23:59:00Z", "copy_receivers": ["observer-id"] }
+```
+```json
+// response data
+{ "resource": "assignment", "id": "1031fc9ea9afe7ffdea898dff174", "sender_email": "bill@febacapital.com",
+  "method": "virtual", "expires_at": null, "message": "Please sign",
+  "signers": [ { "id": "19e6...", "full_name": "Bill M", "email": "bill@febacapital.com",
+                 "completed": false, "verification_method": "Email", "notification_methods": ["Email"], "step": 1, "notified": true } ],
+  "copy_receivers": [], "items": [...], "summary": { "signer_count": 2, "completed_count": 0 },
+  "signing_urls": [ { "signer_id": "19e6...", "url": "https://app-sandbox.assinafy.com.br/sign/1031...?email=bill%40febacapital.com" } ] }
+```
+
+**`estimateCost(documentId, request)`** → `POST /documents/{id}/assignments/estimate-cost` →
+
+```json
+{ "status": 200, "data": { "documents": 1, "credits": 0, "needs_extra_document": false, "extra_document_cost": 0,
+  "total_credits": 0, "breakdown": [], "document_balance": 72, "credit_balance": 0,
+  "has_sufficient_resources": true, "blocking_reason": null } }
+```
+
+**`resetExpiration(documentId, assignmentId, expiresAt?)`** → `PUT .../reset-expiration` with `{"expires_at": "2026-12-31T00:00:00Z"}` or `{"expires_at": null}` (explicit null clears it — never expires).
+**`resendNotification(documentId, assignmentId, signerId)`** → `PUT .../signers/{signerId}/resend` → `{"is_sent": true, "document_id": "...", "signer_id": "..."}`.
+**`estimateResendCost(...)`** → `POST .../signers/{signerId}/estimate-resend-cost` → `{"total": 0, "breakdown": [{"code": "NotificationEmailResend", "name": "Email Notification Resend", "cost": 0}], "credit_balance": 0, "has_sufficient_credits": true}`.
+**`decline(documentId, assignmentId, signerAccessCode, reason)`** → `PUT .../reject?signer-access-code=` with `{"decline_reason": "..."}`.
+**`listWhatsappNotifications(...)`** → `GET .../whatsapp-notifications`.
+
+### Templates
+
+**`list` / `get`** → `GET /accounts/{acc}/templates[?status&search&tags&sort&page&per-page]` / `GET /accounts/{acc}/templates/{id}` (response includes `roles: [{id, name}]`).
+Create-document-from-template lives on the documents resource: **`createFromTemplate`** → `POST /accounts/{acc}/templates/{templateId}/documents`
+with `{"signers": [{"role_id": "...", "id": "...", "verification_method": "Email", "notification_methods": ["Email"]}], "name": "...", "message": "...", "expires_at": "..."}`.
+
+### Tags
+
+**`create`** `POST /accounts/{acc}/tags` `{"name": "Contracts", "color": "ff8800"}`; **`list`** `GET .../tags?search`; **`update`** `PUT .../tags/{id}` (`{"color": null}` clears the color); **`delete`** `DELETE .../tags/{id}?force=true` → `{"deleted": true}`.
+
+### Webhooks (account-scoped subscription)
+
+**`register(RegisterWebhookRequest)`** → `PUT /accounts/{acc}/webhooks/subscriptions`
+`{"url": "https://...", "email": "ops@example.com", "events": ["document_ready", ...], "is_active": true}`.
+**`get()`** → `GET .../webhooks/subscriptions` (`null` on 404). **`inactivate()`** → `PUT .../webhooks/inactivate`. **`delete()`** → `DELETE .../webhooks/subscriptions`.
+**`listEventTypes()`** → `GET /webhooks/event-types` → `data: [{ "id": "document_ready", "description": "..." }, ...]`.
+**`listDispatches(params)`** → `GET /accounts/{acc}/webhooks`. **`retryDispatch(id)`** → `POST /accounts/{acc}/webhooks/{id}/retry`.
+
+### Workspaces (accounts)
+
+**`list`** `GET /accounts` → `data: [{ "id": "...", "name": "MT", "roles": ["owner"], "is_delete_allowed": true, "created_at": "..." }]`.
+**`get`** `GET /accounts/{id}` (adds `primary_color`, `secondary_color`). **`create`** `POST /accounts` `{"name": "...", "primary_color": "#ff0066"}`. **`update`/`delete`** `PUT|DELETE /accounts/{id}`.
 
 ## Error Handling
 

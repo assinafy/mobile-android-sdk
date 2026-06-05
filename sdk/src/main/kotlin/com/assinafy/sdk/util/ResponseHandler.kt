@@ -73,8 +73,7 @@ object ResponseHandler {
 
     private fun <T> parseEnvelope(body: String?, type: Class<T>): T {
         if (body.isNullOrBlank()) {
-            @Suppress("UNCHECKED_CAST")
-            return null as T
+            throw AssinafyException("Empty response body where ${type.simpleName} was expected")
         }
         return try {
             val root = JsonParser.parseString(body)
@@ -171,10 +170,12 @@ object ResponseHandler {
 
     private fun parsePaginationMeta(headers: Map<String, String>): PaginationMeta? {
         if (headers.isEmpty()) return null
-        val currentPage = headers["x-pagination-current-page"]?.trim()?.toIntOrNull()
-        val perPage = headers["x-pagination-per-page"]?.trim()?.toIntOrNull()
-        val total = headers["x-pagination-total-count"]?.trim()?.toIntOrNull()
-        val lastPage = headers["x-pagination-page-count"]?.trim()?.toIntOrNull()
+        // Normalize so the lookup does not depend on the caller having lowercased header keys.
+        val lc = headers.entries.associate { it.key.lowercase() to it.value }
+        val currentPage = lc["x-pagination-current-page"]?.trim()?.toIntOrNull()
+        val perPage = lc["x-pagination-per-page"]?.trim()?.toIntOrNull()
+        val total = lc["x-pagination-total-count"]?.trim()?.toIntOrNull()
+        val lastPage = lc["x-pagination-page-count"]?.trim()?.toIntOrNull()
         return if (listOf(currentPage, perPage, total, lastPage).all { it == null }) {
             null
         } else {
