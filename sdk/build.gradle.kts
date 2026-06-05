@@ -10,7 +10,7 @@ plugins {
 group = "com.assinafy"
 // Honor a -Pversion override (used by CI to publish unique snapshot coordinates) and fall back
 // to the released version. Gradle sets project.version to "unspecified" when no -Pversion is given.
-version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "1.0.3"
+version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "1.1.0"
 
 val okHttpVersion = "4.12.0" // last 4.x release; 5.x is a separate migration
 val gsonVersion = "2.11.0"

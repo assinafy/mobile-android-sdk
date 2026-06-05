@@ -158,7 +158,7 @@ jobs:
 
       - name: Publish snapshot
         # GitHub Packages coordinates are immutable, so publish a UNIQUE per-run snapshot version.
-        run: ./gradlew :sdk:publish -Pversion=1.0.3-${{ github.run_number }}-SNAPSHOT
+        run: ./gradlew :sdk:publish -Pversion=1.1.0-${{ github.run_number }}-SNAPSHOT
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

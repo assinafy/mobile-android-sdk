@@ -1,7 +1,7 @@
 package com.assinafy.sdk
 
 object SdkConstants {
-    const val VERSION = "1.0.3"
+    const val VERSION = "1.1.0"
     const val USER_AGENT = "assinafy-android-sdk/$VERSION"
     const val DEFAULT_BASE_URL = "https://api.assinafy.com.br/v1"
 

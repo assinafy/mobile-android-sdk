@@ -2,7 +2,7 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
-## [1.0.3] - 2026-06-05
+## [1.1.0] - 2026-06-05
 
 Production-readiness audit verified end-to-end against the live `https://sandbox.assinafy.com.br/v1`
 API. Every endpoint the SDK calls was confirmed against the live contract; no working functionality

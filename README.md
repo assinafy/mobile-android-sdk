@@ -21,7 +21,7 @@ Add the dependency to your module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:1.0.3")
+    implementation("com.assinafy:assinafy-android-sdk:1.1.0")
 }
 ```
 
@@ -29,7 +29,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.assinafy:assinafy-android-sdk:1.0.3'
+    implementation 'com.assinafy:assinafy-android-sdk:1.1.0'
 }
 ```
 
@@ -401,7 +401,7 @@ Request parts: `file` (`application/pdf`), `name` (string), `metadata` (JSON str
 ```json
 { "status": 200, "data": [
   { "id": 42, "event": "document_uploaded", "message": "Documento criado.",
-    "payload": [], "origin": { "ip": "1.2.3.4", "user-agent": "assinafy-android-sdk/1.0.3" },
+    "payload": [], "origin": { "ip": "1.2.3.4", "user-agent": "assinafy-android-sdk/1.1.0" },
     "created_at": "2026-05-11T23:58:21Z" } ] }
 ```
 
