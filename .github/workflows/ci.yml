@@ -34,7 +34,7 @@ jobs:
         uses: gradle/actions/wrapper-validation@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
@@ -71,7 +71,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
@@ -105,7 +105,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
@@ -143,7 +143,7 @@ jobs:
         uses: gradle/actions/wrapper-validation@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        uses: actions/setup-java@1bcf9fb12cf4aa7d266a90ae39939e61372fe520 # v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: temurin
