@@ -1,13 +1,16 @@
 package com.assinafy.sdk
 
 object SdkConstants {
-    const val VERSION = "1.1.0"
+    const val VERSION = "1.2.0"
     const val USER_AGENT = "assinafy-android-sdk/$VERSION"
     const val DEFAULT_BASE_URL = "https://api.assinafy.com.br/v1"
 
     /** Per-request network timeout (connect/read/write). */
     const val DEFAULT_TIMEOUT_MS = 30_000L
     const val MAX_UPLOAD_BYTES = 25 * 1024 * 1024L
+
+    /** Maximum length of a document name accepted by `PATCH /documents/{id}` (rename). */
+    const val MAX_DOCUMENT_NAME_LENGTH = 255
     const val DEFAULT_POLL_INTERVAL_MS = 2_000L
 
     /**

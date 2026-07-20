@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
@@ -93,5 +94,51 @@ class WorkspaceResourceTest {
 
         assertThat(mock.lastCall().path).isEqualTo("/accounts")
         assertThat(result.data).hasSize(1)
+    }
+
+    @Test
+    fun `getTheme fetches and parses the theme endpoint`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            HttpRawResponse(
+                200,
+                """{"status":200,"data":{"account_name":"MT","primary_color":"2072b9","secondary_color":"ffffff","logo":null}}""",
+                emptyMap(),
+            ),
+        )
+
+        val theme = WorkspaceResource(mock).getTheme("acc-1")
+
+        assertThat(mock.lastCall().method).isEqualTo("GET")
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc-1/theme")
+        assertThat(theme.accountName).isEqualTo("MT")
+        assertThat(theme.primaryColor).isEqualTo("2072b9")
+        assertThat(theme.logo).isNull()
+    }
+
+    @Test
+    fun `getTheme throws without an account ID`() {
+        assertThatThrownBy {
+            runBlocking { WorkspaceResource(MockApiHttpClient()).getTheme("") }
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `getLogo returns the raw bytes`() = runTest {
+        val logoBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
+        val mock = MockApiHttpClient(binaryResponse = logoBytes)
+
+        val bytes = WorkspaceResource(mock).getLogo("acc-1")
+
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc-1/logo")
+        assertThat(bytes).isEqualTo(logoBytes)
+    }
+
+    @Test
+    fun `getLogo returns null when the account has no logo (404)`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.binaryError = ApiException("Arquivo de armazenamento não encontrado.", 404)
+
+        assertThat(WorkspaceResource(mock).getLogo("acc-1")).isNull()
     }
 }

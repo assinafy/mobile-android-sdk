@@ -71,6 +71,29 @@ class DocumentResource(
         }
     }
 
+    /**
+     * Lightweight document search (`GET /accounts/{accountId}/documents/search`). Returns the same
+     * [DocumentListItem] shape as [list] but only supports `search`/`status`/`page`/`per-page`.
+     */
+    suspend fun search(
+        query: String? = null,
+        status: String? = null,
+        page: Int? = null,
+        perPage: Int? = null,
+        accountId: String? = null,
+    ): PaginatedResult<DocumentListItem> {
+        val id = accountId(accountId)
+        val params = buildMap<String, Any?> {
+            query?.takeIf { it.isNotBlank() }?.let { put("search", it) }
+            status?.takeIf { it.isNotBlank() }?.let { put("status", it) }
+            page?.let { put("page", it) }
+            perPage?.let { put("per-page", it) }
+        }
+        return callList("Failed to search documents", DocumentListItem::class.java) {
+            http.get("/accounts/${pathSegment(id)}/documents/search", params)
+        }
+    }
+
     /** Fetches full document details including its assignment and pages (`GET /documents/{documentId}`). */
     suspend fun details(documentId: String): DocumentDetails {
         val id = requireId(documentId, "Document ID")
@@ -163,6 +186,24 @@ class DocumentResource(
     suspend fun delete(documentId: String) {
         val id = requireId(documentId, "Document ID")
         callVoid("Failed to delete document") { http.delete("/documents/${pathSegment(id)}") }
+    }
+
+    /**
+     * Renames a document (`PATCH /documents/{documentId}`, body `{"name": ...}`). The name is
+     * required and limited to 255 characters. Returns the updated document.
+     */
+    suspend fun rename(documentId: String, name: String): DocumentDetails {
+        val id = requireId(documentId, "Document ID")
+        val newName = requireId(name, "Document name")
+        if (newName.length > SdkConstants.MAX_DOCUMENT_NAME_LENGTH) {
+            throw ValidationException(
+                "Document name exceeds maximum length (${SdkConstants.MAX_DOCUMENT_NAME_LENGTH})",
+                mapOf("length" to newName.length),
+            )
+        }
+        return call("Failed to rename document", DocumentDetails::class.java) {
+            http.patch("/documents/${pathSegment(id)}", toJson(mapOf("name" to newName)))
+        }
     }
 
     /**

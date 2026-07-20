@@ -21,7 +21,7 @@ Add the dependency to your module `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:1.1.0")
+    implementation("com.assinafy:assinafy-android-sdk:1.2.0")
 }
 ```
 
@@ -29,7 +29,7 @@ dependencies {
 
 ```groovy
 dependencies {
-    implementation 'com.assinafy:assinafy-android-sdk:1.1.0'
+    implementation 'com.assinafy:assinafy-android-sdk:1.2.0'
 }
 ```
 
@@ -129,7 +129,9 @@ val pdfBytes = File("contract.pdf").readBytes()
 val doc = client.documents.upload(pdfBytes, "contract.pdf", metadata = mapOf("type" to "service"))
 
 val (data, meta) = client.documents.list(ListParams(page = 1, perPage = 20))
+client.documents.search(query = "invoice", status = "metadata_ready", perPage = 10) // lightweight search
 client.documents.details(doc.id)
+client.documents.rename(doc.id, "Service agreement.pdf")   // PATCH; name required, max 255 chars
 client.documents.activities(doc.id)
 client.documents.waitUntilReady(doc.id, maxWaitMs = 30_000L)
 client.documents.download(doc.id, "certificated")
@@ -234,8 +236,7 @@ client.webhooks.register(
 )
 
 client.webhooks.get()
-client.webhooks.inactivate()
-client.webhooks.delete()
+client.webhooks.inactivate() // the API has no delete endpoint; inactivate or overwrite via register
 client.webhooks.listEventTypes()
 client.webhooks.listDispatches(ListParams(perPage = 20))
 client.webhooks.retryDispatch(dispatchId)
@@ -323,6 +324,9 @@ client.workspaces.list()
 client.workspaces.get(accountId)
 client.workspaces.update(accountId, UpdateWorkspaceRequest(name = "Renamed"))
 client.workspaces.delete(accountId)
+
+val theme = client.workspaces.getTheme(accountId)  // { account_name, primary_color, secondary_color, logo }
+val logoBytes: ByteArray? = client.workspaces.getLogo(accountId) // raw image, or null when no logo is set
 ```
 
 ### Tags
@@ -392,7 +396,12 @@ Request parts: `file` (`application/pdf`), `name` (string), `metadata` (JSON str
 **`list(params, accountId?)`** → `GET /accounts/{accountId}/documents?status&method&search&tags&sort&page&per-page`
 → `data: [DocumentListItem]`; meta from `X-Pagination-Current-Page|Per-Page|Total-Count|Page-Count`.
 
+**`search(query?, status?, page?, perPage?, accountId?)`** → `GET /accounts/{accountId}/documents/search?search&status&page&per-page`
+→ `data: [DocumentListItem]` (lightweight; same item shape as `list`, no `method`/`sort`/`tags` filters).
+
 **`details(id)` / `get(id)`** → `GET /documents/{id}` → `DocumentDetails` (adds `assignment`, `pages`, `download_url`/`download_final_url` once certificated).
+
+**`rename(id, name)`** → `PATCH /documents/{id}` with `{"name": "Service agreement.pdf"}` (name required, ≤ 255 chars) → the updated `DocumentDetails`.
 
 **`waitUntilReady(id, maxWaitMs=120_000, pollIntervalMs=2_000)`** — polls `details` through `uploaded → metadata_processing → metadata_ready`; throws on `failed`/`rejected_*`/`expired` or timeout.
 
@@ -401,7 +410,7 @@ Request parts: `file` (`application/pdf`), `name` (string), `metadata` (JSON str
 ```json
 { "status": 200, "data": [
   { "id": 42, "event": "document_uploaded", "message": "Documento criado.",
-    "payload": [], "origin": { "ip": "1.2.3.4", "user-agent": "assinafy-android-sdk/1.1.0" },
+    "payload": [], "origin": { "ip": "1.2.3.4", "user-agent": "assinafy-android-sdk/1.2.0" },
     "created_at": "2026-05-11T23:58:21Z" } ] }
 ```
 
@@ -486,7 +495,7 @@ with `{"signers": [{"role_id": "...", "id": "...", "verification_method": "Email
 
 **`register(RegisterWebhookRequest)`** → `PUT /accounts/{acc}/webhooks/subscriptions`
 `{"url": "https://...", "email": "ops@example.com", "events": ["document_ready", ...], "is_active": true}`.
-**`get()`** → `GET .../webhooks/subscriptions` (`null` on 404). **`inactivate()`** → `PUT .../webhooks/inactivate`. **`delete()`** → `DELETE .../webhooks/subscriptions`.
+**`get()`** → `GET .../webhooks/subscriptions` (`null` on 404). **`inactivate()`** → `PUT .../webhooks/inactivate` (the API exposes no delete endpoint for a subscription — inactivate it or overwrite it with `register`).
 **`listEventTypes()`** → `GET /webhooks/event-types` → `data: [{ "id": "document_ready", "description": "..." }, ...]`.
 **`listDispatches(params)`** → `GET /accounts/{acc}/webhooks`. **`retryDispatch(id)`** → `POST /accounts/{acc}/webhooks/{id}/retry`.
 
@@ -494,6 +503,8 @@ with `{"signers": [{"role_id": "...", "id": "...", "verification_method": "Email
 
 **`list`** `GET /accounts` → `data: [{ "id": "...", "name": "MT", "roles": ["owner"], "is_delete_allowed": true, "created_at": "..." }]`.
 **`get`** `GET /accounts/{id}` (adds `primary_color`, `secondary_color`). **`create`** `POST /accounts` `{"name": "...", "primary_color": "#ff0066"}`. **`update`/`delete`** `PUT|DELETE /accounts/{id}`.
+**`getTheme(id)`** → `GET /accounts/{id}/theme` → `data: { "account_name": "MT", "primary_color": "2072b9", "secondary_color": "ffffff", "logo": null }`.
+**`getLogo(id)`** → `GET /accounts/{id}/logo` → raw image bytes, or `null` when no logo is set (the API returns `404`).
 
 ## Error Handling
 

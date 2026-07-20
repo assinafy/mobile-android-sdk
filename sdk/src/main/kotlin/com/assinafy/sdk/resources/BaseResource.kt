@@ -52,6 +52,13 @@ abstract class BaseResource(
 
     protected suspend fun callBinary(label: String, request: suspend () -> ByteArray): ByteArray = runCatching { request() }.getOrElse { e -> throw e.coerceAsSdkException(label) }
 
+    /** Like [callBinary] but returns `null` when the resource does not exist (HTTP 404). */
+    protected suspend fun callBinaryOptional(label: String, request: suspend () -> ByteArray): ByteArray? = runCatching {
+        callBinary(label, request)
+    }.getOrElse { e ->
+        if (e is ApiException && e.statusCode == 404) null else throw e
+    }
+
     protected suspend fun <T> callList(
         label: String,
         elementType: Class<T>,

@@ -81,6 +81,11 @@ class OkHttpApiClient private constructor(
         execute(Request.Builder().url(url(path)).put(body).build())
     }
 
+    override suspend fun patch(path: String, jsonBody: String?): HttpRawResponse = withContext(Dispatchers.IO) {
+        val body = (jsonBody ?: "{}").toRequestBody(JSON)
+        execute(Request.Builder().url(url(path)).patch(body).build())
+    }
+
     override suspend fun delete(path: String): HttpRawResponse = withContext(Dispatchers.IO) {
         execute(Request.Builder().url(url(path)).delete().build())
     }

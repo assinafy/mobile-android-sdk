@@ -135,6 +135,37 @@ class OkHttpApiClientTest {
     }
 
     @Test
+    fun `patch sends the PATCH verb with the json body`() {
+        MockWebServer().use { server ->
+            server.enqueue(envelope())
+            server.start()
+
+            val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
+            runBlocking { client.patch("/documents/d1", """{"name":"Renamed.pdf"}""") }
+
+            val req = server.takeRequest()
+            assertThat(req.method).isEqualTo("PATCH")
+            assertThat(req.body.readUtf8()).isEqualTo("""{"name":"Renamed.pdf"}""")
+            assertThat(req.getHeader("Content-Type")).contains("application/json")
+        }
+    }
+
+    @Test
+    fun `patch with null body sends an empty json object`() {
+        MockWebServer().use { server ->
+            server.enqueue(envelope())
+            server.start()
+
+            val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
+            runBlocking { client.patch("/documents/d1", null) }
+
+            val req = server.takeRequest()
+            assertThat(req.method).isEqualTo("PATCH")
+            assertThat(req.body.readUtf8()).isEqualTo("{}")
+        }
+    }
+
+    @Test
     fun `getBinary returns the raw response bytes on success`() {
         MockWebServer().use { server ->
             server.enqueue(MockResponse().setBody("PDF-RAW-BYTES"))

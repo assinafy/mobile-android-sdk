@@ -18,6 +18,9 @@ interface ApiHttpClient {
     /** PUT [path] with an optional JSON [jsonBody] (defaults to an empty `{}` object). */
     suspend fun put(path: String, jsonBody: String? = null): HttpRawResponse
 
+    /** PATCH [path] with an optional JSON [jsonBody] (defaults to an empty `{}` object). */
+    suspend fun patch(path: String, jsonBody: String? = null): HttpRawResponse
+
     /** DELETE [path]. */
     suspend fun delete(path: String): HttpRawResponse
 

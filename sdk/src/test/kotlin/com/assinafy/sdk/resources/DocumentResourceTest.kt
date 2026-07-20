@@ -295,6 +295,51 @@ class DocumentResourceTest {
         assertThat(result["valid"]).isEqualTo(true)
     }
 
+    @Test
+    fun `rename patches the document with the new name`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse(docDetailsJson))
+
+        val doc = DocumentResource(mock, "acc").rename("doc-1", "Service agreement.pdf")
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("PATCH")
+        assertThat(call.path).isEqualTo("/documents/doc-1")
+        assertThat(call.body).isEqualTo("""{"name":"Service agreement.pdf"}""")
+        assertThat(doc.id).isEqualTo("doc-1")
+    }
+
+    @Test
+    fun `rename throws on a blank name`() {
+        assertThatThrownBy {
+            runBlocking { DocumentResource(MockApiHttpClient(), "acc").rename("doc-1", "  ") }
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `rename throws when the name exceeds 255 characters`() {
+        assertThatThrownBy {
+            runBlocking { DocumentResource(MockApiHttpClient(), "acc").rename("doc-1", "a".repeat(256)) }
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `search hits the search endpoint with query and status`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("""[{"id":"doc-1","name":"audit.pdf","status":"metadata_ready"}]"""))
+
+        val result = DocumentResource(mock, "acc").search(query = "audit", status = "metadata_ready", perPage = 10)
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("GET")
+        assertThat(call.path).isEqualTo("/accounts/acc/documents/search")
+        assertThat(call.queryParams["search"]).isEqualTo("audit")
+        assertThat(call.queryParams["status"]).isEqualTo("metadata_ready")
+        assertThat(call.queryParams["per-page"]).isEqualTo(10)
+        assertThat(result.data).hasSize(1)
+        assertThat(result.data[0].id).isEqualTo("doc-1")
+    }
+
     private fun docStatus(status: String) =
         """{"id":"doc-1","account_id":"acc","name":"t.pdf","status":"$status","created_at":"x","updated_at":"x","is_closed":false}"""
 }

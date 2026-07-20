@@ -2,6 +2,22 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [1.2.0] - 2026-07-20
+
+### Added
+- **`documents.rename(id, name)`** → `PATCH /documents/{id}` (name required, ≤ 255 chars). Adds a
+  `patch` verb to the HTTP transport (`ApiHttpClient`/`OkHttpApiClient`).
+- **`documents.search(query?, status?, page?, perPage?, accountId?)`** → the lightweight
+  `GET /accounts/{acc}/documents/search` endpoint (returns `DocumentListItem` pages).
+- **`workspaces.getTheme(accountId)`** → `GET /accounts/{acc}/theme`, returning a new `AccountTheme`
+  model, and **`workspaces.getLogo(accountId)`** → `GET /accounts/{acc}/logo` (raw bytes, or `null`
+  when the account has no logo).
+
+### Removed
+- **`WebhookResource.delete()`** — `DELETE /accounts/{accountId}/webhooks/subscriptions` is not a
+  routed endpoint (returns `404`), so the method could only ever throw at runtime. To stop
+  deliveries, use `inactivate()` or overwrite the subscription with `register()`.
+
 ## [1.1.0] - 2026-06-05
 
 Production-readiness audit verified end-to-end against the live `https://sandbox.assinafy.com.br/v1`

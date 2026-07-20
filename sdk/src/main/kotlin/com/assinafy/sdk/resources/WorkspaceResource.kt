@@ -4,6 +4,7 @@ import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
+import com.assinafy.sdk.models.AccountTheme
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.Workspace
 import com.assinafy.sdk.models.WorkspaceListItem
@@ -55,5 +56,24 @@ class WorkspaceResource(
     suspend fun delete(accountId: String) {
         val id = requireId(accountId, "Account ID")
         callVoid("Failed to delete workspace") { http.delete("/accounts/${pathSegment(id)}") }
+    }
+
+    /** Fetches the account's branding theme (`GET /accounts/{accountId}/theme`). */
+    suspend fun getTheme(accountId: String): AccountTheme {
+        val id = requireId(accountId, "Account ID")
+        return call("Failed to fetch account theme", AccountTheme::class.java) {
+            http.get("/accounts/${pathSegment(id)}/theme")
+        }
+    }
+
+    /**
+     * Downloads the account logo image as raw bytes (`GET /accounts/{accountId}/logo`).
+     * Returns `null` when the account has no logo set (the API responds `404`).
+     */
+    suspend fun getLogo(accountId: String): ByteArray? {
+        val id = requireId(accountId, "Account ID")
+        return callBinaryOptional("Failed to download account logo") {
+            http.getBinary("/accounts/${pathSegment(id)}/logo")
+        }
     }
 }

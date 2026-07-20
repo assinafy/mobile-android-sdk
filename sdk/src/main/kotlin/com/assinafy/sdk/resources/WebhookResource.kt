@@ -55,16 +55,12 @@ class WebhookResource(
         }
     }
 
-    /** Deletes the account's webhook subscription (`DELETE /accounts/{accountId}/webhooks/subscriptions`). */
-    suspend fun delete(accountId: String? = null) {
-        val id = accountId(accountId)
-        logger.info("Deleting webhook subscription")
-        callVoid("Failed to delete webhook subscription") {
-            http.delete("/accounts/${pathSegment(id)}/webhooks/subscriptions")
-        }
-    }
-
-    /** Deactivates the subscription without deleting it (`PUT /accounts/{accountId}/webhooks/inactivate`). */
+    /**
+     * Deactivates the subscription without deleting it (`PUT /accounts/{accountId}/webhooks/inactivate`).
+     *
+     * The API has no delete endpoint for a subscription (`DELETE .../webhooks/subscriptions` returns
+     * 404); to stop deliveries, inactivate it or overwrite it with [register].
+     */
     suspend fun inactivate(accountId: String? = null): WebhookSubscription {
         val id = accountId(accountId)
         logger.info("Inactivating webhook subscription")

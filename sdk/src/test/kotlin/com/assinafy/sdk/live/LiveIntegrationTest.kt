@@ -61,6 +61,12 @@ class LiveIntegrationTest {
         assertThat(eventTypes.map { it.id }).contains("document_ready")
 
         client.tags.list() // must not throw
+
+        val theme = client.workspaces.getTheme(accountId)
+        assertThat(theme.accountName).isNotBlank()
+
+        client.documents.search(query = "a", perPage = 5) // must not throw
+        client.workspaces.getLogo(accountId) // returns bytes or null (no logo); must not throw
     }
 
     @Test
@@ -76,6 +82,9 @@ class LiveIntegrationTest {
             assertThat(uploaded.id).isNotBlank()
             val ready = client.documents.waitUntilReady(uploaded.id, maxWaitMs = 60_000L)
             assertThat(ready.status).isIn("metadata_ready", "pending_signature", "certificated")
+
+            val renamed = client.documents.rename(uploaded.id, "sdk-live-renamed.pdf")
+            assertThat(renamed.name).isEqualTo("sdk-live-renamed.pdf")
         } finally {
             client.documents.delete(uploaded.id)
         }

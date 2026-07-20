@@ -10,6 +10,9 @@ class MockApiHttpClient(
 
     val calls = mutableListOf<Call>()
 
+    /** When set, [getBinary] throws this instead of returning bytes (to exercise error paths). */
+    var binaryError: Throwable? = null
+
     data class Call(
         val method: String,
         val path: String,
@@ -51,6 +54,11 @@ class MockApiHttpClient(
         return nextResponse()
     }
 
+    override suspend fun patch(path: String, jsonBody: String?): HttpRawResponse {
+        calls.add(Call("PATCH", path, body = jsonBody))
+        return nextResponse()
+    }
+
     override suspend fun delete(path: String): HttpRawResponse {
         calls.add(Call("DELETE", path))
         return nextResponse()
@@ -58,6 +66,7 @@ class MockApiHttpClient(
 
     override suspend fun getBinary(path: String): ByteArray {
         calls.add(Call("GET_BINARY", path))
+        binaryError?.let { throw it }
         return binaryResponse
     }
 
