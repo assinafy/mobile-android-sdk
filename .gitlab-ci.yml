@@ -33,7 +33,7 @@ default:
         mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
         rm /tmp/android-command-line-tools.zip
       fi
-    - android sdk install "build-tools/36.0.0" "platform-tools" "platforms/android-36"
+    - '"$ANDROID_HOME/cmdline-tools/latest/bin/android" sdk install "build-tools/36.0.0" "platform-tools" "platforms/android-36"'
 
 verify:
   stage: verify
