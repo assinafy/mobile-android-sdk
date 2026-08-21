@@ -74,4 +74,24 @@ class TagResourceTest {
             runBlocking { TagResource(MockApiHttpClient(), "acc").create("") }
         }.isInstanceOf(ValidationException::class.java)
     }
+
+    @Test
+    fun `create normalizes whitespace and validates color`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(success(tagJson))
+
+        TagResource(mock, "acc").create("  Signed   Contracts  ", "#ff8800")
+
+        assertThat(mock.lastCall().body).contains("Signed Contracts")
+        assertThatThrownBy {
+            runBlocking { TagResource(MockApiHttpClient(), "acc").create("Tag", "orange") }
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `update rejects an empty change`() {
+        assertThatThrownBy {
+            runBlocking { TagResource(MockApiHttpClient(), "acc").update("t1") }
+        }.isInstanceOf(ValidationException::class.java)
+    }
 }

@@ -49,6 +49,17 @@ class MockApiHttpClient(
         return nextResponse()
     }
 
+    override suspend fun postMultipartFile(
+        path: String,
+        fieldName: String,
+        fileName: String,
+        fileData: ByteArray,
+        contentType: String,
+    ): HttpRawResponse {
+        calls.add(Call("POST_MULTIPART_FILE", path, body = "$fieldName:$fileName:$contentType:${fileData.size}"))
+        return nextResponse()
+    }
+
     override suspend fun put(path: String, jsonBody: String?): HttpRawResponse {
         calls.add(Call("PUT", path, body = jsonBody))
         return nextResponse()
@@ -59,8 +70,8 @@ class MockApiHttpClient(
         return nextResponse()
     }
 
-    override suspend fun delete(path: String): HttpRawResponse {
-        calls.add(Call("DELETE", path))
+    override suspend fun delete(path: String, jsonBody: String?): HttpRawResponse {
+        calls.add(Call("DELETE", path, body = jsonBody))
         return nextResponse()
     }
 

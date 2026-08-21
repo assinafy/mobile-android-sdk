@@ -1,32 +1,34 @@
-ARG ANDROID_BUILD_PLATFORM=linux/amd64
-FROM --platform=$ANDROID_BUILD_PLATFORM ubuntu:24.04
+FROM eclipse-temurin:25.0.3_9-jdk-noble@sha256:e94f1dc880339ab3884b69176b79c8dc4124b722e059c7ff7f0bf53b603a46f8
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV ANDROID_HOME=/opt/android-sdk
-ENV GRADLE_OPTS=-Dorg.gradle.vfs.watch=false
-ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools
+ARG ANDROID_COMMAND_LINE_TOOLS_VERSION=16111833
+ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8
 
-RUN apt-get update && apt-get install -y \
-    openjdk-17-jdk \
-    wget \
-    unzip \
-    curl \
-    git \
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    GRADLE_OPTS=-Dorg.gradle.vfs.watch=false \
+    PATH=${PATH}:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends \
+        ca-certificates \
+        curl \
+        openjdk-17-jdk-headless \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p ${ANDROID_HOME} && \
-    cd ${ANDROID_HOME} && \
-    wget -q https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip -O cmdline-tools.zip && \
-    unzip -q cmdline-tools.zip && \
-    mkdir -p cmdline-tools/latest && \
-    mv cmdline-tools/* cmdline-tools/latest/ 2>/dev/null || true && \
-    rm cmdline-tools.zip
+RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
+    && curl --fail --location --silent --show-error \
+        "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_COMMAND_LINE_TOOLS_VERSION}_latest.zip" \
+        --output /tmp/android-command-line-tools.zip \
+    && echo "${ANDROID_COMMAND_LINE_TOOLS_SHA256}  /tmp/android-command-line-tools.zip" | sha256sum --check --strict \
+    && unzip -q /tmp/android-command-line-tools.zip -d "${ANDROID_HOME}/cmdline-tools" \
+    && mv "${ANDROID_HOME}/cmdline-tools/cmdline-tools" "${ANDROID_HOME}/cmdline-tools/latest" \
+    && rm /tmp/android-command-line-tools.zip
 
-# Find the correct JAVA_HOME and install Android SDK in the same layer
-RUN export JAVA_HOME=$(ls -d /usr/lib/jvm/java-17-* 2>/dev/null | head -1) && \
-    echo "Using JAVA_HOME=$JAVA_HOME" && \
-    yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true && \
-    /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+RUN android sdk install \
+        "build-tools/36.0.0" \
+        "platform-tools" \
+        "platforms/android-36"
 
 WORKDIR /app
 COPY . .

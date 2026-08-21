@@ -1,5 +1,7 @@
 package com.assinafy.sdk.request
 
+import com.assinafy.sdk.exceptions.ValidationException
+
 /**
  * Common query parameters for list endpoints.
  *
@@ -20,6 +22,18 @@ data class ListParams(
     val method: String? = null,
     val tags: List<String>? = null,
 ) {
+    init {
+        if (page != null && page < 1) throw ValidationException("Page must be at least 1")
+        if (perPage != null && perPage !in 1..100) {
+            throw ValidationException("Per-page must be between 1 and 100")
+        }
+    }
+
+    /**
+     * Converts populated properties to the API's exact query keys, omitting null and empty values.
+     *
+     * @return Query map suitable for [com.assinafy.sdk.http.ApiHttpClient.get].
+     */
     fun toQueryMap(): Map<String, Any?> = buildMap {
         page?.let { put("page", it) }
         perPage?.let { put("per-page", it) }

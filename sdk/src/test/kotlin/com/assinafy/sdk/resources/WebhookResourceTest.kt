@@ -4,7 +4,9 @@ import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
+import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.RegisterWebhookRequest
+import com.assinafy.sdk.request.WebhookDispatchParams
 import com.google.gson.Gson
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -111,13 +113,80 @@ class WebhookResourceTest {
             ),
         )
 
-        val result = WebhookResource(mock, "acc").listDispatches()
+        val result = WebhookResource(mock, "acc").listDispatches(WebhookDispatchParams())
 
         assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/webhooks")
         assertThat(result.meta?.currentPage).isEqualTo(1)
         assertThat(result.meta?.perPage).isEqualTo(20)
         assertThat(result.meta?.total).isEqualTo(2)
         assertThat(result.meta?.lastPage).isEqualTo(1)
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    fun `legacy listDispatches forwards only webhook pagination fields`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse("[]"))
+
+        WebhookResource(mock, "acc").listDispatches(
+            ListParams(
+                page = 2,
+                perPage = 25,
+                search = "ignored",
+                sort = "-created_at",
+                status = "ignored",
+                method = "virtual",
+                tags = listOf("tag-1"),
+            ),
+        )
+
+        assertThat(mock.lastCall().queryParams)
+            .containsOnlyKeys("page", "per-page")
+            .containsEntry("page", 2)
+            .containsEntry("per-page", 25)
+    }
+
+    @Test
+    fun `listDispatches supports the complete filter contract`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse("[]"))
+
+        WebhookResource(mock, "acc").listDispatches(
+            WebhookDispatchParams(
+                event = "document_ready",
+                delivered = false,
+                from = 100,
+                to = 200,
+                page = 2,
+                perPage = 25,
+            ),
+        )
+
+        assertThat(mock.lastCall().queryParams).containsAllEntriesOf(
+            mapOf(
+                "event" to "document_ready",
+                "delivered" to false,
+                "from" to 100L,
+                "to" to 200L,
+                "page" to 2,
+                "per-page" to 25,
+            ),
+        )
+    }
+
+    @Test
+    fun `listDispatches rejects an inverted timestamp range`() {
+        assertThatThrownBy {
+            runBlocking {
+                WebhookResource(MockApiHttpClient(), "acc")
+                    .listDispatches(WebhookDispatchParams(from = 200, to = 100))
+            }
+        }.isInstanceOf(ValidationException::class.java)
+
+        assertThatThrownBy {
+            runBlocking {
+                WebhookResource(MockApiHttpClient(), "acc")
+                    .listDispatches(WebhookDispatchParams(perPage = 101))
+            }
+        }.isInstanceOf(ValidationException::class.java)
     }
 
     @Test

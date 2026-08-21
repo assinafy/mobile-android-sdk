@@ -2,21 +2,24 @@ package com.assinafy.sdk.http
 
 import com.assinafy.sdk.exceptions.ApiException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import mockwebserver3.MockResponse
+import mockwebserver3.MockWebServer
+import okhttp3.Headers.Companion.headersOf
 import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.util.concurrent.TimeUnit
 
 class OkHttpApiClientTest {
 
-    private fun envelope(data: String = "{}") = MockResponse().setBody("""{"status":200,"data":$data}""")
+    private fun envelope(data: String = "{}") = MockResponse(body = """{"status":200,"data":$data}""")
 
     @Test
     fun `getBinary throws ApiException on non-2xx response`() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setResponseCode(404).setBody("""{"message":"missing"}"""))
+            server.enqueue(MockResponse(code = 404, body = """{"message":"missing"}"""))
             server.start()
 
             val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
@@ -39,10 +42,10 @@ class OkHttpApiClientTest {
             runBlocking { client.get("/ping") }
 
             val req = server.takeRequest()
-            assertThat(req.getHeader("X-Api-Key")).isEqualTo("key-123")
-            assertThat(req.getHeader("Authorization")).isNull()
-            assertThat(req.getHeader("Accept")).isEqualTo("application/json")
-            assertThat(req.getHeader("User-Agent")).startsWith("assinafy-android-sdk/")
+            assertThat(req.headers["X-Api-Key"]).isEqualTo("key-123")
+            assertThat(req.headers["Authorization"]).isNull()
+            assertThat(req.headers["Accept"]).isEqualTo("application/json")
+            assertThat(req.headers["User-Agent"]).startsWith("assinafy-android-sdk/")
         }
     }
 
@@ -56,8 +59,46 @@ class OkHttpApiClientTest {
             runBlocking { client.get("/ping") }
 
             val req = server.takeRequest()
-            assertThat(req.getHeader("Authorization")).isEqualTo("Bearer jwt-xyz")
-            assertThat(req.getHeader("X-Api-Key")).isNull()
+            assertThat(req.headers["Authorization"]).isEqualTo("Bearer jwt-xyz")
+            assertThat(req.headers["X-Api-Key"]).isNull()
+        }
+    }
+
+    @Test
+    fun `credentials are not forwarded to a redirect on another origin`() {
+        MockWebServer().use { first ->
+            MockWebServer().use { redirected ->
+                redirected.enqueue(envelope())
+                redirected.start()
+                first.enqueue(
+                    MockResponse(
+                        code = 302,
+                        headers = headersOf("Location", redirected.url("/target").toString()),
+                    ),
+                )
+                first.start()
+
+                val client = OkHttpApiClient(first.url("/").toString(), apiKey = "secret", token = null)
+                runBlocking { client.get("/redirect") }
+
+                assertThat(first.takeRequest().headers["X-Api-Key"]).isEqualTo("secret")
+                assertThat(redirected.takeRequest().headers["X-Api-Key"]).isNull()
+            }
+        }
+    }
+
+    @Test
+    fun `cancelling a json request cancels the underlying call`() {
+        MockWebServer().use { server ->
+            server.enqueue(envelope().newBuilder().bodyDelay(5, TimeUnit.SECONDS).build())
+            server.start()
+
+            val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
+            val started = System.nanoTime()
+            assertThatThrownBy {
+                runBlocking { withTimeout(100) { client.get("/slow") } }
+            }.isInstanceOf(kotlinx.coroutines.TimeoutCancellationException::class.java)
+            assertThat(TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started)).isLessThan(2)
         }
     }
 
@@ -70,10 +111,10 @@ class OkHttpApiClientTest {
             val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
             runBlocking { client.get("/items", mapOf("search" to "a b", "per-page" to 20, "skip" to null)) }
 
-            val url = server.takeRequest().requestUrl
-            assertThat(url?.queryParameter("search")).isEqualTo("a b")
-            assertThat(url?.queryParameter("per-page")).isEqualTo("20")
-            assertThat(url?.queryParameterNames).doesNotContain("skip")
+            val url = server.takeRequest().url
+            assertThat(url.queryParameter("search")).isEqualTo("a b")
+            assertThat(url.queryParameter("per-page")).isEqualTo("20")
+            assertThat(url.queryParameterNames).doesNotContain("skip")
         }
     }
 
@@ -86,14 +127,19 @@ class OkHttpApiClientTest {
             val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/v1/").toString())
             runBlocking { client.get("/accounts") }
 
-            assertThat(server.takeRequest().path).isEqualTo("/v1/accounts")
+            assertThat(server.takeRequest().target).isEqualTo("/v1/accounts")
         }
     }
 
     @Test
     fun `response header keys are lowercased`() {
         MockWebServer().use { server ->
-            server.enqueue(envelope("[]").addHeader("X-Pagination-Current-Page", "2"))
+            server.enqueue(
+                MockResponse(
+                    headers = headersOf("X-Pagination-Current-Page", "2"),
+                    body = """{"status":200,"data":[]}""",
+                ),
+            )
             server.start()
 
             val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
@@ -104,7 +150,7 @@ class OkHttpApiClientTest {
     }
 
     @Test
-    fun `post with null body sends an empty json object`() {
+    fun `post with null body sends no payload`() {
         MockWebServer().use { server ->
             server.enqueue(envelope())
             server.start()
@@ -114,8 +160,7 @@ class OkHttpApiClientTest {
 
             val req = server.takeRequest()
             assertThat(req.method).isEqualTo("POST")
-            assertThat(req.body.readUtf8()).isEqualTo("{}")
-            assertThat(req.getHeader("Content-Type")).contains("application/json")
+            assertThat(req.bodySize).isZero()
         }
     }
 
@@ -129,8 +174,8 @@ class OkHttpApiClientTest {
             runBlocking { client.postSignature("/signature?type=initial", byteArrayOf(1, 2, 3), "image/png") }
 
             val req = server.takeRequest()
-            assertThat(req.getHeader("Content-Type")).isEqualTo("image/png")
-            assertThat(req.body.readByteArray()).containsExactly(1, 2, 3)
+            assertThat(req.headers["Content-Type"]).isEqualTo("image/png")
+            assertThat(req.body!!.toByteArray()).containsExactly(1, 2, 3)
         }
     }
 
@@ -145,13 +190,13 @@ class OkHttpApiClientTest {
 
             val req = server.takeRequest()
             assertThat(req.method).isEqualTo("PATCH")
-            assertThat(req.body.readUtf8()).isEqualTo("""{"name":"Renamed.pdf"}""")
-            assertThat(req.getHeader("Content-Type")).contains("application/json")
+            assertThat(req.body!!.utf8()).isEqualTo("""{"name":"Renamed.pdf"}""")
+            assertThat(req.headers["Content-Type"]).contains("application/json")
         }
     }
 
     @Test
-    fun `patch with null body sends an empty json object`() {
+    fun `patch with null body sends no payload`() {
         MockWebServer().use { server ->
             server.enqueue(envelope())
             server.start()
@@ -161,20 +206,39 @@ class OkHttpApiClientTest {
 
             val req = server.takeRequest()
             assertThat(req.method).isEqualTo("PATCH")
-            assertThat(req.body.readUtf8()).isEqualTo("{}")
+            assertThat(req.bodySize).isZero()
         }
     }
 
     @Test
     fun `getBinary returns the raw response bytes on success`() {
         MockWebServer().use { server ->
-            server.enqueue(MockResponse().setBody("PDF-RAW-BYTES"))
+            server.enqueue(MockResponse(body = "PDF-RAW-BYTES"))
             server.start()
 
             val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
             val bytes = runBlocking { client.getBinary("/documents/d/download/original") }
 
             assertThat(bytes.toString(Charsets.UTF_8)).isEqualTo("PDF-RAW-BYTES")
+            assertThat(server.takeRequest().headers["Accept"]).isEqualTo("*/*")
+        }
+    }
+
+    @Test
+    fun `rate limits retry only read methods`() {
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse(code = 429, headers = headersOf("Retry-After", "0")))
+            server.enqueue(envelope())
+            server.enqueue(MockResponse(code = 429, headers = headersOf("Retry-After", "0")))
+            server.enqueue(MockResponse(code = 429, headers = headersOf("Retry-After", "0")))
+            server.start()
+
+            val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
+
+            assertThat(runBlocking { client.get("/safe") }.statusCode).isEqualTo(200)
+            assertThat(runBlocking { client.put("/unsafe-action", "{}") }.statusCode).isEqualTo(429)
+            assertThat(runBlocking { client.post("/unsafe", "{}") }.statusCode).isEqualTo(429)
+            assertThat(server.requestCount).isEqualTo(4)
         }
     }
 }

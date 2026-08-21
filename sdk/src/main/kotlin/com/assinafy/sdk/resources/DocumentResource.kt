@@ -5,6 +5,7 @@ import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.SdkConstants
+import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.DocumentActivity
@@ -12,30 +13,46 @@ import com.assinafy.sdk.models.DocumentDetails
 import com.assinafy.sdk.models.DocumentListItem
 import com.assinafy.sdk.models.DocumentStatusInfo
 import com.assinafy.sdk.models.DocumentUploadResponse
+import com.assinafy.sdk.models.DocumentVerification
 import com.assinafy.sdk.models.PaginatedResult
+import com.assinafy.sdk.models.PublicDocumentInfo
+import com.assinafy.sdk.models.Signer
 import com.assinafy.sdk.models.SigningProgress
 import com.assinafy.sdk.models.Tag
 import com.assinafy.sdk.request.ConfirmSignerDataRequest
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.TemplateSigner
+import com.assinafy.sdk.util.ApiValidator
+import com.assinafy.sdk.util.requireValidEmail
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Document operations: upload, list/fetch, readiness polling, downloads, activities, status helpers,
  * template-based creation, signature verification, and per-document tag attachment.
+ * API failures surface as [com.assinafy.sdk.exceptions.ApiException]; transport failures surface as
+ * [com.assinafy.sdk.exceptions.NetworkException].
  */
-class DocumentResource(
+class DocumentResource internal constructor(
     http: ApiHttpClient,
     defaultAccountId: String? = null,
     logger: Logger = NoOpLogger,
+    private val publicHttp: ApiHttpClient = http,
 ) : BaseResource(http, defaultAccountId, logger) {
 
     /**
      * Uploads a PDF (`POST /accounts/{accountId}/documents`, multipart). Validated locally: must be a
      * non-empty `.pdf` ≤ 25 MB.
      *
-     * @param metadata optional metadata serialized as a JSON string part.
+     * The current OpenAPI request contains only the `file` part. Supplying [metadata] opts into the
+     * legacy sandbox extension that also sends `name` and `metadata` form fields.
+     *
+     * @param fileData Complete PDF bytes, beginning with the `%PDF-` signature.
+     * @param fileName Non-blank `.pdf` multipart file name.
+     * @param metadata Optional legacy metadata serialized as a JSON string part.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Uploaded document identity and initial processing state.
      * @throws com.assinafy.sdk.exceptions.ValidationException on a non-PDF, empty, or oversized file.
      */
     suspend fun upload(
@@ -48,13 +65,12 @@ class DocumentResource(
         val id = accountId(accountId)
         logger.info("Uploading document", mapOf("fileName" to fileName, "size" to fileData.size))
         val document = call("Document upload failed", DocumentUploadResponse::class.java) {
-            http.postMultipart(
-                "/accounts/${pathSegment(id)}/documents",
-                fileName,
-                fileData,
-                fileName,
-                metadata?.let { toJson(it) },
-            )
+            val path = "/accounts/${pathSegment(id)}/documents"
+            if (metadata == null) {
+                http.postMultipartFile(path, "file", fileName, fileData, "application/pdf")
+            } else {
+                http.postMultipart(path, fileName, fileData, fileName, toJson(metadata))
+            }
         }
         if (document.id.isBlank()) {
             throw ValidationException("Upload succeeded but no document ID was returned")
@@ -63,7 +79,13 @@ class DocumentResource(
         return document
     }
 
-    /** Lists documents (`GET /accounts/{accountId}/documents`), supporting `status`/`method`/`search`/`tags`/`sort`/`page`/`per-page`. */
+    /**
+     * Lists documents (`GET /accounts/{accountId}/documents`).
+     *
+     * @param params Status, method, search, tag-ID, sort, and pagination filters.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Matching document summaries and optional pagination-header metadata.
+     */
     suspend fun list(params: ListParams = ListParams(), accountId: String? = null): PaginatedResult<DocumentListItem> {
         val id = accountId(accountId)
         return callList("Failed to list documents", DocumentListItem::class.java) {
@@ -74,6 +96,13 @@ class DocumentResource(
     /**
      * Lightweight document search (`GET /accounts/{accountId}/documents/search`). Returns the same
      * [DocumentListItem] shape as [list] but only supports `search`/`status`/`page`/`per-page`.
+     *
+     * @param query Optional partial document-name search.
+     * @param status Optional exact status filter.
+     * @param page Optional one-based results page.
+     * @param perPage Optional records-per-page limit.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Matching document summaries and optional pagination-header metadata.
      */
     suspend fun search(
         query: String? = null,
@@ -83,18 +112,24 @@ class DocumentResource(
         accountId: String? = null,
     ): PaginatedResult<DocumentListItem> {
         val id = accountId(accountId)
-        val params = buildMap<String, Any?> {
-            query?.takeIf { it.isNotBlank() }?.let { put("search", it) }
-            status?.takeIf { it.isNotBlank() }?.let { put("status", it) }
-            page?.let { put("page", it) }
-            perPage?.let { put("per-page", it) }
-        }
+        val params = ListParams(
+            page = page,
+            perPage = perPage,
+            search = query?.takeIf { it.isNotBlank() },
+            status = status?.takeIf { it.isNotBlank() },
+        ).toQueryMap()
         return callList("Failed to search documents", DocumentListItem::class.java) {
             http.get("/accounts/${pathSegment(id)}/documents/search", params)
         }
     }
 
-    /** Fetches full document details including its assignment and pages (`GET /documents/{documentId}`). */
+    /**
+     * Fetches full document details, including assignment and pages (`GET /documents/{documentId}`).
+     *
+     * @param documentId Stable document identifier.
+     * @return Complete document state.
+     * @throws ValidationException if [documentId] is blank.
+     */
     suspend fun details(documentId: String): DocumentDetails {
         val id = requireId(documentId, "Document ID")
         return call("Failed to fetch document details", DocumentDetails::class.java) {
@@ -102,12 +137,23 @@ class DocumentResource(
         }
     }
 
-    /** Alias for [details]. */
+    /**
+     * Alias for [details].
+     *
+     * @param documentId Stable document identifier.
+     * @return Complete document state.
+     */
     suspend fun get(documentId: String): DocumentDetails = details(documentId)
 
     /**
      * Polls [details] until the document reaches a ready status (`metadata_ready`/`pending_signature`/
      * `certificated`). Throws if it reaches a terminal failure status or [maxWaitMs] elapses.
+     *
+     * @param documentId Stable document identifier.
+     * @param maxWaitMs Positive total polling budget in milliseconds.
+     * @param pollIntervalMs Positive delay between API requests in milliseconds.
+     * @return First document response whose status is in [DocumentStatus.READY].
+     * @throws ValidationException for invalid timing values, a terminal failure status, or timeout.
      */
     suspend fun waitUntilReady(
         documentId: String,
@@ -115,28 +161,27 @@ class DocumentResource(
         pollIntervalMs: Long = SdkConstants.DEFAULT_POLL_INTERVAL_MS,
     ): DocumentDetails {
         val id = requireId(documentId, "Document ID")
-        val deadline = System.currentTimeMillis() + maxWaitMs
+        if (maxWaitMs <= 0) throw ValidationException("Maximum wait must be greater than zero")
+        if (pollIntervalMs <= 0) throw ValidationException("Poll interval must be greater than zero")
         var attempts = 0
         logger.info("Waiting for document to be ready", mapOf("documentId" to id, "maxWaitMs" to maxWaitMs))
-        while (System.currentTimeMillis() < deadline) {
-            attempts++
-            try {
-                val doc = details(id)
-                logger.debug("Document status check", mapOf("attempts" to attempts, "status" to doc.status))
-                if (doc.status in DocumentStatus.READY) return doc
-                if (doc.status in DocumentStatus.FAILED) {
+        val ready = withTimeoutOrNull(maxWaitMs) {
+            var document: DocumentDetails
+            do {
+                attempts++
+                document = details(id)
+                logger.debug("Document status check", mapOf("attempts" to attempts, "status" to document.status))
+                if (document.status in DocumentStatus.FAILED) {
                     throw ValidationException(
-                        "Document processing failed with status: ${doc.status}",
-                        mapOf("status" to doc.status),
+                        "Document processing failed with status: ${document.status}",
+                        mapOf("status" to document.status),
                     )
                 }
-            } catch (e: ValidationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.warn("Error checking document status", mapOf("error" to (e.message ?: "")))
-            }
-            delay(pollIntervalMs)
+                if (document.status !in DocumentStatus.READY) delay(pollIntervalMs)
+            } while (document.status !in DocumentStatus.READY)
+            document
         }
+        if (ready != null) return ready
         throw ValidationException(
             "Timeout waiting for document to be ready",
             mapOf("documentId" to id, "attempts" to attempts),
@@ -147,6 +192,11 @@ class DocumentResource(
      * Downloads a document artifact as raw bytes (`GET /documents/{documentId}/download/{artifactName}`).
      * Defaults to the `certificated` artifact, which is only available once the document is completed;
      * use [DocumentArtifact.ORIGINAL] for the uploaded file.
+     *
+     * @param documentId Stable document identifier.
+     * @param artifactName Artifact wire value from [DocumentArtifact].
+     * @return Unmodified PDF or ZIP response bytes.
+     * @throws ValidationException if either identifier is blank.
      */
     suspend fun download(documentId: String, artifactName: String = DocumentArtifact.CERTIFICATED): ByteArray {
         val id = requireId(documentId, "Document ID")
@@ -156,7 +206,12 @@ class DocumentResource(
         }
     }
 
-    /** Downloads the document thumbnail image as raw bytes (`GET /documents/{documentId}/thumbnail`). */
+    /**
+     * Downloads the document thumbnail (`GET /documents/{documentId}/thumbnail`).
+     *
+     * @param documentId Stable document identifier.
+     * @return Unmodified thumbnail image bytes.
+     */
     suspend fun thumbnail(documentId: String): ByteArray {
         val id = requireId(documentId, "Document ID")
         return callBinary("Failed to download document thumbnail") {
@@ -164,7 +219,13 @@ class DocumentResource(
         }
     }
 
-    /** Downloads a single page image as raw bytes (`GET /documents/{documentId}/pages/{pageId}/download`). */
+    /**
+     * Downloads a page image (`GET /documents/{documentId}/pages/{pageId}/download`).
+     *
+     * @param documentId Stable document identifier.
+     * @param pageId Page identifier from [DocumentDetails.pages].
+     * @return Unmodified page image bytes.
+     */
     suspend fun downloadPage(documentId: String, pageId: String): ByteArray {
         val docId = requireId(documentId, "Document ID")
         val pid = requireId(pageId, "Page ID")
@@ -173,7 +234,12 @@ class DocumentResource(
         }
     }
 
-    /** Returns the document's activity/audit log (`GET /documents/{documentId}/activities`). */
+    /**
+     * Returns the document's activity log (`GET /documents/{documentId}/activities`).
+     *
+     * @param documentId Stable document identifier.
+     * @return Activities in the order returned by the API.
+     */
     suspend fun activities(documentId: String): List<DocumentActivity> {
         val id = requireId(documentId, "Document ID")
         val result = callList("Failed to fetch document activities", DocumentActivity::class.java) {
@@ -182,7 +248,11 @@ class DocumentResource(
         return result.data
     }
 
-    /** Deletes a document (`DELETE /documents/{documentId}`). */
+    /**
+     * Deletes a document (`DELETE /documents/{documentId}`).
+     *
+     * @param documentId Stable document identifier.
+     */
     suspend fun delete(documentId: String) {
         val id = requireId(documentId, "Document ID")
         callVoid("Failed to delete document") { http.delete("/documents/${pathSegment(id)}") }
@@ -191,6 +261,11 @@ class DocumentResource(
     /**
      * Renames a document (`PATCH /documents/{documentId}`, body `{"name": ...}`). The name is
      * required and limited to 255 characters. Returns the updated document.
+     *
+     * @param documentId Stable document identifier.
+     * @param name Non-blank replacement name of at most [SdkConstants.MAX_DOCUMENT_NAME_LENGTH] characters.
+     * @return Complete updated document.
+     * @throws ValidationException if an identifier/name is blank or the name is too long.
      */
     suspend fun rename(documentId: String, name: String): DocumentDetails {
         val id = requireId(documentId, "Document ID")
@@ -210,7 +285,12 @@ class DocumentResource(
      * Creates a document from a template
      * (`POST /accounts/{accountId}/templates/{templateId}/documents`).
      *
-     * @param signers role-mapped signers; the same list is sent (the [options] copy is overwritten with it).
+     * @param templateId Existing template identifier.
+     * @param signers Non-empty role-mapped signers; this list replaces [options]' signer list.
+     * @param options Optional generated name, message, expiration, editor fields, and tags.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Created document with its generated assignment.
+     * @throws ValidationException for blank IDs, missing signers, missing signer IDs, or invalid steps.
      */
     suspend fun createFromTemplate(
         templateId: String,
@@ -220,6 +300,12 @@ class DocumentResource(
     ): DocumentDetails {
         val tmplId = requireId(templateId, "Template ID")
         val accId = accountId(accountId)
+        ApiValidator.requireAtLeastOne(signers, "template signer")
+        signers.forEach {
+            requireId(it.roleId, "Template role ID")
+            requireId(it.id, "Template signer ID")
+        }
+        ApiValidator.requireValidSigningSteps(signers.map(TemplateSigner::step))
         logger.info("Creating document from template", mapOf("templateId" to tmplId, "accountId" to accId))
         val body = toJson(options.copy(signers = signers))
         return call("Failed to create document from template", DocumentDetails::class.java) {
@@ -227,27 +313,114 @@ class DocumentResource(
         }
     }
 
-    /** Estimates the credit cost of creating a document from a template (`POST .../templates/{id}/documents/estimate-cost`). */
+    /**
+     * Estimates the credit cost of creating a document from a template.
+     *
+     * @param templateId Existing template identifier.
+     * @param signers Non-empty role mappings; signer IDs and signing steps are not sent for pricing.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Typed credit, balance, resource-sufficiency, and pricing-breakdown response.
+     * @throws ValidationException for a blank account/template/role ID or an empty signer list.
+     */
     suspend fun estimateCostFromTemplate(
         templateId: String,
         signers: List<TemplateSigner>,
         accountId: String? = null,
-    ): Map<String, Any> {
+    ): com.assinafy.sdk.models.CostEstimate {
         val tmplId = requireId(templateId, "Template ID")
         val accId = accountId(accountId)
-        val body = toJson(mapOf("signers" to signers))
-        return callMap("Failed to estimate cost from template") {
+        ApiValidator.requireAtLeastOne(signers, "template signer")
+        val costSigners = signers.map { signer ->
+            buildMap<String, Any> {
+                put("role_id", requireId(signer.roleId, "Template role ID"))
+                signer.verificationMethod?.let { put("verification_method", it) }
+                signer.notificationMethods?.let { put("notification_methods", it) }
+            }
+        }
+        val body = toJson(mapOf("signers" to costSigners))
+        return call("Failed to estimate cost from template", com.assinafy.sdk.models.CostEstimate::class.java) {
             http.post("/accounts/${pathSegment(accId)}/templates/${pathSegment(tmplId)}/documents/estimate-cost", body)
         }
     }
 
-    /** Verifies a signed document by its signature hash (`GET /documents/{hash}/verify`, public/no-auth). */
-    suspend fun verify(hash: String): Map<String, Any> {
+    /**
+     * Verifies a signed document by signature hash (`GET /documents/{hash}/verify`, public/no-auth).
+     *
+     * @param hash Verification hash printed in the signed document.
+     * @return Server validation result and matching document details when available.
+     */
+    suspend fun verify(hash: String): DocumentVerification {
         val h = requireId(hash, "Signature hash")
-        return callMap("Failed to verify document") { http.get("/documents/${pathSegment(h)}/verify") }
+        return call("Failed to verify document", DocumentVerification::class.java) {
+            publicHttp.get("/documents/${pathSegment(h)}/verify")
+        }
     }
 
-    /** True once the document is `certificated` or every signer in its assignment summary has completed. */
+    /**
+     * Fetches non-sensitive public document information without account credentials.
+     *
+     * @param documentId Stable public document identifier.
+     * @return Public document identity, status, and signer-safe fields exposed by the API.
+     */
+    suspend fun getPublic(documentId: String): PublicDocumentInfo {
+        val id = requireId(documentId, "Document ID")
+        return call("Failed to fetch public document", PublicDocumentInfo::class.java) {
+            publicHttp.get("/public/documents/${pathSegment(id)}")
+        }
+    }
+
+    /**
+     * Sends the public signing token. The OpenAPI request is empty or `{"email":"..."}`. Passing
+     * [channel] explicitly uses the deployed compatibility body `{"recipient":"...","channel":
+     * "email|whatsapp"}`. The documented email request is retried in that form only when a 400/422
+     * response specifically reports a missing `channel` or `recipient`.
+     *
+     * @param documentId Stable public document identifier.
+     * @param email Optional validated destination; omit it to use the document's configured recipient.
+     * @param channel Optional deployed-service `email` or `whatsapp` delivery channel.
+     * @throws ValidationException for a blank document ID, invalid email/channel, or missing explicit recipient.
+     */
+    suspend fun sendToken(documentId: String, email: String? = null, channel: String? = null) {
+        val id = requireId(documentId, "Document ID")
+        val path = "/public/documents/${pathSegment(id)}/send-token"
+        val normalizedChannel = channel?.trim()?.lowercase()
+        if (normalizedChannel != null) {
+            if (normalizedChannel !in SEND_TOKEN_CHANNELS) {
+                throw ValidationException("Token channel must be email or whatsapp")
+            }
+            val recipient = email?.trim()?.takeIf { it.isNotEmpty() }
+                ?: throw ValidationException("Token recipient is required when channel is provided")
+            val normalizedRecipient = if (normalizedChannel == "email") requireValidEmail(recipient) else recipient
+            return callVoid("Failed to send signing token") {
+                publicHttp.put(path, toJson(mapOf("recipient" to normalizedRecipient, "channel" to normalizedChannel)))
+            }
+        }
+
+        val normalizedEmail = email?.let(::requireValidEmail)
+        try {
+            callVoid("Failed to send signing token") {
+                publicHttp.put(path, normalizedEmail?.let { toJson(mapOf("email" to it)) })
+            }
+        } catch (error: ApiException) {
+            if (normalizedEmail == null || !error.isLegacySendTokenValidation()) throw error
+            callVoid("Failed to send signing token") {
+                publicHttp.put(path, toJson(mapOf("recipient" to normalizedEmail, "channel" to "email")))
+            }
+        }
+    }
+
+    private fun ApiException.isLegacySendTokenValidation(): Boolean {
+        if (statusCode != 400 && statusCode != 422) return false
+        val detail = "$message $responseData".lowercase()
+        return "channel" in detail || "recipient" in detail
+    }
+
+    /**
+     * Checks whether certification is complete or every assignment signer has completed.
+     *
+     * @param documentId Stable document identifier.
+     * @return `true` for `certificated` status or a non-empty fully completed assignment summary.
+     */
     suspend fun isFullySigned(documentId: String): Boolean {
         val doc = details(documentId)
         if (doc.status == DocumentStatus.CERTIFICATED) return true
@@ -255,7 +428,12 @@ class DocumentResource(
         return summary.signerCount > 0 && summary.signerCount == summary.completedCount
     }
 
-    /** Returns signing progress (signed/total/pending counts and percentage) derived from the assignment summary. */
+    /**
+     * Derives signing counts and percentage from the current assignment summary.
+     *
+     * @param documentId Stable document identifier.
+     * @return Signed, total, pending, and percentage values; all zero when no assignment exists.
+     */
     suspend fun getSigningProgress(documentId: String): SigningProgress {
         val doc = details(documentId)
         val summary = doc.assignment?.summary
@@ -266,7 +444,11 @@ class DocumentResource(
         return SigningProgress(signed, total, pending, percentage)
     }
 
-    /** Lists the document status catalog and which statuses are deletable (`GET /documents/statuses`). */
+    /**
+     * Lists the document status catalog (`GET /documents/statuses`).
+     *
+     * @return Status identifiers, descriptions, and deletable flags.
+     */
     suspend fun getStatuses(): List<DocumentStatusInfo> {
         val result = callList("Failed to fetch document statuses", DocumentStatusInfo::class.java) {
             http.get("/documents/statuses")
@@ -277,38 +459,52 @@ class DocumentResource(
     /**
      * Confirms a signer's contact data and terms acceptance using their access code.
      * Body keys: `email`, `whatsapp_phone_number`, `has_accepted_terms`.
+     *
+     * @param documentId Stable document identifier.
+     * @param signerAccessCode One-time signer code sent only in the query string.
+     * @param data Non-empty legacy identity map sent unchanged as JSON.
+     * @return Updated signer.
+     * @throws ValidationException if an identifier is blank or [data] is empty.
      */
+    @Deprecated("Use AssinafyClient.signerDocuments.confirmData")
     suspend fun confirmSignerData(
         documentId: String,
         signerAccessCode: String,
         data: Map<String, Any>,
-    ) {
+    ): Signer {
         val docId = requireId(documentId, "Document ID")
         val code = requireId(signerAccessCode, "Signer access code")
-        callVoid("Failed to confirm signer data") {
-            http.put(
+        if (data.isEmpty()) throw ValidationException("At least one signer identity field is required")
+        return call("Failed to confirm signer data", Signer::class.java) {
+            publicHttp.put(
                 "/documents/${pathSegment(docId)}/signers/confirm-data${queryString("signer-access-code" to code)}",
                 toJson(data),
             )
         }
     }
 
-    /** Typed overload of [confirmSignerData]; unset fields are omitted from the request body. */
+    /**
+     * Typed compatibility overload of [confirmSignerData]; unset fields are omitted.
+     *
+     * @param documentId Stable document identifier.
+     * @param signerAccessCode One-time signer code sent only in the query string.
+     * @param request Supported signer identity changes.
+     * @return Updated signer.
+     */
+    @Deprecated("Use AssinafyClient.signerDocuments.confirmData")
     suspend fun confirmSignerData(
         documentId: String,
         signerAccessCode: String,
         request: ConfirmSignerDataRequest,
-    ) = confirmSignerData(
-        documentId,
-        signerAccessCode,
-        buildMap {
-            request.email?.let { put("email", it) }
-            request.whatsappPhoneNumber?.let { put("whatsapp_phone_number", it) }
-            request.hasAcceptedTerms?.let { put("has_accepted_terms", it) }
-        },
-    )
+    ): Signer = SignerDocumentResource(publicHttp).confirmData(documentId, signerAccessCode, request)
 
-    /** Lists the tags currently attached to a document. */
+    /**
+     * Lists tags currently attached to a document.
+     *
+     * @param documentId Stable document identifier.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Attached tags.
+     */
     suspend fun listTags(documentId: String, accountId: String? = null): List<Tag> {
         val accId = accountId(accountId)
         val docId = requireId(documentId, "Document ID")
@@ -319,8 +515,14 @@ class DocumentResource(
     }
 
     /**
-     * Replaces the document's tag set with [tagNames]. Names that don't yet exist are created
-     * automatically. An empty list detaches all tags. Returns the resulting tag set.
+     * Replaces the document's tag set with [tagNames], whose values are tag IDs in the current
+     * OpenAPI. The parameter name is retained because older deployments require names on the same
+     * route. Values are sent unchanged; an empty list detaches all tags.
+     *
+     * @param documentId Stable document identifier.
+     * @param tagNames Complete tag-ID set; despite the legacy parameter name these are IDs, not names.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Resulting complete tag set.
      */
     suspend fun replaceTags(documentId: String, tagNames: List<String>, accountId: String? = null): List<Tag> {
         val accId = accountId(accountId)
@@ -335,8 +537,14 @@ class DocumentResource(
     }
 
     /**
-     * Attaches [tagNames] to a document without removing existing tags (idempotent). Unknown names
-     * are created automatically. Returns the resulting tag set.
+     * Attaches [tagNames] (tag IDs in the current OpenAPI) without removing existing tags. The
+     * parameter name is retained because older deployments require names on the same route. Values
+     * are sent unchanged; the API returns the resulting tag set.
+     *
+     * @param documentId Stable document identifier.
+     * @param tagNames Tag IDs to add; despite the legacy parameter name these are IDs, not names.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Resulting complete tag set.
      */
     suspend fun addTags(documentId: String, tagNames: List<String>, accountId: String? = null): List<Tag> {
         val accId = accountId(accountId)
@@ -350,7 +558,13 @@ class DocumentResource(
         return result.data
     }
 
-    /** Detaches a single tag from a document. The tag itself is not deleted. */
+    /**
+     * Detaches a single tag from a document without deleting the tag.
+     *
+     * @param documentId Stable document identifier.
+     * @param tagId Stable tag identifier.
+     * @param accountId Account override; otherwise the client's default account is used.
+     */
     suspend fun detachTag(documentId: String, tagId: String, accountId: String? = null) {
         val accId = accountId(accountId)
         val docId = requireId(documentId, "Document ID")
@@ -371,5 +585,14 @@ class DocumentResource(
                 mapOf("fileSize" to fileData.size, "maxSize" to SdkConstants.MAX_UPLOAD_BYTES),
             )
         }
+        if (fileData.size < PDF_MAGIC.size || PDF_MAGIC.indices.any { fileData[it] != PDF_MAGIC[it] }) {
+            throw ValidationException("File content is not a PDF", mapOf("fileName" to fileName))
+        }
+    }
+
+    /** PDF upload validation constants. */
+    companion object {
+        private val SEND_TOKEN_CHANNELS = setOf("email", "whatsapp")
+        private val PDF_MAGIC = "%PDF-".toByteArray(Charsets.US_ASCII)
     }
 }

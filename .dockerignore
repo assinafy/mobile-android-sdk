@@ -1,0 +1,11 @@
+.git
+.gradle
+.gradle-ci-home
+.android-sdk
+.kotlin
+**/build
+.idea
+.claude
+local.properties
+*.iml
+.DS_Store

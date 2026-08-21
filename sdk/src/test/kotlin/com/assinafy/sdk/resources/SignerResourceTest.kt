@@ -36,7 +36,7 @@ class SignerResourceTest {
     @Test
     fun `throws when no account ID is available`() {
         assertThatThrownBy {
-            runBlocking { SignerResource(MockApiHttpClient()).create(CreateSignerRequest("Test", "test@test.com")) }
+            runBlocking { SignerResource(MockApiHttpClient()).create(CreateSignerRequest("Test", "signer@example.com")) }
         }.isInstanceOf(ValidationException::class.java)
     }
 
@@ -53,7 +53,7 @@ class SignerResourceTest {
         mock.enqueue(HttpRawResponse(200, emptyListJson, emptyMap()))
         mock.enqueue(HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
 
-        SignerResource(mock, "default-account").create(CreateSignerRequest("Test", "test@test.com"), "custom-account")
+        SignerResource(mock, "default-account").create(CreateSignerRequest("Test", "signer@example.com"), "custom-account")
 
         assertThat(mock.calls.first { it.method == "POST" }.path).isEqualTo("/accounts/custom-account/signers")
     }
@@ -64,7 +64,7 @@ class SignerResourceTest {
         mock.enqueue(HttpRawResponse(200, emptyListJson, emptyMap()))
         mock.enqueue(HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
 
-        SignerResource(mock, "default-account").create(CreateSignerRequest("Test", "test@test.com"))
+        SignerResource(mock, "default-account").create(CreateSignerRequest("Test", "signer@example.com"))
 
         assertThat(mock.calls.first { it.method == "POST" }.path).isEqualTo("/accounts/default-account/signers")
     }
@@ -111,6 +111,43 @@ class SignerResourceTest {
     }
 
     @Test
+    fun `get parses the signer from the account endpoint`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
+
+        val result = SignerResource(mock, "acc").get("s1")
+
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/signers/s1")
+        assertThat(result.email).isEqualTo("john@example.com")
+    }
+
+    @Test
+    fun `update sends official signer fields and parses the response`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
+
+        val result = SignerResource(mock, "acc").update(
+            "s1",
+            UpdateSignerRequest(fullName = "John Doe", governmentId = "123.456"),
+        )
+
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("PUT")
+        assertThat(call.path).isEqualTo("/accounts/acc/signers/s1")
+        assertThat(call.body).contains("\"government_id\":\"123456\"")
+        assertThat(result.id).isEqualTo("s1")
+    }
+
+    @Test
+    fun `delete sends the account signer delete request`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+
+        SignerResource(mock, "acc").delete("s1")
+
+        assertThat(mock.lastCall()).isEqualTo(
+            MockApiHttpClient.Call("DELETE", "/accounts/acc/signers/s1"),
+        )
+    }
+
+    @Test
     fun `findByEmail returns null when no match`() = runTest {
         val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, emptyListJson, emptyMap()))
         assertThat(SignerResource(mock, "acc").findByEmail("nobody@example.com")).isNull()
@@ -144,7 +181,7 @@ class SignerResourceTest {
     }
 
     @Test
-    fun `acceptTerms puts the access code to the accept-terms endpoint`() = runTest {
+    fun `acceptTerms puts the access code only in the query`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(HttpRawResponse(200, """{"status":200,"data":{"accepted":true}}""", emptyMap()))
 
@@ -152,12 +189,12 @@ class SignerResourceTest {
 
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("PUT")
-        assertThat(call.path).isEqualTo("/signers/accept-terms")
-        assertThat(call.body).contains("code-1")
+        assertThat(call.path).isEqualTo("/signers/accept-terms?signer-access-code=code-1")
+        assertThat(call.body).isNull()
     }
 
     @Test
-    fun `verifyEmail posts the codes to the verify endpoint`() = runTest {
+    fun `verifyEmail puts access code in query and verification code in body`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(HttpRawResponse(200, """{"status":200,"data":{"verified":true}}""", emptyMap()))
 
@@ -165,8 +202,8 @@ class SignerResourceTest {
 
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("POST")
-        assertThat(call.path).isEqualTo("/verify")
-        assertThat(call.body).contains("code-1").contains("123456")
+        assertThat(call.path).isEqualTo("/verify?signer-access-code=code-1")
+        assertThat(call.body).isEqualTo("""{"verification-code":"123456"}""")
     }
 
     @Test
@@ -230,6 +267,28 @@ class SignerResourceTest {
     }
 
     @Test
+    fun `signer-facing operations use the credentialless transport`() = runTest {
+        val authenticated = MockApiHttpClient()
+        val public = MockApiHttpClient()
+        public.enqueue(HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
+
+        SignerResource(authenticated, "acc", publicHttp = public).getSelf("code")
+
+        assertThat(authenticated.calls).isEmpty()
+        assertThat(public.lastCall().path).isEqualTo("/signers/self?signer-access-code=code")
+    }
+
+    @Test
+    fun `uploadSignature sends the optional reuse query`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+
+        SignerResource(mock, "acc").uploadSignature("code", "signature", byteArrayOf(1), reuse = true)
+
+        assertThat(mock.lastCall().path)
+            .isEqualTo("/signature?signer-access-code=code&type=signature&reuse=true")
+    }
+
+    @Test
     fun `create maps whatsapp_phone_number in request body`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(HttpRawResponse(200, emptyListJson, emptyMap()))
@@ -252,8 +311,7 @@ class SignerResourceTest {
         SignerResource(mock, "acc").getSelf("access+/=")
 
         val call = mock.lastCall()
-        assertThat(call.path).isEqualTo("/signers/self")
-        assertThat(call.queryParams["signer-access-code"]).isEqualTo("access+/=")
+        assertThat(call.path).isEqualTo("/signers/self?signer-access-code=access%2B%2F%3D")
     }
 
     @Test

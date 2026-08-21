@@ -10,7 +10,12 @@ import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.util.ApiValidator
 import com.assinafy.sdk.util.ResponseHandler
 import com.assinafy.sdk.util.UrlEncoding
+import kotlin.coroutines.cancellation.CancellationException
 
+/**
+ * Shared request, encoding, account-resolution, and error-normalization support for resource groups.
+ * Applications normally use the concrete resources exposed by [com.assinafy.sdk.AssinafyClient].
+ */
 abstract class BaseResource(
     protected val http: ApiHttpClient,
     protected val defaultAccountId: String? = null,
@@ -75,6 +80,8 @@ abstract class BaseResource(
     }.getOrElse { e -> throw e.coerceAsSdkException(label) }
 
     private fun Throwable.coerceAsSdkException(label: String): AssinafyException = when (this) {
+        is CancellationException -> throw this
+        is Error -> throw this
         is AssinafyException -> this
         else -> ResponseHandler.toSdkException(this, label)
     }

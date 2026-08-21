@@ -10,6 +10,7 @@ import com.assinafy.sdk.models.WebhookEventTypeInfo
 import com.assinafy.sdk.models.WebhookSubscription
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.RegisterWebhookRequest
+import com.assinafy.sdk.request.WebhookDispatchParams
 import com.assinafy.sdk.util.requireValidEmail
 import java.net.URI
 
@@ -17,8 +18,9 @@ import java.net.URI
  * Webhook subscription and dispatch management. Each account has at most one subscription. Event ids
  * are listed in [com.assinafy.sdk.WebhookEvent]; verify delivered payloads with
  * [com.assinafy.sdk.support.WebhookVerifier].
+ * API and transport failures use the SDK's typed exception hierarchy.
  */
-class WebhookResource(
+class WebhookResource internal constructor(
     http: ApiHttpClient,
     defaultAccountId: String? = null,
     logger: Logger = NoOpLogger,
@@ -29,6 +31,9 @@ class WebhookResource(
      * (`PUT /accounts/{accountId}/webhooks/subscriptions`). When [RegisterWebhookRequest.events] is
      * null/empty, [RegisterWebhookRequest.DEFAULT_EVENTS] is used.
      *
+     * @param request Destination URL, delivery contact, event IDs, and active state.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Complete subscription stored for the account.
      * @throws com.assinafy.sdk.exceptions.ValidationException on an invalid URL or email.
      */
     suspend fun register(request: RegisterWebhookRequest, accountId: String? = null): WebhookSubscription {
@@ -47,7 +52,12 @@ class WebhookResource(
         }
     }
 
-    /** Fetches the account's webhook subscription, or `null` if none is registered (404). */
+    /**
+     * Fetches the account's webhook subscription.
+     *
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Subscription, or `null` when the API returns HTTP 404.
+     */
     suspend fun get(accountId: String? = null): WebhookSubscription? {
         val id = accountId(accountId)
         return callOptional("Failed to fetch webhook subscription", WebhookSubscription::class.java) {
@@ -60,6 +70,9 @@ class WebhookResource(
      *
      * The API has no delete endpoint for a subscription (`DELETE .../webhooks/subscriptions` returns
      * 404); to stop deliveries, inactivate it or overwrite it with [register].
+     *
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Complete inactive subscription.
      */
     suspend fun inactivate(accountId: String? = null): WebhookSubscription {
         val id = accountId(accountId)
@@ -69,7 +82,11 @@ class WebhookResource(
         }
     }
 
-    /** Lists all webhook event types and their descriptions (`GET /webhooks/event-types`). */
+    /**
+     * Lists webhook event types (`GET /webhooks/event-types`).
+     *
+     * @return Wire event IDs and human-readable descriptions.
+     */
     suspend fun listEventTypes(): List<WebhookEventTypeInfo> {
         val result = callList("Failed to list webhook event types", WebhookEventTypeInfo::class.java) {
             http.get("/webhooks/event-types")
@@ -77,9 +94,38 @@ class WebhookResource(
         return result.data
     }
 
-    /** Lists past webhook dispatches (`GET /accounts/{accountId}/webhooks`), paginated. */
+    /**
+     * Lists past webhook dispatches using legacy common-list pagination values.
+     *
+     * Only [ListParams.page] and [ListParams.perPage] are sent because the webhook endpoint does not
+     * accept the document-specific filters in [ListParams].
+     *
+     * @param params Pagination values; all other [ListParams] fields are ignored.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Dispatch attempts and optional pagination-header metadata.
+     */
+    @Deprecated("Use listDispatches(WebhookDispatchParams, accountId)")
     suspend fun listDispatches(
         params: ListParams = ListParams(),
+        accountId: String? = null,
+    ): PaginatedResult<WebhookDispatch> {
+        val id = accountId(accountId)
+        val query = WebhookDispatchParams(page = params.page, perPage = params.perPage).toQueryMap()
+        return callList("Failed to list webhook dispatches", WebhookDispatch::class.java) {
+            http.get("/accounts/${pathSegment(id)}/webhooks", query)
+        }
+    }
+
+    /**
+     * Lists dispatch history with every current API filter.
+     *
+     * @param params Event, delivery-state, timestamp-range, and pagination filters.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Matching dispatch attempts and optional pagination-header metadata.
+     * @throws ValidationException for an invalid timestamp range or pagination value.
+     */
+    suspend fun listDispatches(
+        params: WebhookDispatchParams,
         accountId: String? = null,
     ): PaginatedResult<WebhookDispatch> {
         val id = accountId(accountId)
@@ -88,7 +134,13 @@ class WebhookResource(
         }
     }
 
-    /** Retries a failed webhook dispatch (`POST /accounts/{accountId}/webhooks/{dispatchId}/retry`). */
+    /**
+     * Retries a failed webhook dispatch.
+     *
+     * @param dispatchId Stable delivery-attempt identifier.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Updated dispatch record for the retry.
+     */
     suspend fun retryDispatch(dispatchId: String, accountId: String? = null): WebhookDispatch {
         val id = accountId(accountId)
         val did = requireId(dispatchId, "Dispatch ID")

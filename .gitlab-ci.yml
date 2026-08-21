@@ -1,0 +1,103 @@
+image: eclipse-temurin:25.0.3_9-jdk-noble@sha256:e94f1dc880339ab3884b69176b79c8dc4124b722e059c7ff7f0bf53b603a46f8
+
+stages:
+  - verify
+  - integration
+
+variables:
+  ANDROID_HOME: "$CI_PROJECT_DIR/.android-sdk"
+  ANDROID_SDK_ROOT: "$CI_PROJECT_DIR/.android-sdk"
+  ANDROID_COMMAND_LINE_TOOLS_VERSION: "16111833"
+  ANDROID_COMMAND_LINE_TOOLS_SHA256: "0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8"
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-ci-home"
+  GRADLE_OPTS: "-Dorg.gradle.vfs.watch=false"
+
+default:
+  interruptible: true
+  cache:
+    key: gradle-9.5-android-36
+    paths:
+      - .gradle-ci-home/caches/
+      - .gradle-ci-home/wrapper/
+  before_script:
+    - apt-get update
+    - apt-get install --yes --no-install-recommends ca-certificates curl openjdk-17-jdk-headless unzip
+    - mkdir -p "$ANDROID_HOME/cmdline-tools"
+    - |
+      if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/android" ]; then
+        curl --fail --location --silent --show-error \
+          "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_COMMAND_LINE_TOOLS_VERSION}_latest.zip" \
+          --output /tmp/android-command-line-tools.zip
+        echo "${ANDROID_COMMAND_LINE_TOOLS_SHA256}  /tmp/android-command-line-tools.zip" | sha256sum --check --strict
+        unzip -q /tmp/android-command-line-tools.zip -d "$ANDROID_HOME/cmdline-tools"
+        mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
+        rm /tmp/android-command-line-tools.zip
+      fi
+    - android sdk install "build-tools/36.0.0" "platform-tools" "platforms/android-36"
+
+verify:
+  stage: verify
+  timeout: 30 minutes
+  script:
+    - >-
+      ./gradlew
+      :sdk:assembleRelease
+      :sdk:test
+      :sdk:lintDebug
+      :sdk:ktlintCheck
+      :sdk:dokkaGeneratePublicationHtml
+      :sdk:publishReleasePublicationToMavenLocal
+      :consumer-smoke:assembleRelease
+      --no-daemon
+      --stacktrace
+  artifacts:
+    when: always
+    expire_in: 14 days
+    paths:
+      - consumer-smoke/build/outputs/apk/release/
+      - sdk/build/outputs/aar/
+      - sdk/build/publications/release/
+      - sdk/build/reports/tests/
+      - sdk/build/test-results/
+      - sdk/build/reports/lint-results-debug.html
+      - sdk/build/reports/lint-results-debug.xml
+      - sdk/build/reports/lint-results-debug.txt
+    reports:
+      junit: sdk/build/test-results/*/TEST-*.xml
+
+live-sandbox:
+  stage: integration
+  timeout: 20 minutes
+  interruptible: false
+  resource_group: assinafy-sandbox
+  environment:
+    name: sandbox
+  variables:
+    ASSINAFY_API_KEY: "$ASSINAFY_SANDBOX_API_KEY"
+    ASSINAFY_ACCOUNT_ID: "$ASSINAFY_SANDBOX_ACCOUNT_ID"
+    ASSINAFY_BASE_URL: "https://sandbox.assinafy.com.br/v1"
+    ASSINAFY_TEST_EMAIL: "$ASSINAFY_SANDBOX_TEST_EMAIL"
+    ASSINAFY_TEST_EMAIL_2: "$ASSINAFY_SANDBOX_TEST_EMAIL_2"
+    ASSINAFY_REQUIRE_LIVE: "true"
+    ASSINAFY_LIVE_WRITES: "false"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+    - when: never
+  script:
+    - >-
+      ./gradlew
+      :sdk:testDebugUnitTest
+      --tests 'com.assinafy.sdk.live.*'
+      --rerun-tasks
+      --no-daemon
+      --stacktrace
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - sdk/build/reports/tests/testDebugUnitTest/
+      - sdk/build/test-results/testDebugUnitTest/
+    reports:
+      junit: sdk/build/test-results/testDebugUnitTest/TEST-*.xml

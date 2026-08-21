@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test
 
 class DocumentResourceTest {
 
+    private val pdf = "%PDF-1.7\n".toByteArray()
     private val docUploadJson = """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"metadata_ready","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false,"decline_reason":null,"declined_by":null}"""
     private val docDetailsJson = """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"metadata_ready","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false}"""
 
@@ -46,16 +47,17 @@ class DocumentResourceTest {
     fun `upload posts to correct endpoint`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(successResponse(docUploadJson))
-        val result = DocumentResource(mock, "acc").upload(ByteArray(100), "contract.pdf")
+        val result = DocumentResource(mock, "acc").upload(pdf, "contract.pdf")
 
         assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/documents")
+        assertThat(mock.lastCall().method).isEqualTo("POST_MULTIPART_FILE")
         assertThat(result.id).isEqualTo("doc-1")
     }
 
     @Test
     fun `upload throws when no account ID is available`() {
         assertThatThrownBy {
-            runBlocking { DocumentResource(MockApiHttpClient()).upload(ByteArray(100), "test.pdf") }
+            runBlocking { DocumentResource(MockApiHttpClient()).upload(pdf, "test.pdf") }
         }.isInstanceOf(ValidationException::class.java)
     }
 
@@ -66,6 +68,17 @@ class DocumentResourceTest {
         DocumentResource(mock, "acc").details("doc-1")
 
         assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1")
+    }
+
+    @Test
+    fun `list gets account documents and parses the full document`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("[$docDetailsJson]"))
+
+        val result = DocumentResource(mock, "acc").list()
+
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/documents")
+        assertThat(result.data.single().accountId).isEqualTo("acc")
     }
 
     @Test
@@ -187,9 +200,9 @@ class DocumentResourceTest {
 
     @Test
     fun `confirmSignerData encodes signer access code`() = runTest {
-        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+        val mock = MockApiHttpClient(defaultResponse = successResponse("""{"id":"s1"}"""))
 
-        DocumentResource(mock, "acc").confirmSignerData("doc-1", "access+/=", mapOf("cpf" to "123"))
+        DocumentResource(mock, "acc").confirmSignerData("doc-1", "access+/=", mapOf("full_name" to "Signer"))
 
         assertThat(mock.lastCall().path)
             .isEqualTo("/documents/doc-1/signers/confirm-data?signer-access-code=access%2B%2F%3D")
@@ -197,17 +210,20 @@ class DocumentResourceTest {
 
     @Test
     fun `confirmSignerData typed overload serializes contract body keys`() = runTest {
-        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+        val mock = MockApiHttpClient(defaultResponse = successResponse("""{"id":"s1"}"""))
 
         DocumentResource(mock, "acc").confirmSignerData(
             "doc-1",
             "code",
-            ConfirmSignerDataRequest(email = "a@b.com", hasAcceptedTerms = true),
+            ConfirmSignerDataRequest(fullName = "Signer", email = "signer@example.com", governmentId = "123"),
         )
 
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("PUT")
-        assertThat(call.body).contains("\"email\":\"a@b.com\"").contains("\"has_accepted_terms\":true")
+        assertThat(call.body)
+            .contains("\"full_name\":\"Signer\"")
+            .contains("\"email\":\"signer@example.com\"")
+            .contains("\"government_id\":\"123\"")
     }
 
     @Test
@@ -219,6 +235,18 @@ class DocumentResourceTest {
 
         DocumentResource(mock, "acc").download("doc-1", DocumentArtifact.ORIGINAL)
         assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/download/original")
+    }
+
+    @Test
+    fun `thumbnail and page download use their binary endpoints`() = runTest {
+        val mock = MockApiHttpClient(binaryResponse = byteArrayOf(1, 2, 3))
+        val resource = DocumentResource(mock, "acc")
+
+        assertThat(resource.thumbnail("doc-1")).containsExactly(1, 2, 3)
+        assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/thumbnail")
+
+        assertThat(resource.downloadPage("doc-1", "page-1")).containsExactly(1, 2, 3)
+        assertThat(mock.lastCall().path).isEqualTo("/documents/doc-1/pages/page-1/download")
     }
 
     @Test
@@ -285,14 +313,125 @@ class DocumentResourceTest {
     }
 
     @Test
-    fun `verify gets the public verify endpoint`() = runTest {
+    fun `estimate template cost posts the documented signer projection and parses cost`() = runTest {
         val mock = MockApiHttpClient()
-        mock.enqueue(successResponse("""{"valid":true}"""))
+        mock.enqueue(
+            successResponse(
+                """{"documents":1,"credits":2,"total_credits":2,"breakdown":[],"has_sufficient_resources":true}""",
+            ),
+        )
 
-        val result = DocumentResource(mock, "acc").verify("hash-123")
+        val result = DocumentResource(mock, "acc").estimateCostFromTemplate(
+            "tpl-1",
+            listOf(TemplateSigner(roleId = "r1", id = "not-sent", verificationMethod = "Email")),
+        )
 
-        assertThat(mock.lastCall().path).isEqualTo("/documents/hash-123/verify")
-        assertThat(result["valid"]).isEqualTo(true)
+        val call = mock.lastCall()
+        assertThat(call.method).isEqualTo("POST")
+        assertThat(call.path).isEqualTo("/accounts/acc/templates/tpl-1/documents/estimate-cost")
+        assertThat(call.body).contains("\"role_id\":\"r1\"").doesNotContain("not-sent")
+        assertThat(result.hasSufficientResources).isTrue()
+    }
+
+    @Test
+    fun `verify gets the public verify endpoint`() = runTest {
+        val authenticated = MockApiHttpClient()
+        val public = MockApiHttpClient()
+        public.enqueue(
+            successResponse(
+                """{"hash":"hash-123","id":"doc-1","status":"certificated","page_count":"1","signer_count":"1","completed_count":1,"completed_at":"2026-01-01T00:00:00Z","verified_at":"2026-01-01T00:00:01Z","is_valid":true,"message":""}""",
+            ),
+        )
+
+        val result = DocumentResource(authenticated, "acc", publicHttp = public).verify("hash-123")
+
+        assertThat(authenticated.calls).isEmpty()
+        assertThat(public.lastCall().path).isEqualTo("/documents/hash-123/verify")
+        assertThat(result.isValid).isTrue
+    }
+
+    @Test
+    fun `public document operations use the credentialless transport`() = runTest {
+        val authenticated = MockApiHttpClient()
+        val public = MockApiHttpClient()
+        public.enqueue(successResponse("""{"id":"doc-1","name":"Agreement.pdf","page_count":1}"""))
+        public.enqueue(HttpRawResponse(200, """{"status":200,"message":"sent"}""", emptyMap()))
+        val resource = DocumentResource(authenticated, "acc", publicHttp = public)
+
+        assertThat(resource.getPublic("doc-1").pageCount?.toInt()).isEqualTo(1)
+        resource.sendToken("doc-1", "recipient@example.com")
+
+        assertThat(authenticated.calls).isEmpty()
+        assertThat(public.calls.map { it.path }).containsExactly(
+            "/public/documents/doc-1",
+            "/public/documents/doc-1/send-token",
+        )
+        assertThat(public.lastCall().body).isEqualTo("""{"email":"recipient@example.com"}""")
+    }
+
+    @Test
+    fun `send token omits the optional email body`() = runTest {
+        val public = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"message":"sent"}""", emptyMap()))
+
+        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public).sendToken("doc-1")
+
+        assertThat(public.lastCall().body).isNull()
+    }
+
+    @Test
+    fun `send token supports explicit deployed channels`() = runTest {
+        val public = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200}""", emptyMap()))
+        val resource = DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
+
+        resource.sendToken("doc-1", "recipient@example.com", "email")
+        resource.sendToken("doc-1", "+5511999998888", "whatsapp")
+
+        assertThat(public.calls.map { it.body }).containsExactly(
+            """{"recipient":"recipient@example.com","channel":"email"}""",
+            """{"recipient":"+5511999998888","channel":"whatsapp"}""",
+        )
+    }
+
+    @Test
+    fun `send token retries only legacy channel validation`() = runTest {
+        val public = MockApiHttpClient()
+        public.enqueue(
+            HttpRawResponse(
+                422,
+                """{"status":422,"message":"channel is required","errors":{"channel":["required"]}}""",
+                emptyMap(),
+            ),
+        )
+        public.enqueue(HttpRawResponse(200, """{"status":200}""", emptyMap()))
+
+        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
+            .sendToken("doc-1", "recipient@example.com")
+
+        assertThat(public.calls.map { it.body }).containsExactly(
+            """{"email":"recipient@example.com"}""",
+            """{"recipient":"recipient@example.com","channel":"email"}""",
+        )
+    }
+
+    @Test
+    fun `send token sees validation details in an error envelope`() = runTest {
+        val public = MockApiHttpClient()
+        public.enqueue(
+            HttpRawResponse(
+                200,
+                """{"status":422,"message":"Validation failed","errors":{"channel":["required"]}}""",
+                emptyMap(),
+            ),
+        )
+        public.enqueue(HttpRawResponse(200, """{"status":200}""", emptyMap()))
+
+        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
+            .sendToken("doc-1", "recipient@example.com")
+
+        assertThat(public.calls.map { it.body }).containsExactly(
+            """{"email":"recipient@example.com"}""",
+            """{"recipient":"recipient@example.com","channel":"email"}""",
+        )
     }
 
     @Test
@@ -338,6 +477,20 @@ class DocumentResourceTest {
         assertThat(call.queryParams["per-page"]).isEqualTo(10)
         assertThat(result.data).hasSize(1)
         assertThat(result.data[0].id).isEqualTo("doc-1")
+        assertThat(result.data[0].accountId).isNull()
+        assertThat(result.data[0].tags).isNull()
+        assertThat(result.data[0].pages).isNull()
+        assertThat(result.data[0].isClosed).isNull()
+    }
+
+    @Test
+    fun `search rejects pagination outside API bounds`() {
+        val resource = DocumentResource(MockApiHttpClient(), "acc")
+
+        assertThatThrownBy { runBlocking { resource.search(page = 0) } }
+            .isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { resource.search(perPage = 101) } }
+            .isInstanceOf(ValidationException::class.java)
     }
 
     private fun docStatus(status: String) =

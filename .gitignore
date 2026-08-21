@@ -1,10 +1,14 @@
 .gradle/
+.gradle-ci-home/
+.android-sdk/
+.kotlin/
 build/
 *.class
 *.jar
 !gradle/wrapper/gradle-wrapper.jar
 local.properties
 .idea/
+.claude/
 *.iml
 .DS_Store
 out/

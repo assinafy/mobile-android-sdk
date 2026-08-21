@@ -2,163 +2,156 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      live_writes:
+        description: Run the sandbox upload/delete test
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    - cron: '23 6 * * 1'
 
-# Cancel superseded PR runs; let push runs on protected branches finish.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# Least-privilege default. Jobs elevate where needed.
 permissions:
   contents: read
 
 env:
-  JAVA_VERSION: '21'
-  ANDROID_PLATFORM: '35'
-  ANDROID_BUILD_TOOLS: '35.0.0'
+  JAVA_RUNTIME_VERSION: '25'
+  JAVA_TOOLCHAIN_VERSION: '17'
+  ANDROID_PLATFORM: '36'
+  ANDROID_BUILD_TOOLS: '36.0.0'
 
 jobs:
-  build:
-    name: Build and Test
-    runs-on: ubuntu-latest
+  verify:
+    name: Build, test, lint, and publish locally
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          java-version: ${{ env.JAVA_VERSION }}
+          persist-credentials: false
+
+      - name: Install JDK ${{ env.JAVA_TOOLCHAIN_VERSION }} toolchain
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: ${{ env.JAVA_TOOLCHAIN_VERSION }}
           distribution: temurin
 
-      - name: Setup Android SDK
+      - name: Use JDK ${{ env.JAVA_RUNTIME_VERSION }} runtime
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: ${{ env.JAVA_RUNTIME_VERSION }}
+          distribution: temurin
+
+      - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
-          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+          cmdline-tools-version: '16111833'
+          log-accepted-android-sdk-licenses: false
+          packages: platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
-      - name: Build SDK
-        run: ./gradlew :sdk:assembleDebug
+      - name: Verify SDK and publication
+        run: >-
+          ./gradlew
+          :sdk:assembleRelease
+          :sdk:test
+          :sdk:lintDebug
+          :sdk:ktlintCheck
+          :sdk:dokkaGeneratePublicationHtml
+          :sdk:publishReleasePublicationToMavenLocal
+          :consumer-smoke:assembleRelease
+          --no-daemon
+          --stacktrace
 
-      - name: Run tests
-        run: ./gradlew :sdk:test
-
-      - name: Upload test results
+      - name: Upload verification artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: test-results
-          path: sdk/build/reports/tests/test/
-          retention-days: 7
+          name: verification-results
+          path: |
+            consumer-smoke/build/outputs/apk/release/
+            sdk/build/outputs/aar/
+            sdk/build/publications/release/
+            sdk/build/reports/tests/
+            sdk/build/test-results/
+            sdk/build/reports/lint-results-debug.*
+          if-no-files-found: error
+          retention-days: 14
 
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
+  live-sandbox:
+    name: Protected sandbox API tests
+    if: >-
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: sandbox
 
     steps:
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          java-version: ${{ env.JAVA_VERSION }}
+          persist-credentials: false
+
+      - name: Install JDK ${{ env.JAVA_TOOLCHAIN_VERSION }} toolchain
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: ${{ env.JAVA_TOOLCHAIN_VERSION }}
           distribution: temurin
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+      - name: Use JDK ${{ env.JAVA_RUNTIME_VERSION }} runtime
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
-          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-
-      - name: Run lint
-        run: ./gradlew :sdk:lintDebug
-
-      - name: Upload lint results
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: lint-results
-          path: sdk/build/reports/lint-results/
-          retention-days: 7
-
-  check:
-    name: Code Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: ${{ env.JAVA_RUNTIME_VERSION }}
           distribution: temurin
 
-      - name: Setup Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
-          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+          cmdline-tools-version: '16111833'
+          log-accepted-android-sdk-licenses: false
+          packages: platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
-      - name: Check formatting
-        run: ./gradlew :sdk:ktlintCheck
-
-      - name: Verify dependencies
-        run: ./gradlew :sdk:dependencies --configuration releaseRuntimeClasspath
-
-  publish-snapshot:
-    name: Publish Snapshot
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Only publish a verified build, and never from PRs.
-    needs: [build, lint, check]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: temurin
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
-        with:
-          packages: tools platform-tools platforms;android-${{ env.ANDROID_PLATFORM }} build-tools;${{ env.ANDROID_BUILD_TOOLS }}
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e # v6.1.0
-
-      - name: Publish snapshot
-        # GitHub Packages coordinates are immutable, so publish a UNIQUE per-run snapshot version.
-        run: ./gradlew :sdk:publish -Pversion=1.2.0-${{ github.run_number }}-SNAPSHOT
+      - name: Run sandbox integration tests
         env:
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ASSINAFY_API_KEY: ${{ secrets.ASSINAFY_SANDBOX_API_KEY }}
+          ASSINAFY_ACCOUNT_ID: ${{ secrets.ASSINAFY_SANDBOX_ACCOUNT_ID }}
+          ASSINAFY_BASE_URL: https://sandbox.assinafy.com.br/v1
+          ASSINAFY_TEST_EMAIL: ${{ secrets.ASSINAFY_SANDBOX_TEST_EMAIL }}
+          ASSINAFY_TEST_EMAIL_2: ${{ secrets.ASSINAFY_SANDBOX_TEST_EMAIL_2 }}
+          ASSINAFY_REQUIRE_LIVE: 'true'
+          ASSINAFY_LIVE_WRITES: ${{ github.event_name == 'workflow_dispatch' && inputs.live_writes && 'true' || 'false' }}
+        run: >-
+          ./gradlew
+          :sdk:testDebugUnitTest
+          --tests 'com.assinafy.sdk.live.*'
+          --rerun-tasks
+          --no-daemon
+          --stacktrace
+
+      - name: Upload sandbox test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sandbox-test-results
+          path: |
+            sdk/build/reports/tests/testDebugUnitTest/
+            sdk/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 7

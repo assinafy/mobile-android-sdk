@@ -9,20 +9,29 @@ interface ApiHttpClient {
     /** GET [path] with optional [queryParams] (null values are dropped). */
     suspend fun get(path: String, queryParams: Map<String, Any?> = emptyMap()): HttpRawResponse
 
-    /** POST [path] with an optional JSON [jsonBody] (defaults to an empty `{}` object). */
+    /** POST [path] with an optional JSON [jsonBody] (a null value sends an empty body). */
     suspend fun post(path: String, jsonBody: String? = null): HttpRawResponse
 
     /** POST a multipart upload (`file` + `name` + optional `metadata`) to [path]. */
     suspend fun postMultipart(path: String, fileName: String, fileData: ByteArray, name: String, metadata: String?): HttpRawResponse
 
-    /** PUT [path] with an optional JSON [jsonBody] (defaults to an empty `{}` object). */
+    /** POST one multipart binary [fileData] part to [path]. */
+    suspend fun postMultipartFile(
+        path: String,
+        fieldName: String,
+        fileName: String,
+        fileData: ByteArray,
+        contentType: String,
+    ): HttpRawResponse
+
+    /** PUT [path] with an optional JSON [jsonBody] (a null value sends an empty body). */
     suspend fun put(path: String, jsonBody: String? = null): HttpRawResponse
 
-    /** PATCH [path] with an optional JSON [jsonBody] (defaults to an empty `{}` object). */
+    /** PATCH [path] with an optional JSON [jsonBody] (a null value sends an empty body). */
     suspend fun patch(path: String, jsonBody: String? = null): HttpRawResponse
 
-    /** DELETE [path]. */
-    suspend fun delete(path: String): HttpRawResponse
+    /** DELETE [path], optionally with a JSON [jsonBody]. */
+    suspend fun delete(path: String, jsonBody: String? = null): HttpRawResponse
 
     /** GET [path] returning the raw response bytes (for downloads/thumbnails). */
     suspend fun getBinary(path: String): ByteArray

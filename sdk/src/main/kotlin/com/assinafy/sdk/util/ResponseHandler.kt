@@ -15,7 +15,7 @@ import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import java.io.IOException
 
-object ResponseHandler {
+internal object ResponseHandler {
     private val GSON: Gson = Gson()
     private val GSON_WITH_NULLS: Gson = GsonBuilder().serializeNulls().create()
 
@@ -48,6 +48,18 @@ object ResponseHandler {
 
     fun handleVoid(response: HttpRawResponse) {
         validateSuccess(response)
+        if (response.body.isNullOrBlank()) return
+        try {
+            parseEnvelopeOrNull(JsonParser.parseString(response.body))?.let { envelope ->
+                if (envelope.status !in 200..299) {
+                    throw ApiException.fromResponse(envelope.status, envelope.asMap())
+                }
+            }
+        } catch (e: AssinafyException) {
+            throw e
+        } catch (e: Exception) {
+            throw AssinafyException("Failed to parse response: ${e.message}", emptyMap(), e)
+        }
     }
 
     fun toSdkException(e: Throwable, label: String): AssinafyException = when (e) {
@@ -80,7 +92,11 @@ object ResponseHandler {
             val envelope = parseEnvelopeOrNull(root)
             if (envelope != null) {
                 if (envelope.status in 200..299) {
-                    return GSON.fromJson(envelope.data, type)
+                    val data = envelope.data
+                    if (data == null || data.isJsonNull) {
+                        throw AssinafyException("Empty response data where ${type.simpleName} was expected")
+                    }
+                    return GSON.fromJson(data, type)
                 }
                 throw ApiException.fromResponse(envelope.status, envelope.asMap())
             }
@@ -100,7 +116,9 @@ object ResponseHandler {
             if (envelope != null) {
                 if (envelope.status in 200..299) {
                     val dataNode = envelope.data
-                    return if (dataNode is JsonObject) {
+                    return if (dataNode == null || dataNode.isJsonNull) {
+                        emptyMap()
+                    } else if (dataNode is JsonObject) {
                         dataNode.toPlainMap()
                     } else {
                         mapOf("data" to GSON.fromJson<Any>(dataNode, Any::class.java))
@@ -116,20 +134,30 @@ object ResponseHandler {
         }
     }
 
-    private class Envelope(val status: Int, val data: JsonElement) {
-        fun asMap(): Map<String, Any> = GSON.fromJson(
-            JsonParser.parseString(GSON.toJson(this)),
-            object : TypeToken<Map<String, Any>>() {}.type,
-        )
+    private class Envelope(
+        val status: Int,
+        val message: String?,
+        val data: JsonElement?,
+        private val root: JsonObject,
+    ) {
+        fun asMap(): Map<String, Any> = root.toPlainMap()
     }
 
     private fun parseEnvelopeOrNull(root: JsonElement): Envelope? {
-        if (root !is JsonObject || !root.has("status") || !root.has("data")) return null
-        return try {
-            Envelope(root.get("status").asInt, root.get("data"))
-        } catch (e: Exception) {
+        if (root !is JsonObject || !root.has("status")) return null
+        val statusNode = root.get("status")
+        val status = if (statusNode.isJsonPrimitive && statusNode.asJsonPrimitive.isNumber) {
+            statusNode.asString.toIntOrNull()
+        } else {
             null
         }
+        if (status == null) throw AssinafyException("Malformed response envelope: status must be an integer")
+        return Envelope(
+            status = status,
+            message = root.get("message")?.takeUnless(JsonElement::isJsonNull)?.asString,
+            data = root.get("data"),
+            root = root,
+        )
     }
 
     private fun JsonObject.toPlainMap(): Map<String, Any> = GSON.fromJson(this, object : TypeToken<Map<String, Any>>() {}.type)
@@ -148,7 +176,7 @@ object ResponseHandler {
             when (root) {
                 is JsonArray -> extractArray(root, elementType)
                 is JsonObject -> extractArray(root.get("data"), elementType)
-                else -> emptyList()
+                else -> throw AssinafyException("Malformed list response: expected an array")
             }
         } catch (e: AssinafyException) {
             throw e
@@ -165,7 +193,7 @@ object ResponseHandler {
         if (element is JsonObject && element.has("data")) {
             return extractArray(element.get("data"), elementType)
         }
-        return emptyList()
+        throw AssinafyException("Malformed list response: data must be an array")
     }
 
     private fun parsePaginationMeta(headers: Map<String, String>): PaginationMeta? {

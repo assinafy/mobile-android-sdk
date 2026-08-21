@@ -40,6 +40,23 @@ class AssignmentResourceTest {
     }
 
     @Test
+    fun `create serializes copy receiver signer ids`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse(assignmentJson))
+
+        AssignmentResource(mock, "acc").create(
+            "doc-1",
+            CreateAssignmentRequest(
+                signers = listOf(SignerReference.ofId("signer-1")),
+                copyReceivers = listOf(" copy-signer-1 ", "copy-signer-2"),
+            ),
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val body = gson.fromJson(mock.lastCall().body, Map::class.java) as Map<String, Any?>
+        assertThat(body["copy_receivers"] as List<*>).containsExactly("copy-signer-1", "copy-signer-2")
+    }
+
+    @Test
     fun `create throws when signers list is empty`() {
         assertThatThrownBy {
             runBlocking {
@@ -87,6 +104,65 @@ class AssignmentResourceTest {
     }
 
     @Test
+    fun `create rejects every signer without an id`() {
+        assertThatThrownBy {
+            runBlocking {
+                AssignmentResource(MockApiHttpClient(), "acc").create(
+                    "doc-1",
+                    CreateAssignmentRequest(signers = listOf(SignerReference(verificationMethod = "Email"))),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("Signer ID")
+    }
+
+    @Test
+    fun `create rejects an extreme non-contiguous step without allocating a range`() {
+        val mock = MockApiHttpClient()
+
+        assertThatThrownBy {
+            runBlocking {
+                AssignmentResource(mock, "acc").create(
+                    "doc-1",
+                    CreateAssignmentRequest(
+                        signers = listOf(
+                            SignerReference(id = "s1", step = 1),
+                            SignerReference(id = "s2", step = Int.MAX_VALUE),
+                        ),
+                    ),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("contiguous")
+        assertThat(mock.calls).isEmpty()
+    }
+
+    @Test
+    fun `list sends pagination and explicit legacy accountId query`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse("[]"))
+
+        AssignmentResource(mock, "acc").list(
+            com.assinafy.sdk.request.ListParams(page = 2, perPage = 25),
+            accountId = "acc",
+        )
+
+        assertThat(mock.lastCall().path).isEqualTo("/assignments")
+        assertThat(mock.lastCall().queryParams).containsEntry("accountId", "acc")
+            .containsEntry("page", 2)
+            .containsEntry("per-page", 25)
+    }
+
+    @Test
+    fun `list default query is OpenAPI exact`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse("[]"))
+
+        AssignmentResource(mock, "acc").list(com.assinafy.sdk.request.ListParams(page = 1))
+
+        assertThat(mock.lastCall().queryParams).containsOnlyKeys("page")
+        assertThat(mock.lastCall().queryParams["accountId"]).isNull()
+    }
+
+    @Test
     fun `resetExpiration posts to correct endpoint`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(successResponse(assignmentJson))
@@ -97,14 +173,26 @@ class AssignmentResourceTest {
     }
 
     @Test
-    fun `resetExpiration with null sends explicit null to clear expiration`() = runTest {
+    fun `resetExpiration explicit null opts into deployed clear compatibility`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(successResponse(assignmentJson))
 
         AssignmentResource(mock, "acc").resetExpiration("doc-1", "asg-1", null)
 
-        // Default Gson omits nulls; the API requires the key present, so it must be serialized.
+        // The frozen OpenAPI documents only a date-time; deployed services accept explicit null to clear it.
         assertThat(mock.lastCall().body).isEqualTo("""{"expires_at":null}""")
+    }
+
+    @Test
+    fun `resetExpiration uses the authenticated transport`() = runTest {
+        val authenticated = MockApiHttpClient(defaultResponse = successResponse(assignmentJson))
+        val public = MockApiHttpClient()
+
+        AssignmentResource(authenticated, "acc", publicHttp = public)
+            .resetExpiration("doc-1", "asg-1", null)
+
+        assertThat(authenticated.lastCall().path).contains("reset-expiration")
+        assertThat(public.calls).isEmpty()
     }
 
     @Test
@@ -141,6 +229,18 @@ class AssignmentResourceTest {
         assertThat(call.method).isEqualTo("PUT")
         assertThat(call.path).isEqualTo("/documents/doc-1/assignments/asg-1/reject?signer-access-code=code%2B1")
         assertThat(call.body).contains("Not agreed")
+    }
+
+    @Test
+    fun `decline uses the credentialless transport`() = runTest {
+        val authenticated = MockApiHttpClient()
+        val public = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
+
+        AssignmentResource(authenticated, "acc", publicHttp = public)
+            .decline("doc-1", "asg-1", "code", "No")
+
+        assertThat(authenticated.calls).isEmpty()
+        assertThat(public.lastCall().path).contains("signer-access-code=code")
     }
 
     @Test
@@ -189,8 +289,21 @@ class AssignmentResourceTest {
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("PUT")
         assertThat(call.path).isEqualTo("/documents/doc-1/assignments/asg-1/signers/s1/resend")
+        assertThat(call.body).isNull()
         assertThat(result.isSent).isTrue
         assertThat(result.signerId).isEqualTo("s1")
+    }
+
+    @Test
+    fun `resendNotification supports the deployed channel body`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse("""{"is_sent":true}"""))
+
+        AssignmentResource(mock, "acc").resendNotification("doc-1", "asg-1", "s1", " Email ")
+
+        assertThat(mock.lastCall().body).isEqualTo("""{"channel":"email"}""")
+        assertThatThrownBy {
+            runBlocking { AssignmentResource(mock, "acc").resendNotification("doc-1", "asg-1", "s1", "sms") }
+        }.isInstanceOf(ValidationException::class.java)
     }
 
     @Test
@@ -203,7 +316,7 @@ class AssignmentResourceTest {
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("POST")
         assertThat(call.path).isEqualTo("/documents/doc-1/assignments/asg-1/signers/s1/estimate-resend-cost")
-        assertThat(cost["has_sufficient_credits"]).isEqualTo(true)
+        assertThat(cost.legacyHasSufficientCredits).isTrue
     }
 
     @Test
@@ -231,7 +344,7 @@ class AssignmentResourceTest {
         val mock = MockApiHttpClient()
         mock.enqueue(
             successResponse(
-                """{"id":"asg-1","method":"virtual","signers":[],"copy_receivers":[{"id":"cr1","full_name":"Obs One","email":"obs1@x.com"}]}""",
+                """{"id":"asg-1","method":"virtual","signers":[],"copy_receivers":[{"id":"cr1","full_name":"Obs One","email":"observer@example.com"}]}""",
             ),
         )
         val asg = AssignmentResource(mock, "acc").create(

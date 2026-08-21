@@ -13,10 +13,10 @@ import org.junit.jupiter.api.Test
 class AssinafyClientTest {
 
     @Test
-    fun `throws when no credentials are provided`() {
-        assertThatThrownBy {
-            AssinafyClient.create(AssinafyClientConfig(accountId = "acc"))
-        }.isInstanceOf(ValidationException::class.java)
+    fun `allows a credentialless client for login and public operations`() {
+        val client = AssinafyClient.create(AssinafyClientConfig(accountId = "acc"))
+        assertThat(client.authentication).isNotNull
+        assertThat(client.signerDocuments).isNotNull
     }
 
     @Test
@@ -26,6 +26,8 @@ class AssinafyClientTest {
         assertThat(client.signers).isNotNull
         assertThat(client.workspaces).isNotNull
         assertThat(client.assignments).isNotNull
+        assertThat(client.fields).isNotNull
+        assertThat(client.users).isNotNull
         assertThat(client.webhooks).isNotNull
         assertThat(client.templates).isNotNull
         assertThat(client.tags).isNotNull
@@ -46,9 +48,30 @@ class AssinafyClientTest {
     }
 
     @Test
+    fun `rejects ambiguous credentials and invalid base URLs`() {
+        assertThatThrownBy {
+            AssinafyClient.create(AssinafyClientConfig(apiKey = "k", token = "t"))
+        }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy {
+            AssinafyClient.create(AssinafyClientConfig(baseUrl = "not-a-url"))
+        }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy {
+            AssinafyClient.create(AssinafyClientConfig(apiKey = "k", baseUrl = "http://api.example.com/v1"))
+        }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
     fun `static create() builds a configured client`() {
         val client = AssinafyClient.create(apiKey = "k", accountId = "acc", webhookSecret = "s")
         assertThat(client.documents).isNotNull
+    }
+
+    @Test
+    fun `static create rejects blank credentials and account`() {
+        assertThatThrownBy { AssinafyClient.create(apiKey = " ", accountId = "acc") }
+            .isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { AssinafyClient.create(apiKey = "k", accountId = " ") }
+            .isInstanceOf(ValidationException::class.java)
     }
 
     @Test
@@ -61,6 +84,18 @@ class AssinafyClientTest {
             ),
         )
         assertThat(client).isNotNull
+    }
+
+    @Test
+    fun `config diagnostics redact every secret`() {
+        val text = AssinafyClientConfig(
+            apiKey = "api-secret",
+            token = "bearer-secret",
+            webhookSecret = "webhook-secret",
+        ).toString()
+
+        assertThat(text).contains("apiKey=***", "token=***", "webhookSecret=***")
+        assertThat(text).doesNotContain("api-secret", "bearer-secret", "webhook-secret")
     }
 
     @Test
@@ -101,6 +136,25 @@ class AssinafyClientTest {
     }
 
     @Test
+    fun `uploadAndRequestSignatures validates every email before uploading`() {
+        val mock = MockApiHttpClient()
+        val client = AssinafyClient.create(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
+
+        assertThatThrownBy {
+            runBlocking {
+                client.uploadAndRequestSignatures(
+                    UploadAndRequestSignaturesRequest(
+                        fileData = "%PDF-1.7\n".toByteArray(),
+                        fileName = "test.pdf",
+                        signers = listOf(UploadAndRequestSignaturesRequest.SignerEntry("John", "invalid")),
+                    ),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+        assertThat(mock.calls).isEmpty()
+    }
+
+    @Test
     fun `uploadAndRequestSignaturesRequest hashCode includes all equality fields`() {
         val left = UploadAndRequestSignaturesRequest(
             fileData = byteArrayOf(1),
@@ -120,6 +174,13 @@ class AssinafyClientTest {
         mock.enqueue(
             HttpRawResponse(
                 200,
+                """{"status":200,"data":{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"uploaded","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false,"decline_reason":null,"declined_by":null}}""",
+                emptyMap(),
+            ),
+        )
+        mock.enqueue(
+            HttpRawResponse(
+                200,
                 """{"status":200,"data":{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"metadata_ready","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false,"decline_reason":null,"declined_by":null}}""",
                 emptyMap(),
             ),
@@ -131,20 +192,27 @@ class AssinafyClientTest {
         mock.enqueue(
             HttpRawResponse(200, """{"status":200,"data":{"id":"asg-1","method":"virtual","signers":[]}}""", emptyMap()),
         )
+        mock.enqueue(
+            HttpRawResponse(
+                200,
+                """{"status":200,"data":{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"pending_signature","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false,"decline_reason":null,"declined_by":null}}""",
+                emptyMap(),
+            ),
+        )
 
         val client = AssinafyClient.create(AssinafyClientConfig(apiKey = "k", accountId = "acc"), mock)
         val result = client.uploadAndRequestSignatures(
             UploadAndRequestSignaturesRequest(
-                fileData = ByteArray(100),
+                fileData = "%PDF-1.7\n".toByteArray(),
                 fileName = "test.pdf",
                 signers = listOf(
                     UploadAndRequestSignaturesRequest.SignerEntry(name = "John", email = "john@example.com"),
                 ),
-                waitForReady = false,
             ),
         )
 
         assertThat(result.document.id).isEqualTo("doc-1")
+        assertThat(result.document.status).isEqualTo("pending_signature")
         assertThat(result.assignment.id).isEqualTo("asg-1")
         assertThat(result.signerIds).containsExactly("s1")
     }

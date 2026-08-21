@@ -18,6 +18,7 @@ data class RegisterWebhookRequest(
     @SerializedName("events") val events: List<String>? = null,
     @SerializedName("is_active") val isActive: Boolean = true,
 ) {
+    /** Standard event selection used when a registration does not provide one. */
     companion object {
         /** Default subscription used when [events] is null/empty. */
         val DEFAULT_EVENTS: List<String> = listOf(

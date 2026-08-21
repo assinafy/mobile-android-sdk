@@ -1,20 +1,20 @@
 services:
   build:
     platform: linux/amd64
-    build: .
+    build:
+      context: .
+      pull: true
     working_dir: /app
     volumes:
       - .:/app
-    command: ./gradlew :sdk:build --no-daemon
-    environment:
-      - ANDROID_HOME=/opt/android-sdk
+    command: ["./gradlew", ":sdk:build", "--no-daemon"]
 
   test:
     platform: linux/amd64
-    build: .
+    build:
+      context: .
+      pull: true
     working_dir: /app
     volumes:
       - .:/app
-    command: ./gradlew :sdk:test --no-daemon
-    environment:
-      - ANDROID_HOME=/opt/android-sdk
+    command: ["./gradlew", ":sdk:test", "--no-daemon"]

@@ -18,7 +18,14 @@ data class SignerReference(
     @SerializedName("notification_methods") val notificationMethods: List<String>? = null,
     @SerializedName("step") val step: Int? = null,
 ) {
+    /** Convenience construction for existing signers. */
     companion object {
+        /**
+         * Creates the minimal signer reference required to create an assignment.
+         *
+         * @param signerId Existing account signer identifier.
+         * @return A reference with API-inferred verification and notification settings.
+         */
         fun ofId(signerId: String) = SignerReference(id = signerId)
     }
 }

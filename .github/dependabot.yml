@@ -10,7 +10,15 @@ updates:
 
   # Keep Gradle/Maven dependencies current.
   - package-ecosystem: "gradle"
-    directory: "/sdk"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "build"
+
+  # Keep the pinned build image current.
+  - package-ecosystem: "docker"
+    directory: "/"
     schedule:
       interval: "weekly"
     commit-message:

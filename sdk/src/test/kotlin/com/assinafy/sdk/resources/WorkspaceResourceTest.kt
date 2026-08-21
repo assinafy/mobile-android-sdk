@@ -50,6 +50,8 @@ class WorkspaceResourceTest {
 
         assertThat(ws.primaryColor).isEqualTo("#ff00aa")
         assertThat(ws.secondaryColor).isNull()
+        assertThat(ws.roles).isNull()
+        assertThat(ws.isDeleteAllowed).isNull()
     }
 
     @Test
@@ -57,12 +59,14 @@ class WorkspaceResourceTest {
         val mock = MockApiHttpClient()
         mock.enqueue(HttpRawResponse(200, """{"status":200,"data":{"id":"acc-9","name":"My WS"}}""", emptyMap()))
 
-        val ws = WorkspaceResource(mock).create(CreateWorkspaceRequest(name = "My WS", primaryColor = "#ff0066"))
+        val ws = WorkspaceResource(mock).create(
+            CreateWorkspaceRequest(name = "My WS", notificationSenderType = "Account", primaryColor = "ff0066"),
+        )
 
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("POST")
         assertThat(call.path).isEqualTo("/accounts")
-        assertThat(call.body).contains("My WS").contains("#ff0066")
+        assertThat(call.body).contains("My WS").contains("ff0066").contains("notification_sender_type")
         assertThat(ws.id).isEqualTo("acc-9")
     }
 
@@ -71,6 +75,18 @@ class WorkspaceResourceTest {
         assertThatThrownBy {
             runBlocking { WorkspaceResource(MockApiHttpClient()).create(CreateWorkspaceRequest(name = "")) }
         }.isInstanceOf(ValidationException::class.java)
+    }
+
+    @Test
+    fun `create rejects hash-prefixed account colors`() {
+        assertThatThrownBy {
+            runBlocking {
+                WorkspaceResource(MockApiHttpClient()).create(
+                    CreateWorkspaceRequest(name = "Test", primaryColor = "#ff0066"),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("without #")
     }
 
     @Test
@@ -94,6 +110,7 @@ class WorkspaceResourceTest {
 
         assertThat(mock.lastCall().path).isEqualTo("/accounts")
         assertThat(result.data).hasSize(1)
+        assertThat(result.data.single().roles).isNull()
     }
 
     @Test
@@ -140,5 +157,48 @@ class WorkspaceResourceTest {
         mock.binaryError = ApiException("Arquivo de armazenamento não encontrado.", 404)
 
         assertThat(WorkspaceResource(mock).getLogo("acc-1")).isNull()
+    }
+
+    @Test
+    fun `upload and delete logo use the documented routes`() = runTest {
+        val mock = MockApiHttpClient()
+        val resource = WorkspaceResource(mock)
+
+        resource.uploadLogo("acc-1", byteArrayOf(1, 2), "logo.png")
+        assertThat(mock.lastCall().method).isEqualTo("POST_MULTIPART_FILE")
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc-1/logo")
+        assertThat(mock.lastCall().body).startsWith("file:logo.png:image/png:")
+
+        resource.deleteLogo("acc-1")
+        assertThat(mock.lastCall().method).isEqualTo("DELETE")
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc-1/logo")
+    }
+
+    @Test
+    fun `delete sends force only when explicitly requested`() = runTest {
+        val mock = MockApiHttpClient()
+        val resource = WorkspaceResource(mock)
+
+        resource.delete("acc-1")
+        assertThat(mock.lastCall().body).isNull()
+        resource.delete("acc-1", force = true)
+        assertThat(mock.lastCall().body).isEqualTo("""{"force":true}""")
+    }
+
+    @Test
+    fun `getStats sends daily query and parses every counter`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            HttpRawResponse(
+                200,
+                """{"status":200,"data":[{"period":"2026-08-01","documents_uploaded":1,"documents_sent":2,"signature_requests":3,"signature_requests_notification_email":3,"signature_requests_notification_whatsapp":0,"signature_requests_notification_bypass":0,"signature_requests_verification_email":3,"signature_requests_verification_whatsapp":0,"signature_requests_verification_bypass":0,"signature_requests_verification_digital_certificate":0,"signature_requests_viewed":2,"signature_requests_completed":1,"documents_certified":1}]}""",
+                emptyMap(),
+            ),
+        )
+
+        val rows = WorkspaceResource(mock).getStats("acc-1", "daily", "2026-08")
+
+        assertThat(mock.lastCall().queryParams).containsEntry("granularity", "daily").containsEntry("month", "2026-08")
+        assertThat(rows.single().signatureRequests).isEqualTo(3)
     }
 }

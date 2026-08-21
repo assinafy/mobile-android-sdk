@@ -7,6 +7,13 @@ import com.google.gson.annotations.SerializedName
  *
  * When returned inline on a document or template (under `tags`), only [id], [name], and [color]
  * are populated; the timestamps are present on the dedicated tag endpoints.
+ *
+ * @property resource API resource discriminator.
+ * @property id Stable tag identifier used by document tag endpoints and list filters.
+ * @property name Workspace-unique display name.
+ * @property color Optional six-digit hexadecimal color.
+ * @property createdAt ISO-8601 creation timestamp.
+ * @property updatedAt ISO-8601 last-update timestamp.
  */
 data class Tag(
     @SerializedName("resource") val resource: String? = null,

@@ -15,7 +15,7 @@ class TemplateResourceTest {
     private fun success(data: String) = HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
 
     @Test
-    fun `list hits account-scoped templates endpoint and forwards params`() = runTest {
+    fun `list hits account-scoped templates endpoint and projects documented params`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(success("""[{"id":"tpl-1","name":"NDA","status":"active","created_at":"2024-01-01"}]"""))
 
@@ -26,9 +26,11 @@ class TemplateResourceTest {
         assertThat(call.path).isEqualTo("/accounts/acc/templates")
         assertThat(call.queryParams["search"]).isEqualTo("NDA")
         assertThat(call.queryParams["per-page"]).isEqualTo(20)
-        assertThat(call.queryParams["sort"]).isEqualTo("-updated_at")
+        assertThat(call.queryParams).doesNotContainKey("sort")
         assertThat(result.data).hasSize(1)
         assertThat(result.data[0].name).isEqualTo("NDA")
+        assertThat(result.data[0].pages).isNull()
+        assertThat(result.data[0].tags).isNull()
     }
 
     @Test

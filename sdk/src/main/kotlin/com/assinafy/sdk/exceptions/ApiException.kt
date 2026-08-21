@@ -7,7 +7,9 @@ import com.google.gson.reflect.TypeToken
  * Thrown when the API returns a non-2xx status (HTTP status or envelope `status`).
  *
  * @property statusCode the HTTP/envelope status code.
- * @property responseData the parsed error body (a `Map` when JSON), or the raw value when not parseable.
+ * @property responseData the parsed error body (a `Map` when JSON), or the raw value when not
+ *   parseable. It may contain request-derived or server-provided sensitive data and must be redacted
+ *   before logging.
  */
 class ApiException(
     message: String,
@@ -23,6 +25,7 @@ class ApiException(
     cause,
 ) {
 
+    /** Factories for converting raw API error responses to typed exceptions. */
     companion object {
         private val GSON = Gson()
 
@@ -30,6 +33,10 @@ class ApiException(
          * Builds an [ApiException] from a status code and a response body. [responseData] may be an
          * already-parsed `Map`, a raw JSON `String` (e.g. from a binary endpoint's error body), or
          * any other value. The human-readable `message`/`error` field is extracted when present.
+         *
+         * @param statusCode HTTP or Assinafy envelope status.
+         * @param responseData Parsed response, raw JSON/text, or `null` for an empty response.
+         * @return Exception with normalized message, status, response data, and structured context.
          */
         fun fromResponse(statusCode: Int, responseData: Any?): ApiException {
             val data = responseData.asMapOrNull()

@@ -36,6 +36,7 @@ class ResponseHandlerTest {
         assertThatThrownBy {
             ResponseHandler.handle(response, TestModel::class.java)
         }.isInstanceOf(ApiException::class.java)
+            .hasMessage("Bad request")
     }
 
     @Test
@@ -67,6 +68,7 @@ class ResponseHandlerTest {
     @Test
     fun `handleVoid succeeds on 2xx`() {
         ResponseHandler.handleVoid(HttpRawResponse(204, null, emptyMap()))
+        ResponseHandler.handleVoid(HttpRawResponse(200, """{"status":200,"message":"OK"}""", emptyMap()))
     }
 
     @Test
@@ -74,6 +76,28 @@ class ResponseHandlerTest {
         assertThatThrownBy {
             ResponseHandler.handleVoid(HttpRawResponse(400, null, emptyMap()))
         }.isInstanceOf(ApiException::class.java)
+    }
+
+    @Test
+    fun `handleVoid throws ApiException on non-2xx envelope without data`() {
+        assertThatThrownBy {
+            ResponseHandler.handleVoid(
+                HttpRawResponse(200, """{"status":422,"message":"Invalid request"}""", emptyMap()),
+            )
+        }.isInstanceOf(ApiException::class.java)
+            .hasMessage("Invalid request")
+            .hasFieldOrPropertyWithValue("statusCode", 422)
+    }
+
+    @Test
+    fun `handle rejects successful typed envelope without data`() {
+        assertThatThrownBy {
+            ResponseHandler.handle(
+                HttpRawResponse(200, """{"status":200,"message":"OK"}""", emptyMap()),
+                TestModel::class.java,
+            )
+        }.isInstanceOf(AssinafyException::class.java)
+            .hasMessageContaining("Empty response data")
     }
 
     @Test
@@ -131,5 +155,24 @@ class ResponseHandlerTest {
         assertThat(result.meta?.perPage).isEqualTo(10)
         assertThat(result.meta?.total).isEqualTo(55)
         assertThat(result.meta?.lastPage).isEqualTo(6)
+    }
+
+    @Test
+    fun `handleVoid rejects an envelope with a malformed status`() {
+        assertThatThrownBy {
+            ResponseHandler.handleVoid(HttpRawResponse(200, """{"status":"ok","data":[]}""", emptyMap()))
+        }.isInstanceOf(AssinafyException::class.java)
+            .hasMessageContaining("status must be an integer")
+    }
+
+    @Test
+    fun `handleList rejects non-array data`() {
+        assertThatThrownBy {
+            ResponseHandler.handleList(
+                HttpRawResponse(200, """{"status":200,"data":{"id":"not-a-list"}}""", emptyMap()),
+                TestModel::class.java,
+            )
+        }.isInstanceOf(AssinafyException::class.java)
+            .hasMessageContaining("data must be an array")
     }
 }
