@@ -2,6 +2,40 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.0.1] - 2026-08-27
+
+### Fixed
+- Virtual assignments can now submit the contract-required empty signing item array after signer
+  data confirmation.
+- Assignment and template requests validate verification/notification coupling and digital
+  certificate step isolation before sending.
+- Custom API prefixes reject user information, query, and fragment components and resolve relative
+  paths without string-concatenation ambiguity.
+- The complete webhook event catalog is available through `WebhookEvent` constants.
+
+### Changed
+- Android Gradle Plugin 9.3.2, Temurin 25.0.4, and `setup-java` 6 are used by the verified build path.
+
+## [2.0.0] - 2026-08-21
+
+### Breaking changes
+- `DocumentListItem`, `DocumentUploadResponse`, `WorkspaceListItem`, and `TemplateListItem` are now
+  Kotlin aliases of their complete models; 1.x consumers must recompile and handle nullable
+  projection fields.
+- Construct clients through `AssinafyClient.create`. Account and public/signer traffic use separate
+  transports so long-lived credentials cannot reach public signing routes or cross-origin redirects.
+
+### Added
+- Typed resources for all current v1 account, assignment, authentication, document, field, signer,
+  signing, tag, template, user, and webhook operations.
+- Complete request/response models, user/account statistics (including digital-certificate counts),
+  safe read-only rate-limit retries, coroutine cancellation, and credential-redacted diagnostics.
+- API reference and Dokka documentation for the complete public surface.
+
+### Changed
+- Build baseline updated to stable Android API 37.0, Java 17 consumer bytecode, JDK 25 LTS, Gradle
+  9.5, Android Gradle Plugin 9.3 with built-in Kotlin, and OkHttp 5.5.
+
 ## [1.2.0] - 2026-07-20
 
 ### Added
@@ -19,10 +53,6 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
   deliveries, use `inactivate()` or overwrite the subscription with `register()`.
 
 ## [1.1.0] - 2026-06-05
-
-Production-readiness audit verified end-to-end against the live `https://sandbox.assinafy.com.br/v1`
-API. Every endpoint the SDK calls was confirmed against the live contract; no working functionality
-was removed.
 
 ### Fixed
 - **Consumer ProGuard/R8 rules now ship in the AAR.** The Gson keep rules were only wired via
@@ -67,8 +97,6 @@ was removed.
   and publishes a unique per-run `-SNAPSHOT` coordinate. Added Dependabot for Actions and Gradle.
 
 ## [1.0.2] - 2026-05-27
-
-Full audit against the live `https://api.assinafy.com.br/v1` contract.
 
 ### Fixed
 - **Duplicate-signer recovery.** `SignerResource.create` now treats the live duplicate-email error

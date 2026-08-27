@@ -7,7 +7,9 @@ package com.assinafy.sdk
  * @property apiKey API key sent as `X-Api-Key` only to the configured API origin.
  * @property token Bearer token sent as `Authorization` only to the configured API origin.
  * @property accountId Default account for account-scoped calls; individual methods may override it.
- * @property baseUrl Absolute HTTP(S) API root including `/v1`; defaults to production.
+ * @property baseUrl Full absolute HTTP(S) API prefix. Assinafy-hosted URLs must include `/v1`;
+ *   reverse proxies may use another path prefix. A trailing slash is accepted; user info, query,
+ *   and fragment components are rejected. Defaults to production.
  * @property webhookSecret Optional local HMAC secret used by `webhookVerifier`; never sent to the API.
  * @property timeoutMs Positive connect, read, and write timeout for each HTTP request, in milliseconds.
  * @property logger Optional SDK logging sink; `null` selects [Logger.NONE].

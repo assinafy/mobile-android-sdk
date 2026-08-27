@@ -29,7 +29,7 @@ class WebhookResource internal constructor(
     /**
      * Registers (replaces) the account's webhook subscription
      * (`PUT /accounts/{accountId}/webhooks/subscriptions`). When [RegisterWebhookRequest.events] is
-     * null/empty, [RegisterWebhookRequest.DEFAULT_EVENTS] is used.
+     * null, [RegisterWebhookRequest.DEFAULT_EVENTS] is used; an explicit empty list is preserved.
      *
      * @param request Destination URL, delivery contact, event IDs, and active state.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -43,7 +43,7 @@ class WebhookResource internal constructor(
         val body = mapOf(
             "url" to webhookUrl,
             "email" to webhookEmail,
-            "events" to (request.events?.takeIf { it.isNotEmpty() } ?: RegisterWebhookRequest.DEFAULT_EVENTS),
+            "events" to (request.events ?: RegisterWebhookRequest.DEFAULT_EVENTS),
             "is_active" to request.isActive,
         )
         logger.info("Registering webhook", mapOf("eventCount" to (request.events?.size ?: RegisterWebhookRequest.DEFAULT_EVENTS.size)))

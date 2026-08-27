@@ -1,12 +1,12 @@
 # Android SDK API reference
 
 This reference describes the public Kotlin surface and its Assinafy v1 wire contract. All network
-functions are `suspend` functions. Paths below include `/v1`; configure the client with a base URL
-that already ends in `/v1`. Request routes, query parameters, and bodies follow the 2026-08-21
-OpenAPI document unless a deployed-service compatibility is explicitly labelled. Response models
-also accept the explicitly labelled deployed/legacy superset described below.
+functions are `suspend` functions. Paths below include `/v1`; Assinafy-hosted base URLs must include
+that prefix. Request routes, query parameters, bodies, response fields, and authentication modes are
+listed for every supported operation. Labelled optional behaviors are retained for installations
+that expose them.
 
-For the operation-by-operation conformance ledger, see [API_COVERAGE.md](API_COVERAGE.md).
+See [Supported Assinafy v1 operations](API_COVERAGE.md) for the operation index.
 
 ## Transport, authentication, and errors
 
@@ -43,6 +43,16 @@ JSON responses use the envelope:
 {"status":200,"message":"OK","data":{}}
 ```
 
+Error responses use the same structure; `data` may contain field-specific details:
+
+```json
+{
+  "status": 422,
+  "message": "Validation failed",
+  "data": {"email": ["Email is invalid"]}
+}
+```
+
 The SDK retries HTTP 429 responses up to twice for GET, HEAD, and OPTIONS, honoring
 `Retry-After`/`X-Rate-Limit-Reset` with a 30-second cap. Mutation requests are not replayed. It then
 validates both the HTTP status and the envelope `status`, preserves the complete error envelope in
@@ -63,10 +73,27 @@ Failures are:
 Coroutine cancellation cancels the underlying OkHttp call and propagates cancellation; do not turn
 it into an automatic retry.
 
+### Low-level HTTP surface
+
+Most consumers should use `AssinafyClient`. The public transport types remain available for custom
+resource integration and diagnostics:
+
+| Type/member | Contract |
+|---|---|
+| `ApiHttpClient` | Suspend transport interface for JSON verbs, multipart uploads, raw signature upload, and binary GET. Paths are relative to the configured API prefix. |
+| `OkHttpApiClient(baseUrl, apiKey, token, timeoutMs)` | Default implementation. It URL-encodes query values, applies credentials only on the configured origin, retries only safe reads after 429, and returns `HttpRawResponse` without unwrapping it. |
+| `HttpRawResponse` | `statusCode:Int`, UTF-8 `body:String?`, and lower-cased `headers:Map<String,String>`. |
+| `ApiException.fromResponse(statusCode, responseData)` | Creates a typed exception from a parsed map, raw JSON/text, or empty body; extracts `message`/`error` when present and preserves the source in `responseData`. |
+
+The full API prefix may end in a trailing slash. It must not contain user information, a query, or
+a fragment. Credentials require HTTPS except on `localhost`, `127.0.0.1`, and `::1`.
+
 ## Client and resource map
 
-`AssinafyClient.create(config)` validates the URL and positive timeout. Credentials require HTTPS,
-except for loopback test servers. `apiKey` and `token` are mutually exclusive. The convenience
+`AssinafyClient.create(config)` validates the full API prefix and positive timeout. Assinafy-hosted
+prefixes include `/v1`; reverse proxies may use another path. A trailing slash is accepted, while
+user information, a query, or a fragment is rejected. Credentials require HTTPS except for loopback
+loopback development hosts. `apiKey` and `token` are mutually exclusive. The convenience
 `create(apiKey, accountId, baseUrl, webhookSecret, timeoutMs, logger)` builds the same client.
 
 | Property | Operations |
@@ -135,6 +162,12 @@ An Assinafy workspace is an API account. `notification_sender_type` accepts `"Us
 | `deleteLogo(accountId)` | `DELETE /v1/accounts/{accountId}/logo` | none | `Unit` |
 | `getStats(accountId, granularity, month)` | `GET /v1/accounts/{accountId}/stats` | `granularity=monthly\|daily`; `month=YYYY-MM` is required for daily | `List<DocumentStatsRow>` |
 
+Without `force`, deleting a workspace with an active paid subscription returns `400`; the response
+`restrictions` array identifies each blocker as
+`{"code":"ActivePaidSubscription"|"PendingDocuments","message":string,"account_ids":[string]}`.
+`PendingDocuments` appears only with `ActivePaidSubscription`. `force=true` cancels the subscription
+and deletes the workspace immediately.
+
 ## DocumentResource
 
 | Kotlin function | Exact request | Query/body | Return (`data`) |
@@ -149,17 +182,17 @@ An Assinafy workspace is an API account. `notification_sender_type` accepts `"Us
 | `thumbnail(documentId)` | `GET /v1/documents/{documentId}/thumbnail` | none | Raw image `ByteArray` |
 | `downloadPage(documentId, pageId)` | `GET /v1/documents/{documentId}/pages/{pageId}/download` | none | Raw page image `ByteArray` |
 | `activities(documentId)` | `GET /v1/documents/{documentId}/activities` | none | `List<DocumentActivity>` |
-| `delete(documentId)` | `DELETE /v1/documents/{documentId}` | none | `Unit` |
-| `rename(documentId, name)` | `PATCH /v1/documents/{documentId}` | `{"name":string}`; maximum 255 characters | `DocumentDetails` |
+| `delete(documentId)` | `DELETE /v1/documents/{documentId}` | none; allowed only when the status catalog reports `deletable=true` | `Unit` |
+| `rename(documentId, name)` | `PATCH /v1/documents/{documentId}` | `{"name":string}`; maximum 255 characters; only before assignment in `uploaded`/`metadata_ready` | `DocumentDetails` |
 | `createFromTemplate(templateId, signers, options, accountId)` | `POST /v1/accounts/{accountId}/templates/{templateId}/documents` | `CreateDocumentFromTemplateRequest`; function `signers` replaces `options.signers` | `DocumentDetails` |
 | `estimateCostFromTemplate(templateId, signers, accountId)` | `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `{"signers":[{"role_id":string,"verification_method":string?,"notification_methods":[string]?}]}` | `CostEstimate` |
 | `verify(hash)` | `GET /v1/documents/{documentSignatureHash}/verify` (public) | none | `DocumentVerification` |
 | `getPublic(documentId)` | `GET /v1/public/documents/{documentId}` (public) | none | `PublicDocumentInfo` |
 | `sendToken(documentId, email?, channel?)` | `PUT /v1/public/documents/{documentId}/send-token` (public) | OpenAPI: none or `{"email":string}`; explicit deployed compatibility: `{"recipient":string,"channel":"email"\|"whatsapp"}` | `Unit` |
-| `isFullySigned(documentId)` | Calls `details` | local derivation | `Boolean` |
+| `isFullySigned(documentId)` | Calls `details` | local derivation | `true` when every signer is complete or status is `certificated`; does not guarantee the certificated artifact is ready during `certificating` |
 | `getSigningProgress(documentId)` | Calls `details` | local derivation | `SigningProgress` |
 | `getStatuses()` | `GET /v1/documents/statuses` | none | `List<DocumentStatusInfo>` |
-| `confirmSignerData(documentId, accessCode, request)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | Official subset `full_name`, `email`, `government_id`; deprecated compatibility properties are sent only when explicitly populated | `Signer` |
+| `confirmSignerData(documentId, accessCode, request)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | Official subset `full_name`, `email`, `government_id`; deprecated compatibility properties are ignored | `Signer` |
 | `confirmSignerData(documentId, accessCode, data)` | Same endpoint; compatibility overload | Caller-supplied non-empty JSON object | `Signer` |
 | `listTags(documentId, accountId)` | `GET /v1/accounts/{accountId}/documents/{documentId}/tags` | none | `List<Tag>` |
 | `replaceTags(documentId, tagNames, accountId)` | `PUT /v1/accounts/{accountId}/documents/{documentId}/tags` | `{"tags":["tag_id",...]}`; parameter name is retained for source compatibility | `List<Tag>` |
@@ -167,13 +200,23 @@ An Assinafy workspace is an API account. `notification_sender_type` accepts `"Us
 | `detachTag(documentId, tagId, accountId)` | `DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}` | none | `Unit` |
 
 Uploads must be non-empty PDF content, have a `.pdf` name, begin with `%PDF-`, and be no larger than
-25 MiB. Artifact names are `original`, `certificated`, `certificate-page`, `pades`, and `bundle`;
-`bundle` is ZIP rather than PDF. Readiness stops at `metadata_ready`, `pending_signature`, or
-`certificated`, and fails immediately for terminal processing/rejection/expiration states.
+25 MiB; the service accepts at most 2,000 pages. Artifact names are `original`, `certificated`,
+`certificate-page`, `pades`, and `bundle`. The `pades` artifact exists only when the document has
+digital-certificate signers and contains their ICP-Brasil signatures plus the platform certification
+box. `bundle` is a ZIP containing the original,
+certificated, and certificate-page artifacts, plus PAdES when available. Readiness stops at
+`metadata_ready`, `pending_signature`, or `certificated`, and fails immediately for terminal
+processing/rejection/expiration states.
+
+`verify(hash)` always returns HTTP `200`. For an unknown hash or an unsigned document,
+`is_valid=false`, the other nullable certification details are null, and `message` explains why.
 
 The current OpenAPI multipart schema declares only `file`, which is exactly what the default
 `metadata=null` call sends. Supplying metadata explicitly opts into the deployed API's legacy `name`
 and `metadata` parts retained by earlier SDK releases.
+
+Rename responses use the server-normalized name: diacritics and unsupported characters can be
+removed or replaced.
 
 In 2.0, `DocumentListItem`, `DocumentUploadResponse`, `WorkspaceListItem`, and `TemplateListItem` are
 Kotlin type aliases of their complete models. Their distinct 1.x JVM classes no longer exist, so 1.x
@@ -221,8 +264,11 @@ current OpenAPI more precisely.
 | `uploadSignature(accessCode, type, imageData, contentType, reuse)` | `POST /v1/signature?signer-access-code=...&type=...&reuse=...` | Raw image body; current API specifies PNG | `Unit` |
 | `downloadSignature(accessCode, type)` | `GET /v1/signature/{type}?signer-access-code=...` | none | Raw `ByteArray` |
 
-Deprecated `cpf`/`metadata` create fields and `cpf` update are sent only for compatibility with older
-deployments; they are not part of the 2026-08-21 create-signer OpenAPI schema.
+Deprecated `cpf`/`metadata` create fields and `cpf` update are sent only when explicitly set; they
+are not part of the current create-signer OpenAPI schema.
+
+The service locks signer updates while verification is in progress. Changing an unverified email or
+WhatsApp number rotates the signer access and OTP codes; resend the notification before continuing.
 
 ## SignerDocumentResource
 
@@ -235,18 +281,21 @@ in a JSON body.
 | `self(accessCode)` | `GET /v1/signers/self?signer-access-code=...` | none | `SignerSelf` |
 | `getCurrent(signerId, accessCode)` | `GET /v1/signers/{signerId}/document?signer-access-code=...` | none | `DocumentDetails` |
 | `getAssignment(accessCode, hasAcceptedTerms)` | `GET /v1/sign?signer-access-code=...&has_accepted_terms=...` | none | `DocumentDetails` |
-| `sign(documentId, assignmentId, accessCode, entries)` | `POST /v1/documents/{documentId}/assignments/{assignmentId}?signer-access-code=...` | Array of `SignAssignmentItemRequest` | API result `Map<String,Any>` |
+| `sign(documentId, assignmentId, accessCode, entries)` | `POST /v1/documents/{documentId}/assignments/{assignmentId}?signer-access-code=...` | Collect: array of `SignAssignmentItemRequest`; confirmed virtual: exactly `[]` | API result `Map<String,Any>` |
 | `decline(documentId, assignmentId, accessCode, declineReason)` | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject?signer-access-code=...` | `{"decline_reason":string}` | `Unit` |
 | `signMultiple(documentIds, accessCode)` | `PUT /v1/signers/documents/sign-multiple?signer-access-code=...` | `{"document_ids":[string,...]}` | `Unit` |
 | `declineMultiple(documentIds, declineReason, accessCode)` | `PUT /v1/signers/documents/decline-multiple?signer-access-code=...` | `{"document_ids":[string,...],"decline_reason":string}` | `Unit` |
 | `verifyEmail(accessCode, VerifySignerEmailRequest)` | `POST /v1/verify?signer-access-code=...` | `{"verification-code":string}` | `Unit` |
-| `confirmData(documentId, accessCode, ConfirmSignerDataRequest)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | Subset `full_name`, `email`, `government_id` | `Signer` |
+| `confirmData(documentId, accessCode, ConfirmSignerDataRequest)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | Subset `full_name`, `email`, `government_id`; terms use `acceptTerms` | `Signer` |
 | `acceptTerms(accessCode)` | `PUT /v1/signers/accept-terms?signer-access-code=...` | none | `Unit` |
 | `uploadSignature(accessCode, imageData, type, reuse)` | `POST /v1/signature?signer-access-code=...&type=...&reuse=...` | Raw PNG bytes, `Content-Type: image/png` | `Unit` |
 | `downloadSignature(accessCode, type)` | `GET /v1/signature/{type}?signer-access-code=...` | none | Raw PNG `ByteArray` |
 | `list(signerId, accessCode, ListParams)` | `GET /v1/signers/{signerId}/documents?signer-access-code=...` | Query uses only `page`, `per-page` | `PaginatedResult<DocumentDetails>` |
 | `search(signerId, accessCode, search)` | `GET /v1/signers/{signerId}/documents/search?signer-access-code=...&search=...` | none | `PaginatedResult<DocumentDetails>` |
 | `download(signerId, documentId, artifactName)` | `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}` (public) | none and no access code | Raw PDF/ZIP `ByteArray` |
+
+For `DigitalCertificate`, call `confirmData` and `acceptTerms` before `getAssignment`; setting
+`has_accepted_terms` on `getAssignment` is too late for that verification gate.
 
 Signing item array:
 
@@ -260,6 +309,11 @@ Signing item array:
   }
 ]
 ```
+
+A virtual assignment has no items. Confirm signer data first and call `sign(..., emptyList())`, which
+sends the complete JSON body `[]`. A digital-certificate signer cannot call this operation. The API
+prose names certificate start/complete routes, but the current v1 OpenAPI does not define their
+paths, authentication, requests, or responses; the SDK therefore does not expose guessed methods.
 
 ## AssignmentResource
 
@@ -278,7 +332,7 @@ Create body:
 
 ```json
 {
-  "method": "virtual",
+  "method": "collect",
   "signers": [{
     "id": "signer_example",
     "verification_method": "Email",
@@ -302,9 +356,36 @@ Create body:
 }
 ```
 
+For an ordinary assignment, omit both channel fields to default to Email. `verification_method` is
+`Email`, `Whatsapp`, or `DigitalCertificate`; `notification_methods` may contain Email, WhatsApp, or
+both. Email and WhatsApp verification require that their matching channel be present; the other
+channel may also be included. Digital-certificate verification accepts either or both notification
+channels. WhatsApp delivery incurs its service cost and requires a paid subscription. A
+digital-certificate signer must be alone in its signing step. It also requires account entitlement
+and a CPF/CNPJ in the signer's `government_id` (set through `signers.update` after signer creation),
+costs two credits plus its selected notification channels, and completes through
+certificate-specific signing. Template creation and template estimates permit exactly one
+notification method when the list is supplied. The SDK validates the applicable channel and step
+rules before sending each request.
+
 `method` is `virtual` or `collect`. Create requires an ID for every signer. Steps, if present, form a
 contiguous positive sequence; signers on a shared step act in parallel. A digital-certificate signer
-must be alone in its step. Collect assignments require page/field entries.
+must be alone in its step. A virtual assignment may be created while the document is `uploaded`,
+`metadata_processing`, or `metadata_ready`; the service promotes it to `pending_signature` after
+metadata processing. A collect assignment requires `metadata_ready` because its fields target
+specific pages.
+
+Step 1 signers are notified when the assignment is created. A later step is notified only after every
+signer in all preceding steps has completed. Each assignment consumes one document from the plan
+allowance; when that allowance is exhausted, an extra document costs 1 credit. Email notifications
+cost 0 credits, WhatsApp notifications cost 0.45 credits each, and each digital-certificate signer
+costs 2 credits in addition to notification costs. The estimate uses breakdown code
+`SignatureDigitalCertificate` for that signer cost and may report `PendingPayment`,
+`InsufficientDocuments`, or `InsufficientCredits` in `blocking_reason`.
+
+In sandbox and stage environments, `listWhatsappNotifications` returns simulated messages without
+real delivery. Its button URLs contain signer access or verification codes; treat those URLs as
+credentials and do not log, persist, or publish them.
 
 ## FieldResource
 
@@ -322,6 +403,12 @@ must be alone in its step. Collect assignments require page/field entries.
 `UpdateFieldRequest.clearRegex=true` sends an explicit JSON null. It cannot be combined with a new
 `regex` value.
 
+The standard `cpf` type expects 11 digits. `cnpj` accepts 14 characters: positions 1–12 may contain
+digits or uppercase `A`–`Z`, while positions 13–14 are numeric check digits. API validation ignores
+punctuation. Field placement geometry uses pixels in the 150-DPI page image, measured from the
+upper-left corner. Keep each rectangle within the selected page's `width` and `height`; the API does
+not clamp out-of-bounds values.
+
 ## UserResource
 
 | Kotlin function | Exact request | Query/body | Return (`data`) |
@@ -331,10 +418,16 @@ must be alone in its step. Collect assignments require page/field entries.
 | `getNotificationPreferences()` | `GET /v1/users/self/notification-preferences` | none | `NotificationPreferences` |
 | `updateNotificationPreferences(request)` | `PUT /v1/users/self/notification-preferences` | Non-empty subset of the nine PascalCase preference keys | Complete `NotificationPreferences` |
 
+All nine document-notification preferences are always returned and default to `true`. They govern
+owner-facing email for the authenticated user across every account they belong to; setting a key to
+`false` disables that email in all of those accounts. Welcome, password-reset, invitation, and
+account-deletion emails are security/account messages and are not configurable here.
+
 ## TagResource
 
 Tag identifiers, not names, are attached to documents. Tag colors accept six hexadecimal
-characters, optionally prefixed by `#`; explicit color clearing is supported on update.
+characters, optionally prefixed by `#`; explicit color clearing is supported on update and cannot
+be combined with a replacement color.
 
 | Kotlin function | Exact request | Query/body | Return (`data`) |
 |---|---|---|---|
@@ -350,8 +443,13 @@ characters, optionally prefixed by `#`; explicit color clearing is supported on 
 | `list(ListParams, accountId)` | `GET /v1/accounts/{accountId}/templates` | Optional `search`, `page`, `per-page`; other `ListParams` fields are not sent | `PaginatedResult<Template>` |
 | `get(templateId, accountId)` | `GET /v1/accounts/{accountId}/templates/{templateId}` | none | `Template` |
 
-`get` is a retained live compatibility route and is not present in the 2026-08-21 OpenAPI snapshot.
+`get` is an optional service route retained for source compatibility; it is not one of the current
+OpenAPI operations.
 The list method deliberately ignores document-only `status`, `method`, `tags`, and `sort` fields.
+Template status is `uploading` while the upload is in progress, `uploaded` once transferred,
+`processing` while metadata is prepared, `ready` when the template can be used, or `failed` when
+processing fails. Creating a document from a template requires one signer entry for every template
+role, and each signer must already exist in the account.
 
 ## WebhookResource
 
@@ -365,8 +463,17 @@ The list method deliberately ignores document-only `status`, `method`, `tags`, a
 | `listDispatches(WebhookDispatchParams, accountId)` | Same endpoint | Optional `event`, `delivered`, Unix-second `from`/`to`, `page`, `per-page` | `PaginatedResult<WebhookDispatch>` |
 | `retryDispatch(dispatchId, accountId)` | `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry` | none | `WebhookDispatch` |
 
-If `events` is absent or empty, the SDK subscribes to its documented default event set. Retrieve the
-server's current event catalog with `listEventTypes()` before offering a selection to users.
+If `events` is `null`, the SDK subscribes to `RegisterWebhookRequest.DEFAULT_EVENTS`. An explicit
+empty list is sent unchanged. Retrieve the server's current event catalog with `listEventTypes()` before
+offering a selection to users.
+
+Assinafy delivers each event as an `application/json` HTTP `POST`; any `2xx` response succeeds. A
+failed event is attempted at most twice (the initial request and one retry after 3 seconds). After 10
+consecutive failed events, the circuit breaker pauses normal delivery and probes about 5% of events
+until one succeeds; `retryDispatch` forces another delivery. Dispatch history stores only the first
+2,000 characters of the endpoint response body. Use the payload `id` to deduplicate deliveries.
+`subject` and `object` are polymorphic resource objects, and receivers should accept unknown fields as
+forward-compatible additions.
 
 ### WebhookVerifier
 
@@ -396,13 +503,13 @@ webhook shared secret in an Android application.
 | `UpdateWorkspaceRequest` | `name:String?`, `notification_sender_type:String?`; compatibility `primary_color:String?`, `secondary_color:String?` |
 | `CreateSignerRequest` | `full_name:String`, `email:String?`, `whatsapp_phone_number:String?`; deprecated compatibility `cpf:String?`, `metadata:Map?` |
 | `UpdateSignerRequest` | `full_name:String?`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?`; deprecated compatibility `cpf:String?` |
-| `ConfirmSignerDataRequest` | `full_name:String?`, `email:String?`, `government_id:String?`; deprecated fields are not sent by `signerDocuments.confirmData` |
-| `SignerReference` | `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?`, `step:Int?` |
+| `ConfirmSignerDataRequest` | `full_name:String?`, `email:String?`, `government_id:String?`; deprecated `whatsapp_phone_number` and `has_accepted_terms` are not sent by `signerDocuments.confirmData` |
+| `SignerReference` | `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?` (Email, WhatsApp, or both), `step:Int?` |
 | `CreateAssignmentRequest` | `method:String`, `signers:List<SignerReference>`, `message:String?`, `expires_at:String?`, `copy_receivers:List<String>?` (signer IDs), `entries:List<AssignmentEntry>?` |
 | `AssignmentEntry` | `page_id:String`, `fields:List<AssignmentFieldPlacement>` |
 | `AssignmentFieldPlacement` | `signer_id:String`, `field_id:String`, `display_settings:DisplaySettings?` |
 | `DisplaySettings` | `left:Float`, `top:Float`, `width:Float`, `height:Float`, `fontSize:Float`, `fontFamily:String?`, `backgroundColor:String?` |
-| `TemplateSigner` | `role_id:String`, `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?`, `step:Int?` |
+| `TemplateSigner` | `role_id:String`, `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?` (exactly one when supplied), `step:Int?` |
 | `CreateDocumentFromTemplateRequest` | `signers:List<TemplateSigner>`, `name:String?`, `message:String?`, `expires_at:String?`, `editor_fields:List<TemplateEditorField>?`, `tags:List<String>?` (tag names; missing names are created and merged with template defaults) |
 | `TemplateEditorField` | `field_id:String`, `value:String` |
 | `CreateFieldRequest` | `name:String`, `type:String`, `regex:String?`, `is_required:Boolean?` |
@@ -419,13 +526,12 @@ webhook shared secret in an Android application.
 
 ## Response types
 
-The following tables are the complete serialized fields accepted by the public response models.
-Kotlin property names differ only where shown after `→`. Nullable fields use `?`; list defaults do
-not imply that the server always returns a key. The frozen OpenAPI omits `required` arrays from its
-response component schemas globally. The SDK keeps stable endpoint invariants such as resource IDs
-non-null, while fields that list, search, upload, and other endpoint projections are proven to omit
-are nullable. Labelled deployed/legacy response fields make decoding tolerant without changing the
-snapshot-exact request contract.
+The following tables list every serialized field accepted by the public response models. Kotlin
+property names differ only where shown after `→`. Nullable fields use `?`; list defaults do not
+imply that the server always returns a key. The OpenAPI response components omit global `required`
+arrays, so the SDK keeps stable endpoint invariants such as resource IDs non-null while projection
+fields that may be absent remain nullable. Labelled optional fields make decoding tolerant without
+changing standard requests.
 
 ### Authentication and account models
 
@@ -462,7 +568,7 @@ snapshot-exact request contract.
 | `WhatsappNotification` | `sent_at→sentAt:Long?`, `header:String?`, `body:String?`, `buttons:List<WhatsappNotificationButton>`, `phone_number→phoneNumber:String?`, `signer_id→signerId:String?` |
 | `WhatsappNotificationButton` | `text:String`, deployed response `url:String?` |
 
-Assignment item objects inside `Assignment.items` follow the API schema:
+`AssignmentItem` objects inside `Assignment.items` follow the API schema:
 `id:String?`, `signer:Signer?`, `field:FieldDefinition?`, `page:DocumentPage?`,
 `display_settings:Any?`, `value:Any?`, and `completed:Boolean`. The two dynamic values remain opaque
 because their JSON shapes vary by assignment and field type.
@@ -495,12 +601,32 @@ because their JSON shapes vary by assignment and field type.
 | `PaginatedResult<T>` | Local `data:List<T>`, `meta:PaginationMeta?` |
 | `PaginationMeta` | Local `currentPage:Int?`, `lastPage:Int?`, `perPage:Int?`, `total:Int?` populated from headers |
 
+Statistics default to monthly granularity and 12 zero-filled periods; daily queries return every day
+in the requested `YYYY-MM`. Rows are newest-first. Notification counters can exceed
+`signature_requests` because a signer notified through multiple channels counts once in each
+channel. The verification counters partition `signature_requests` and therefore sum to that total.
+
 ## Constants
 
+- `SdkConstants`: `VERSION`/`USER_AGENT`, production `DEFAULT_BASE_URL`, 30-second
+  `DEFAULT_TIMEOUT_MS`, 25 MiB `MAX_UPLOAD_BYTES`, 255-character
+  `MAX_DOCUMENT_NAME_LENGTH`, 2-second `DEFAULT_POLL_INTERVAL_MS`, and 120-second
+  `DEFAULT_MAX_WAIT_MS`.
 - `DocumentArtifact`: `original`, `certificated`, `certificate-page`, `pades`, `bundle`.
 - `SignatureType`: `signature`, `initial`.
 - `AssignmentMethod`: `virtual`, `collect`.
+- `DocumentStatus.CERTIFICATED`: `certificated`.
 - `DocumentStatus.READY`: `metadata_ready`, `pending_signature`, `certificated`.
 - `DocumentStatus.FAILED`: `failed`, `rejected_by_signer`, `rejected_by_user`, `expired`.
-- `WebhookEvent` contains the current SDK event IDs; treat `webhooks.listEventTypes()` as the
-  authoritative runtime catalog.
+- `SocialLoginProvider.GOOGLE`: `google`.
+- `DocumentStatsGranularity`: `MONTHLY` (`monthly`) and `DAILY` (`daily`).
+- `Logger.NONE`: no-op logger used by default.
+- `RegisterWebhookRequest.DEFAULT_EVENTS`: `document_ready`, `document_prepared`,
+  `signer_signed_document`, `signer_rejected_document`, `document_processing_failed`.
+- `WebhookEvent`: `document_uploaded`, `document_metadata_ready`, `document_prepared`,
+  `assignment_created`, `signature_requested`, `document_ready`, `signer_created`,
+  `signer_email_verified`, `signer_whatsapp_verified`, `signer_data_confirmed`,
+  `signer_signed_document`, `signer_viewed_document`, `signer_rejected_document`,
+  `user_rejected_document`, `document_processing_failed`, `template_created`,
+  `template_processed`, and `template_processing_failed`. Use `webhooks.listEventTypes()` to accept
+  future server events without an SDK update.

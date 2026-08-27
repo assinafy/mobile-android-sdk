@@ -34,21 +34,24 @@ class OkHttpApiClient private constructor(
     baseUrl: String,
 ) : ApiHttpClient {
 
-    private val baseUrl = normaliseBaseUrl(baseUrl)
+    private val baseUrl = parseBaseUrl(baseUrl)
 
     /**
      * Creates the default transport.
      *
-     * @param baseUrl Absolute Assinafy API root, including `/v1`.
-     * @param apiKey Optional API key; mutually exclusive with [token] at the client level.
+     * @param baseUrl Full absolute API prefix, including `/v1` on Assinafy-hosted URLs. A trailing
+     * slash is accepted; user info, query, and fragment components are rejected.
+     * @param apiKey Optional API key; mutually exclusive with [token].
      * @param token Optional Bearer token.
-     * @param timeoutMs Connect, read, and write timeout in milliseconds.
+     * @param timeoutMs Positive connect, read, and write timeout in milliseconds.
+     * @throws IllegalArgumentException for ambiguous credentials, an invalid URL or timeout, or
+     * credentials over non-loopback HTTP.
      */
     constructor(
         baseUrl: String,
         apiKey: String?,
         token: String?,
-        timeoutMs: Long = 30_000L,
+        timeoutMs: Long = SdkConstants.DEFAULT_TIMEOUT_MS,
     ) : this(
         client = buildClient(baseUrl, apiKey, token, timeoutMs),
         baseUrl = baseUrl,
@@ -130,7 +133,9 @@ class OkHttpApiClient private constructor(
     }
 
     private fun url(path: String, queryParams: Map<String, Any?> = emptyMap()): HttpUrl {
-        val builder = (baseUrl + path).toHttpUrl().newBuilder()
+        val builder = requireNotNull(baseUrl.resolve(path.removePrefix("/"))) {
+            "Path must be relative to the configured API root"
+        }.newBuilder()
         queryParams.forEach { (name, value) ->
             if (value != null) builder.addQueryParameter(name, value.toString())
         }
@@ -209,10 +214,28 @@ class OkHttpApiClient private constructor(
         private const val MAX_RETRIES = 2
         private const val MAX_RETRY_DELAY_MS = 30_000L
 
-        private fun normaliseBaseUrl(url: String): String = url.trim().trimEnd('/')
+        private fun parseBaseUrl(url: String): HttpUrl {
+            val parsed = url.trim().toHttpUrl()
+            require(
+                parsed.username.isEmpty() &&
+                    parsed.password.isEmpty() &&
+                    parsed.query == null &&
+                    parsed.fragment == null,
+            ) { "Base URL must not contain user info, a query, or a fragment" }
+            return (parsed.toString().trimEnd('/') + "/").toHttpUrl()
+        }
 
         private fun buildClient(baseUrl: String, apiKey: String?, token: String?, timeoutMs: Long): OkHttpClient {
-            val origin = normaliseBaseUrl(baseUrl).toHttpUrl()
+            val origin = parseBaseUrl(baseUrl)
+            require(apiKey.isNullOrBlank() || token.isNullOrBlank()) {
+                "Provide either an API key or a token, not both"
+            }
+            require(timeoutMs > 0) { "Timeout must be greater than zero" }
+            require(
+                (apiKey.isNullOrBlank() && token.isNullOrBlank()) ||
+                    origin.isHttps ||
+                    origin.host in LOOPBACK_HOSTS,
+            ) { "Credentials require an HTTPS base URL" }
             return OkHttpClient.Builder()
                 .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
@@ -239,5 +262,7 @@ class OkHttpApiClient private constructor(
         }
 
         internal fun forTesting(client: OkHttpClient, baseUrl: String): OkHttpApiClient = OkHttpApiClient(client, baseUrl, Unit)
+
+        private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
     }
 }

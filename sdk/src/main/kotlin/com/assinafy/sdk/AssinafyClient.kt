@@ -145,7 +145,9 @@ class AssinafyClient internal constructor(
          *
          * @param apiKey API key sent only to the configured API origin.
          * @param accountId Default account used by account-scoped resource methods.
-         * @param baseUrl API root, including `/v1`; credentials require HTTPS except on loopback.
+         * @param baseUrl Full API prefix, including `/v1` on Assinafy hosts. A trailing slash is
+         * accepted; user info, query, and fragment components are rejected. Credentials require
+         * HTTPS except on loopback.
          * @param webhookSecret Optional secret used only by [WebhookVerifier].
          * @param timeoutMs Positive per-request connect, read, and write timeout in milliseconds.
          * @param logger Optional logging sink; secrets and payload bodies are not logged by the SDK.
@@ -244,10 +246,14 @@ class AssinafyClient internal constructor(
                 throw ValidationException("Base URL must be an absolute HTTP(S) URL")
             }
             val scheme = uri.scheme?.lowercase()
-            if (scheme !in setOf("http", "https") || uri.host.isNullOrBlank()) {
+            val host = uri.host?.removeSurrounding("[", "]")?.lowercase()
+            if (scheme !in setOf("http", "https") || host.isNullOrBlank()) {
                 throw ValidationException("Base URL must be an absolute HTTP(S) URL")
             }
-            if ((hasApiKey || hasToken) && scheme != "https" && uri.host !in LOOPBACK_HOSTS) {
+            if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) {
+                throw ValidationException("Base URL must not contain user info, a query, or a fragment")
+            }
+            if ((hasApiKey || hasToken) && scheme != "https" && host !in LOOPBACK_HOSTS) {
                 throw ValidationException("Credentials require an HTTPS base URL")
             }
             if (config.timeoutMs <= 0) {

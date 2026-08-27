@@ -263,25 +263,17 @@ class AssignmentResource internal constructor(
             throw ValidationException("At least one field-placement entry is required for a collect assignment")
         }
         request.signers.forEach { signer ->
-            val verification = signer.verificationMethod
-            if (verification != null && verification !in VERIFICATION_METHODS) {
-                throw ValidationException("Unsupported verification method: $verification")
-            }
-            signer.notificationMethods?.let { methods ->
-                if (methods.isEmpty() || methods.any { it !in NOTIFICATION_METHODS }) {
-                    throw ValidationException("Notification methods must contain Email or Whatsapp")
-                }
-            }
+            ApiValidator.requireValidSignerChannels(
+                signer.verificationMethod,
+                signer.notificationMethods,
+                allowMultipleNotifications = true,
+            )
         }
         if (!estimate) {
             ApiValidator.requireValidSigningSteps(request.signers.map(SignerReference::step))
-            val stepCounts = request.signers.groupingBy { it.step ?: 1 }.eachCount()
-            if (request.signers.any {
-                    it.verificationMethod == "DigitalCertificate" && stepCounts.getValue(it.step ?: 1) > 1
-                }
-            ) {
-                throw ValidationException("A DigitalCertificate signer must be alone in its signing step")
-            }
+            ApiValidator.requireDigitalCertificateStepIsolation(
+                request.signers.map { it.verificationMethod to it.step },
+            )
             request.entries.orEmpty().forEach { entry ->
                 requireId(entry.pageId, "Assignment page ID")
                 ApiValidator.requireAtLeastOne(entry.fields, "assignment field")
@@ -307,7 +299,5 @@ class AssignmentResource internal constructor(
     companion object {
         private val RESEND_CHANNELS = setOf("email", "whatsapp")
         private val METHODS = setOf("virtual", "collect")
-        private val VERIFICATION_METHODS = setOf("Email", "Whatsapp", "DigitalCertificate")
-        private val NOTIFICATION_METHODS = setOf("Email", "Whatsapp")
     }
 }

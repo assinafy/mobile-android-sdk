@@ -3,7 +3,7 @@ package com.assinafy.sdk
 /** Stable SDK, endpoint, size, timeout, and polling defaults. */
 object SdkConstants {
     /** SDK release version included in [USER_AGENT]. */
-    const val VERSION = "2.0.0"
+    const val VERSION = BuildConfig.SDK_VERSION
 
     /** HTTP user-agent sent by the default transport. */
     const val USER_AGENT = "assinafy-android-sdk/$VERSION"
@@ -104,7 +104,7 @@ object WebhookEvent {
     /** A signer was notified of a signature request. */
     const val SIGNATURE_REQUESTED = "signature_requested"
 
-    /** A document became ready for signing. */
+    /** The final signer completed the document and its status became ready. */
     const val DOCUMENT_READY = "document_ready"
 
     /** A signer record was created. */
@@ -128,6 +128,18 @@ object WebhookEvent {
     /** A signer declined a document. */
     const val SIGNER_REJECTED_DOCUMENT = "signer_rejected_document"
 
+    /** An account user cancelled a document. */
+    const val USER_REJECTED_DOCUMENT = "user_rejected_document"
+
     /** Document processing ended in failure. */
     const val DOCUMENT_PROCESSING_FAILED = "document_processing_failed"
+
+    /** A reusable template was created. */
+    const val TEMPLATE_CREATED = "template_created"
+
+    /** Template processing completed and the template became ready. */
+    const val TEMPLATE_PROCESSED = "template_processed"
+
+    /** Template processing ended in failure. */
+    const val TEMPLATE_PROCESSING_FAILED = "template_processing_failed"
 }

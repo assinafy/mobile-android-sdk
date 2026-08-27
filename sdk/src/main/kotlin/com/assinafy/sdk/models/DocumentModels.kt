@@ -109,7 +109,7 @@ data class DocumentPage(
 )
 
 /**
- * Audit event recorded for a document.
+ * Activity event recorded for a document.
  *
  * @property id Stable numeric activity identifier.
  * @property event Machine-readable event name.
@@ -154,7 +154,7 @@ typealias DocumentUploadResponse = DocumentDetails
  * @property isClosed Whether further signatures are blocked.
  * @property declineReason Reason supplied when the document was declined.
  * @property declinedBy Signer who declined the document.
- * @property activities Audit events when expanded by the API.
+ * @property activities Document activity events when expanded by the API.
  */
 data class DocumentDetails(
     @SerializedName("resource") val resource: String? = null,

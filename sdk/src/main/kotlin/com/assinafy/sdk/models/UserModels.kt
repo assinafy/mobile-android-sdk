@@ -23,7 +23,10 @@ data class DocumentStatsQuery(
 )
 
 /**
- * One zero-filled period returned by `GET /users/self/stats`.
+ * One zero-filled period returned by `GET /users/self/stats` or an account stats endpoint. Monthly
+ * queries default to 12 periods and all series are newest-first. Notification counters can exceed
+ * [signatureRequests] because a signer notified through multiple channels counts once per channel;
+ * verification counters partition that total.
  *
  * @property period `YYYY-MM` for monthly results or `YYYY-MM-DD` for daily results.
  * @property documentsUploaded Documents uploaded during the period.

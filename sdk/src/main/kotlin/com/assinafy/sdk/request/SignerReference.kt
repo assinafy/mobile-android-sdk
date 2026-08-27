@@ -6,8 +6,12 @@ import com.google.gson.annotations.SerializedName
  * Reference to a signer within an assignment request.
  *
  * @property id Signer ID. Required when creating an assignment; optional for cost estimation.
- * @property verificationMethod e.g. `"Email"` or `"Whatsapp"`. If omitted the API infers it.
- * @property notificationMethods e.g. `["Email"]`. If omitted the API infers it from [verificationMethod].
+ * @property verificationMethod `"Email"`, `"Whatsapp"`, or `"DigitalCertificate"`. If omitted the
+ * API infers Email. Digital certificate requires an entitled account and the signer's CPF/CNPJ in
+ * `government_id` (set through `signers.update` after creation), and costs two credits plus the
+ * selected notification.
+ * @property notificationMethods Email, WhatsApp, or both. For non-certificate verification the
+ * matching channel must be included. Omit to use the API's Email default.
  * @property step Positive integer controlling signing order. Signers sharing a step sign in
  *   parallel; a step is activated only after the previous step completes. If supplied for any
  *   signer it must be supplied for all, forming a contiguous sequence starting at 1.

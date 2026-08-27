@@ -1,219 +1,263 @@
 # Assinafy Android SDK
 
 Coroutine-first Kotlin client for the
-[Assinafy v1 API](https://api.assinafy.com.br/v1/docs). The SDK covers all 89 operations in the
-current OpenAPI document, including account administration, documents, signers, signing,
-assignments, authentication, fields, users, tags, templates, and webhooks.
+[Assinafy v1 API](https://api.assinafy.com.br/v1/docs), covering account administration,
+documents, signers, signing, assignments, authentication, fields, users, tags, templates, and
+webhooks.
 
-- [Complete API reference](docs/API_REFERENCE.md)
-- [89/89 operation coverage](docs/API_COVERAGE.md)
-- [Build, unit, and sandbox testing](docs/TESTING.md)
+[API reference](docs/API_REFERENCE.md) documents every SDK method, request body, response model, and
+error.
 
 ## Requirements
 
-- Android API 21 or newer at runtime; compiled against Android API 36
+- Android API 21 or newer at runtime; compiled against stable Android 17 / API 37.0
 - Java 17-compatible consumer bytecode
-- JDK 25 LTS to run the build and an installed Java 17 toolchain for compilation
+- JDK 25 LTS to run the build, with a Java 17 toolchain for compilation
 - Kotlin coroutines
 
-The consuming application owns `targetSdk`. The AAR supplies the required Android `INTERNET`
-permission and consumer R8/ProGuard rules.
+The consuming application owns `targetSdk`. The AAR supplies the Android `INTERNET` permission and
+consumer R8/ProGuard rules.
 
 ## Installation
 
+To use the checked-out source immediately, publish it to Maven Local:
+
+```shell
+./gradlew :sdk:publishReleasePublicationToMavenLocal \
+  -Pversion=2.0.1-local-SNAPSHOT \
+  --no-daemon
+```
+
 ```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+    repositories {
+        mavenLocal()
+        google()
+        mavenCentral()
+    }
+}
+
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.0.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.0.1-local-SNAPSHOT")
 }
 ```
 
-If the artifact is resolved from GitHub Packages, add the package repository and read its token from
-the environment rather than committing credentials:
+Published releases use the same coordinate in GitHub Packages. Configure the repository only when
+that version exists there, and read credentials from the environment:
 
 ```kotlin
-repositories {
-    maven {
-        url = uri("https://maven.pkg.github.com/assinafy/mobile-android-sdk")
-        credentials {
-            username = providers.environmentVariable("GITHUB_ACTOR").orNull
-            password = providers.environmentVariable("GITHUB_TOKEN").orNull
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url = uri("https://maven.pkg.github.com/assinafy/mobile-android-sdk")
+            credentials {
+                username = providers.environmentVariable("GITHUB_ACTOR").orNull
+                password = providers.environmentVariable("GITHUB_TOKEN").orNull
+            }
         }
     }
 }
 ```
 
-## Migrating from 1.x to 2.0
+Never commit package credentials.
 
-Recompile every 1.x consumer against 2.0. `DocumentListItem`, `DocumentUploadResponse`,
-`WorkspaceListItem`, and `TemplateListItem` are now Kotlin type aliases of their complete models, so
-their distinct 1.x JVM classes were removed. Document fields omitted by list, search, or upload
-projections—including `accountId`, `tags`, `pages`, and `isClosed`—are nullable and must be checked
-before use.
+## Security and client configuration
 
-## Account-authenticated quick start
-
-Account API keys are long-lived secrets. For a distributed Android application, call account
-operations from your backend and expose only the minimum application-specific API to the device.
-The direct client shown here is appropriate for a trusted Android/JVM environment and local sandbox
-testing.
+An account API key is a long-lived backend credential. Do not ship it in a distributed APK, log it,
+or persist it on a device. Run account operations in a trusted backend or controlled JVM process,
+then expose only the application-specific result to the Android app. Signer-facing operations use a
+short-lived signer access code and a separate credentialless transport.
 
 ```kotlin
-val client = AssinafyClient.create(
-    AssinafyClientConfig(
-        apiKey = BuildConfig.ASSINAFY_API_KEY,
-        accountId = BuildConfig.ASSINAFY_ACCOUNT_ID,
-        baseUrl = "https://sandbox.assinafy.com.br/v1",
+fun accountClient(apiKey: String, accountId: String, sandbox: Boolean): AssinafyClient =
+    AssinafyClient.create(
+        apiKey = apiKey,
+        accountId = accountId,
+        baseUrl = if (sandbox) {
+            "https://sandbox.assinafy.com.br/v1"
+        } else {
+            SdkConstants.DEFAULT_BASE_URL
+        },
     )
-)
+```
 
-// Call suspend functions from a lifecycle-aware scope.
-viewModelScope.launch {
-    val documents = client.documents.list(ListParams(page = 1, perPage = 25))
-    documents.data.forEach { document -> println(document.name) }
+Use either `apiKey` (`X-Api-Key`) or `token` (`Authorization: Bearer`), never both. `baseUrl` is the
+full API prefix against which SDK routes are appended. Assinafy-hosted URLs include `/v1`; reverse
+proxies may use another path prefix. A trailing slash is accepted. User information, queries, and
+fragments are rejected, and credentials require HTTPS except for loopback hosts.
+Create one client per configuration and reuse it for the process lifetime so its OkHttp connection
+pools and dispatchers are reused.
+
+## Document signing flow
+
+### 1. Upload, resolve the signer, and request a virtual signature
+
+The high-level helper validates every signer, uploads the PDF, waits for metadata processing,
+reuses or creates each signer by exact email, and creates the assignment. Read Android assets with
+`use` so the stream is always closed.
+
+```kotlin
+suspend fun requestSignature(
+    client: AssinafyClient,
+    context: Context,
+    signerName: String,
+    signerEmail: String,
+): UploadAndRequestSignaturesResult {
+    val pdfBytes = context.assets.open("agreement.pdf").use { it.readBytes() }
+
+    return client.uploadAndRequestSignatures(
+        UploadAndRequestSignaturesRequest(
+            fileData = pdfBytes,
+            fileName = "agreement.pdf",
+            signers = listOf(
+                UploadAndRequestSignaturesRequest.SignerEntry(
+                    name = signerName,
+                    email = signerEmail,
+                ),
+            ),
+            message = "Please review and sign",
+        ),
+    )
 }
 ```
 
-Use either `apiKey` (`X-Api-Key`) or `token` (`Authorization: Bearer`), never both. Production uses
-`https://api.assinafy.com.br/v1` by default.
+The result contains the complete `DocumentDetails`, created `Assignment`, resolved signer IDs, and
+the assignment's per-signer `signingUrls`. Deliver the intended signing URL through a trusted
+channel. Do not log or persist the access code embedded in its final `/sign/{accessCode}` path;
+deployments can append recipient metadata in the query.
 
-## Upload and request signatures
+For collect fields, sequential signing, WhatsApp, or digital-certificate verification, use
+`signers.create`, `documents.upload`/`waitUntilReady`, and `assignments.create` directly. The exact
+payloads and verification/notification coupling rules are in the
+[API reference](docs/API_REFERENCE.md#assignmentresource).
+
+### 2. Complete a virtual signature in the signer-facing app
+
+Construct a credentialless client. Pass the access code, one-time verification code, and PNG bytes
+into the signing function explicitly; do not source them from long-lived application storage.
 
 ```kotlin
-val result = client.uploadAndRequestSignatures(
-    UploadAndRequestSignaturesRequest(
-        fileData = context.assets.open("agreement.pdf").readBytes(),
-        fileName = "agreement.pdf",
-        signers = listOf(
-            UploadAndRequestSignaturesRequest.SignerEntry(
-                name = "Example Signer",
-                email = "signer@example.com",
-            )
+val signerClient = AssinafyClient.create(
+    AssinafyClientConfig(baseUrl = "https://sandbox.assinafy.com.br/v1"),
+)
+
+suspend fun signVirtualDocument(
+    client: AssinafyClient,
+    signerAccessCode: String,
+    verificationCode: String,
+    signaturePng: ByteArray,
+): Map<String, Any> {
+    val signer = client.signerDocuments.self(signerAccessCode)
+    val document = client.signerDocuments.getAssignment(signerAccessCode)
+    val assignment = requireNotNull(document.assignment) { "Document has no assignment" }
+
+    client.signerDocuments.verifyEmail(
+        signerAccessCode,
+        VerifySignerEmailRequest(verificationCode),
+    )
+    client.signerDocuments.acceptTerms(signerAccessCode)
+    client.signerDocuments.confirmData(
+        document.id,
+        signerAccessCode,
+        ConfirmSignerDataRequest(
+            fullName = signer.fullName,
+            email = signer.email,
         ),
-        message = "Please review and sign",
     )
-)
+    client.signerDocuments.uploadSignature(
+        signerAccessCode = signerAccessCode,
+        imageData = signaturePng,
+        type = SignatureType.SIGNATURE,
+        reuse = true,
+    )
 
-println(result.document.id)
-println(result.assignment.id)
+    // Virtual assignments have no collect-field items, so the contract body is exactly [].
+    return client.signerDocuments.sign(
+        documentId = document.id,
+        assignmentId = assignment.id,
+        signerAccessCode = signerAccessCode,
+        entries = emptyList(),
+    )
+}
 ```
 
-The helper uploads a PDF, waits for metadata processing, reuses or creates signers by email, and
-creates a virtual assignment. For custom verification, sequential signing, collect fields, or
-transaction-specific recovery, call the resource methods directly.
+`verifyEmail` also handles the code delivered for the API's WhatsApp verification flow. Collect
+assignments pass their `SignAssignmentItemRequest` values instead of an empty list. The v1 OpenAPI
+does not define the certificate start/complete routes referenced by its digital-certificate prose,
+so this SDK does not guess those request or response schemas.
 
-## Public and signer-facing use
+### 3. Observe completion and download the certificated PDF
 
-A credentialless client can perform login/password-reset and public/signer operations. It cannot
-perform account operations.
+Use a backend webhook or poll account-side details until the status is `certificated`.
+`isFullySigned` can become true during the preceding `certificating` state, before the immutable
+artifact is ready:
 
 ```kotlin
-val publicClient = AssinafyClient.create(
-    AssinafyClientConfig(baseUrl = "https://sandbox.assinafy.com.br/v1")
-)
-
-val publicDocument = publicClient.documents.getPublic("doc_example")
-publicClient.documents.sendToken("doc_example", "signer@example.com")
-val verification = publicClient.documents.verify("document_signature_hash")
-
-val signer = publicClient.signerDocuments.self(signerAccessCode)
-val document = publicClient.signerDocuments.getAssignment(signerAccessCode)
-publicClient.signerDocuments.acceptTerms(signerAccessCode)
-publicClient.signerDocuments.verifyEmail(
-    signerAccessCode,
-    VerifySignerEmailRequest(verificationCode = oneTimeCode),
-)
-publicClient.signerDocuments.uploadSignature(
-    signerAccessCode = signerAccessCode,
-    imageData = pngBytes,
-    type = SignatureType.SIGNATURE,
-    reuse = true,
-)
+suspend fun downloadCompletedPdf(client: AssinafyClient, documentId: String): ByteArray {
+    val document = client.documents.details(documentId)
+    check(document.status == DocumentStatus.CERTIFICATED) { "Document is not certificated" }
+    return client.documents.download(documentId, DocumentArtifact.CERTIFICATED)
+}
 ```
 
-The SDK places `signer-access-code` in the query string exactly as required by the API. Signature
-uploads are raw PNG bodies, not JSON or multipart. Never log or persist the signer code.
+Webhooks belong on a backend, not an Android device. `WebhookVerifier` is an optional HMAC-SHA256
+helper only for gateways that supply a shared signature; `webhookSecret` is never sent to Assinafy.
 
-## Common operations
+## Responses and errors
+
+Assinafy JSON responses use an envelope such as:
+
+```json
+{"status":200,"message":"OK","data":{}}
+```
+
+The SDK validates HTTP and envelope status, unwraps `data` into the documented type, and reads
+pagination from `X-Pagination-*` headers. Binary endpoints return unmodified bytes. Network methods
+are cancellable `suspend` functions; cancellation cancels the underlying OkHttp call.
+
+Handle typed failures at the application boundary:
 
 ```kotlin
-// Signer CRUD
-val signer = client.signers.create(
-    CreateSignerRequest(
-        fullName = "Example Signer",
-        email = "signer@example.com",
-    )
-)
-
-// Sequential virtual assignment
-val assignment = client.assignments.create(
-    "doc_example",
-    CreateAssignmentRequest(
-        signers = listOf(
-            SignerReference(id = signer.id, step = 1),
-            SignerReference(id = "signer_second", step = 2),
-        ),
-        message = "Please sign in order",
-    )
-)
-
-// Tags: create first, then attach IDs—not names.
-val tag = client.tags.create("Contracts", color = "2072b9")
-client.documents.addTags("doc_example", listOf(tag.id))
-
-// Account sender identity and compatibility colors (six hex digits, no '#').
-client.workspaces.update(
-    "acc_example",
-    UpdateWorkspaceRequest(
-        notificationSenderType = "Account",
-        primaryColor = "2072b9",
-        secondaryColor = "f2f5f8",
-    )
-)
+try {
+    client.documents.details(documentId)
+} catch (error: ValidationException) {
+    showInputError(error.message)
+} catch (error: ApiException) {
+    reportApiStatus(error.statusCode) // Never log responseData without redaction.
+} catch (error: NetworkException) {
+    showRetryableNetworkError()
+}
 ```
 
-Every JSON response is an envelope such as
-`{"status":200,"message":"OK","data":{...}}`; the SDK unwraps `data` into a model when the schema
-is fixed and a documented `Map`/`Any` where the API payload is dynamic. List pagination is read from
-`X-Pagination-*` response headers and returned as `PaginatedResult.meta`. The complete
-request/response field tables, binary behavior, authentication mode, and error semantics are in the
-[API reference](docs/API_REFERENCE.md).
+Full request fields, response fields, authentication modes, and error semantics are centralized in
+the [API reference](docs/API_REFERENCE.md).
 
 ## Resource map
 
 | Resource | Purpose |
 |---|---|
 | `client.authentication` | Login, password management, social login, personal API keys |
-| `client.workspaces` | Accounts, themes, logos, account KPIs |
-| `client.documents` | Upload/search/download, public access, templates, document tags |
+| `client.workspaces` | Accounts, themes, logos, and account statistics |
+| `client.documents` | Upload, search, artifacts, public access, templates, and document tags |
 | `client.signers` | Account signer CRUD |
-| `client.signerDocuments` | Complete signer-facing document and signing flow |
-| `client.assignments` | Signature requests, pricing, expiration, resend history |
+| `client.signerDocuments` | Signer-facing documents, verification, signatures, and decisions |
+| `client.assignments` | Signature requests, pricing, expiration, resend, and delivery history |
 | `client.fields` | Field definitions, types, and validation |
-| `client.users` | Profile, cross-account KPIs, notification preferences |
+| `client.users` | Profile, cross-account statistics, and notification preferences |
 | `client.tags` | Tag CRUD |
 | `client.templates` | Template reads |
-| `client.webhooks` | Subscription and delivery history |
+| `client.webhooks` | Subscription and delivery management |
 
-All network methods are cancellable `suspend` functions. Handle `ValidationException`,
-`ApiException`, and `NetworkException` at the application boundary. Do not log raw
-`ApiException.responseData`; an API may echo sensitive request values in validation errors.
+## Migrating from 1.x to 2.0
 
-## Webhook verification
-
-Webhooks are delivered to a backend, not directly to an Android device. `WebhookVerifier` is an
-optional server-side HMAC-SHA256 helper for deployments whose gateway supplies a shared signature.
-Keep `webhookSecret` exclusively on the backend. See the
-[webhook section](docs/API_REFERENCE.md#webhookresource) for the exact behavior.
-
-## Verification
-
-```shell
-./gradlew :sdk:assembleRelease :sdk:test :sdk:lintDebug :sdk:ktlintCheck --no-daemon
-```
-
-Live sandbox tests are opt-in and secret-driven. See [TESTING.md](docs/TESTING.md) before enabling
-write tests.
+Recompile every 1.x consumer against 2.0. `DocumentListItem`, `DocumentUploadResponse`,
+`WorkspaceListItem`, and `TemplateListItem` are now Kotlin type aliases of their complete models, so
+their distinct 1.x JVM classes were removed. Fields omitted by list, search, or upload projections
+are nullable and must be checked before use.
 
 ## License
 

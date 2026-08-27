@@ -7,8 +7,11 @@ import com.google.gson.annotations.SerializedName
  *
  * @property roleId Template role identifier from [com.assinafy.sdk.models.Template.roles].
  * @property id Existing account signer identifier; required for document creation and omitted from estimates.
- * @property verificationMethod Identity-verification channel, such as `Email` or `Whatsapp`.
- * @property notificationMethods Channels used to notify the signer.
+ * @property verificationMethod `Email`, `Whatsapp`, or `DigitalCertificate`. Digital certificate
+ * requires an entitled account and the existing signer's CPF/CNPJ in `government_id` (set through
+ * `signers.update`), and costs two credits plus the selected notification.
+ * @property notificationMethods Exactly one Email or WhatsApp channel when supplied; it must match
+ * non-certificate verification. Omit to use the Email default.
  * @property step Optional one-based sequential-signing step; if any signer has a step, all must.
  */
 data class TemplateSigner(

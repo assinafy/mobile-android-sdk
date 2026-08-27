@@ -107,6 +107,8 @@ class SignerDocumentResource internal constructor(
      *   "is_closed": false
      * }
      * ```
+     * A `DigitalCertificate` signer must call [confirmData] and [acceptTerms] before this request;
+     * accepting terms only through this request's query is too late for that verification method.
      *
      * @param signerAccessCode One-time signer code sent as a query parameter.
      * @param hasAcceptedTerms Optional terms-acceptance value sent as `has_accepted_terms`.
@@ -130,7 +132,10 @@ class SignerDocumentResource internal constructor(
      *
      * Wire request:
      * `POST /documents/{documentId}/assignments/{assignmentId}?signer-access-code={code}` with a
-     * JSON-array body. Every [SignAssignmentItemRequest] is emitted in the exact API shape:
+     * JSON-array body. Virtual assignments must first call [confirmData], then send an empty array.
+     * Digital-certificate signers cannot use this operation; the service references separate
+     * certificate routes that are not defined by the current v1 OpenAPI. Every collect
+     * [SignAssignmentItemRequest] is emitted in the exact API shape:
      * ```json
      * [{"itemId":"item_123","fieldId":"field_123","pageId":"page_123","value":"Approved"}]
      * ```
@@ -140,7 +145,7 @@ class SignerDocumentResource internal constructor(
      * @param documentId Document ID placed in the URL path.
      * @param assignmentId Assignment ID placed in the URL path.
      * @param signerAccessCode One-time signer code sent only in the query.
-     * @param entries Non-empty assignment-item values sent as the complete JSON request body.
+     * @param entries Assignment-item values, or an empty list for a confirmed virtual assignment.
      * @return The API's signing-result object.
      */
     suspend fun sign(
@@ -151,7 +156,6 @@ class SignerDocumentResource internal constructor(
     ): Map<String, Any> {
         val did = requireId(documentId, "Document ID")
         val aid = requireId(assignmentId, "Assignment ID")
-        if (entries.isEmpty()) throw ValidationException("At least one assignment item is required")
         entries.forEachIndexed { index, entry ->
             requireId(entry.itemId, "Item ID at index $index")
             requireId(entry.fieldId, "Field ID at index $index")
@@ -273,7 +277,7 @@ class SignerDocumentResource internal constructor(
      *
      * Wire request:
      * `PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}`. Null fields are
-     * omitted from the complete request body; a full request is:
+     * omitted from the complete request body. Terms acceptance uses [acceptTerms]. A full request is:
      * ```json
      * {"full_name":"Example Signer","email":"signer@example.com",
      *  "government_id":"12345678900"}
@@ -285,7 +289,7 @@ class SignerDocumentResource internal constructor(
      * @param documentId Document whose signer data is being confirmed.
      * @param signerAccessCode One-time signer code sent only in the query.
      * @param request Optional official identity fields sent as JSON. Deprecated compatibility
-     * fields on the shared request type are deliberately not sent by this current endpoint.
+     * fields on the shared request type are not sent by this endpoint.
      * @return The updated signer record.
      */
     suspend fun confirmData(

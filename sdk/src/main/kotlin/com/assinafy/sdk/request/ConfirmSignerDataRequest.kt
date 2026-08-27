@@ -9,8 +9,10 @@ import com.google.gson.annotations.SerializedName
  * @property fullName Signer's full name as it should appear on the signed document.
  * @property email Confirmed email address.
  * @property governmentId Government-issued CPF or CNPJ recorded with the signature.
- * @property whatsappPhoneNumber Confirmed WhatsApp number (E.164, e.g. `+5548999990000`).
- * @property hasAcceptedTerms Whether the signer accepts the terms.
+ * @property whatsappPhoneNumber Legacy source-compatible input ignored by the SDK; update the
+ * account signer before signing.
+ * @property hasAcceptedTerms Legacy source-compatible input ignored by the SDK; call
+ * `acceptTerms` separately.
  */
 data class ConfirmSignerDataRequest(
     @SerializedName("full_name") val fullName: String? = null,

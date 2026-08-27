@@ -105,7 +105,9 @@ class SignerResource internal constructor(
     }
 
     /**
-     * Updates a signer (`PUT /accounts/{accountId}/signers/{signerId}`).
+     * Updates a signer (`PUT /accounts/{accountId}/signers/{signerId}`). The service rejects
+     * changes while verification is in progress. Changing an unverified email or WhatsApp number
+     * rotates its access/verification codes, so resend the notification before continuing.
      *
      * @param signerId Stable signer identifier.
      * @param request Mutable identity/contact fields; null fields are omitted.

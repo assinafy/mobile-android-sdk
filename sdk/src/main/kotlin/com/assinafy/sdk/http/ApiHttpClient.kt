@@ -2,8 +2,9 @@ package com.assinafy.sdk.http
 
 /**
  * Low-level transport abstraction over the Assinafy API. The default implementation is
- * [OkHttpApiClient]; tests provide their own. All methods are `suspend` and run off the main thread.
- * Paths are relative to the configured base URL; query values are URL-encoded by the implementation.
+ * [OkHttpApiClient]; tests provide their own. All methods are `suspend`; the default implementation
+ * uses asynchronous OkHttp calls. Paths are relative to the configured base URL; query values are
+ * URL-encoded by the implementation.
  */
 interface ApiHttpClient {
     /** GET [path] with optional [queryParams] (null values are dropped). */

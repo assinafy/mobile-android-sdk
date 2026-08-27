@@ -185,7 +185,9 @@ class WorkspaceResource internal constructor(
      * @param accountId Stable account identifier.
      * @param granularity `monthly`, `daily`, or `null` for the API default.
      * @param month Required `YYYY-MM` target when [granularity] is `daily`.
-     * @return Zero-filled KPI periods returned by the API.
+     * @return Zero-filled KPI periods, newest-first. Monthly queries default to 12 rows;
+     * notification counters can exceed total requests because a signer notified through multiple
+     * channels counts once per channel, while verification counters partition the request total.
      * @throws ValidationException for a blank account, unsupported granularity, or invalid/missing month.
      */
     suspend fun getStats(

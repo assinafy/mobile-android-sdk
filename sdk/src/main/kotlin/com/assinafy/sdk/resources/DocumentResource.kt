@@ -43,7 +43,7 @@ class DocumentResource internal constructor(
 
     /**
      * Uploads a PDF (`POST /accounts/{accountId}/documents`, multipart). Validated locally: must be a
-     * non-empty `.pdf` ≤ 25 MB.
+     * non-empty `.pdf` ≤ 25 MB. The service accepts at most 2,000 PDF pages.
      *
      * The current OpenAPI request contains only the `file` part. Supplying [metadata] opts into the
      * legacy sandbox extension that also sends `name` and `metadata` form fields.
@@ -249,7 +249,8 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Deletes a document (`DELETE /documents/{documentId}`).
+     * Deletes a document (`DELETE /documents/{documentId}`). The service permits deletion only in
+     * states whose `GET /documents/statuses` entry advertises `deletable=true`.
      *
      * @param documentId Stable document identifier.
      */
@@ -259,8 +260,10 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Renames a document (`PATCH /documents/{documentId}`, body `{"name": ...}`). The name is
-     * required and limited to 255 characters. Returns the updated document.
+     * Renames a document (`PATCH /documents/{documentId}`, body `{"name": ...}`). The service
+     * allows rename before assignment while status is `uploaded` or `metadata_ready`, and
+     * normalizes diacritics and unsupported characters. The name is required and limited to 255
+     * characters. Returns the updated document.
      *
      * @param documentId Stable document identifier.
      * @param name Non-blank replacement name of at most [SdkConstants.MAX_DOCUMENT_NAME_LENGTH] characters.
@@ -304,6 +307,11 @@ class DocumentResource internal constructor(
         signers.forEach {
             requireId(it.roleId, "Template role ID")
             requireId(it.id, "Template signer ID")
+            ApiValidator.requireValidSignerChannels(
+                it.verificationMethod,
+                it.notificationMethods,
+                allowMultipleNotifications = false,
+            )
         }
         ApiValidator.requireValidSigningSteps(signers.map(TemplateSigner::step))
         logger.info("Creating document from template", mapOf("templateId" to tmplId, "accountId" to accId))
@@ -331,6 +339,11 @@ class DocumentResource internal constructor(
         val accId = accountId(accountId)
         ApiValidator.requireAtLeastOne(signers, "template signer")
         val costSigners = signers.map { signer ->
+            ApiValidator.requireValidSignerChannels(
+                signer.verificationMethod,
+                signer.notificationMethods,
+                allowMultipleNotifications = false,
+            )
             buildMap<String, Any> {
                 put("role_id", requireId(signer.roleId, "Template role ID"))
                 signer.verificationMethod?.let { put("verification_method", it) }
@@ -416,7 +429,8 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Checks whether certification is complete or every assignment signer has completed.
+     * Checks whether every assignment signer has completed, including a certificated document.
+     * A `true` result can precede certification artifact readiness while status is `certificating`.
      *
      * @param documentId Stable document identifier.
      * @return `true` for `certificated` status or a non-empty fully completed assignment summary.
@@ -447,7 +461,7 @@ class DocumentResource internal constructor(
     /**
      * Lists the document status catalog (`GET /documents/statuses`).
      *
-     * @return Status identifiers, descriptions, and deletable flags.
+     * @return Status identifiers and optional deletable flags.
      */
     suspend fun getStatuses(): List<DocumentStatusInfo> {
         val result = callList("Failed to fetch document statuses", DocumentStatusInfo::class.java) {
@@ -457,8 +471,9 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Confirms a signer's contact data and terms acceptance using their access code.
-     * Body keys: `email`, `whatsapp_phone_number`, `has_accepted_terms`.
+     * Sends a legacy signer-data confirmation using the signer's access code. The supplied
+     * non-empty map is encoded unchanged; prefer the typed signer-facing resource for the current
+     * `full_name`, `email`, and `government_id` schema.
      *
      * @param documentId Stable document identifier.
      * @param signerAccessCode One-time signer code sent only in the query string.
@@ -484,7 +499,8 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Typed compatibility overload of [confirmSignerData]; unset fields are omitted.
+     * Typed compatibility overload of [confirmSignerData]; unset official fields are omitted and
+     * deprecated compatibility properties are ignored.
      *
      * @param documentId Stable document identifier.
      * @param signerAccessCode One-time signer code sent only in the query string.

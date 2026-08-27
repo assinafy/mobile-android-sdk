@@ -2,16 +2,20 @@ plugins {
     id("com.android.application")
 }
 
-val sdkVersion = providers.gradleProperty("version").orElse("2.0.0")
+val sdkVersion = providers.gradleProperty("version").orElse("2.0.1")
 
 android {
     namespace = "com.assinafy.smoke"
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
 
     defaultConfig {
         applicationId = "com.assinafy.smoke"
         minSdk = 21
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1"
     }
@@ -38,5 +42,7 @@ dependencies {
 }
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {
-    dependsOn(":sdk:publishReleasePublicationToMavenLocal")
+    if (providers.environmentVariable("ASSINAFY_REMOTE_PACKAGE_VERIFY").orNull != "true") {
+        dependsOn(":sdk:publishReleasePublicationToMavenLocal")
+    }
 }

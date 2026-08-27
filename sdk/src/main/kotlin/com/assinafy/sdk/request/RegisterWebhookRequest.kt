@@ -8,8 +8,8 @@ import com.google.gson.annotations.SerializedName
  *
  * @property url HTTPS (or HTTP) endpoint that will receive event POSTs.
  * @property email Contact email for delivery notifications.
- * @property events Event ids to subscribe to (see [WebhookEvent]). When `null` or empty the SDK
- *   substitutes [DEFAULT_EVENTS].
+ * @property events Event ids to subscribe to (see [WebhookEvent]). `null` selects [DEFAULT_EVENTS];
+ *   an explicit empty list is sent unchanged.
  * @property isActive Whether the subscription is active on registration.
  */
 data class RegisterWebhookRequest(
@@ -20,7 +20,7 @@ data class RegisterWebhookRequest(
 ) {
     /** Standard event selection used when a registration does not provide one. */
     companion object {
-        /** Default subscription used when [events] is null/empty. */
+        /** Default subscription used when [events] is null. */
         val DEFAULT_EVENTS: List<String> = listOf(
             WebhookEvent.DOCUMENT_READY,
             WebhookEvent.DOCUMENT_PREPARED,

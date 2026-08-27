@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
+import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.Tag
 
@@ -40,7 +41,7 @@ class TagResource internal constructor(
      * @param color Optional six-digit hexadecimal value, with or without a leading `#`.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Created tag.
-     * @throws com.assinafy.sdk.exceptions.ValidationException for an invalid account, name, or color.
+     * @throws ValidationException for an invalid account, name, or color.
      */
     suspend fun create(name: String, color: String? = null, accountId: String? = null): Tag {
         val accId = accountId(accountId)
@@ -65,7 +66,7 @@ class TagResource internal constructor(
      * @param clearColor Whether to send an explicit JSON `null` and remove the current color.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Complete updated tag.
-     * @throws com.assinafy.sdk.exceptions.ValidationException for an empty update or invalid input.
+     * @throws ValidationException for an empty update, conflicting color options, or invalid input.
      */
     suspend fun update(
         tagId: String,
@@ -77,7 +78,10 @@ class TagResource internal constructor(
         val accId = accountId(accountId)
         val id = requireId(tagId, "Tag ID")
         if (name == null && color == null && !clearColor) {
-            throw com.assinafy.sdk.exceptions.ValidationException("At least one tag field is required")
+            throw ValidationException("At least one tag field is required")
+        }
+        if (clearColor && color != null) {
+            throw ValidationException("Set color or clearColor, not both")
         }
         val tagName = name?.let(::normalizeName)
         validateColor(color)
@@ -113,14 +117,14 @@ class TagResource internal constructor(
     private fun normalizeName(value: String): String {
         val name = requireId(value, "Tag name").replace(Regex("\\s+"), " ")
         if (name.length > 64) {
-            throw com.assinafy.sdk.exceptions.ValidationException("Tag name must not exceed 64 characters")
+            throw ValidationException("Tag name must not exceed 64 characters")
         }
         return name
     }
 
     private fun validateColor(value: String?) {
         if (value != null && !COLOR.matches(value)) {
-            throw com.assinafy.sdk.exceptions.ValidationException("Tag color must be a six-character hex value")
+            throw ValidationException("Tag color must be a six-character hex value")
         }
     }
 

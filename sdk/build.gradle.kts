@@ -7,9 +7,9 @@ plugins {
 
 group = "com.assinafy"
 // Honor a release-automation -Pversion override and otherwise use the released version.
-version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.0.0"
+version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.0.1"
 
-val okHttpVersion = "5.4.0"
+val okHttpVersion = "5.5.0"
 val gsonVersion = "2.14.0"
 val coroutinesVersion = "1.11.0"
 val junitVersion = "6.1.3"
@@ -17,11 +17,16 @@ val assertjVersion = "3.27.7"
 
 android {
     namespace = "com.assinafy.sdk"
-    compileSdk = 36
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 0
+        }
+    }
     buildToolsVersion = "36.0.0"
 
     defaultConfig {
         minSdk = 21
+        buildConfigField("String", "SDK_VERSION", "\"$version\"")
         // No targetSdk here: a library does not own it — the consuming app sets its own targetSdkVersion.
         // consumerProguardFiles ships the Gson keep rules INSIDE the published AAR so they are applied
         // during the consuming app's R8 pass — without this, minified release apps strip model fields.
@@ -32,6 +37,10 @@ android {
             getDefaultProguardFile("proguard-android-optimize.txt"),
             "proguard-rules.pro",
         )
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {
@@ -48,8 +57,8 @@ android {
     lint {
         abortOnError = true
         warningsAsErrors = true
-        // API 37 and OkHttp 5.5 require the Android 17 preview. Gradle 9.5 is AGP 9.3's tested
-        // baseline. Dependabot tracks version changes without weakening every other lint warning.
+        // Gradle 9.5 is AGP 9.3's tested baseline. Dependabot tracks version changes without
+        // weakening every other lint warning.
         disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable")
     }
 }
@@ -61,7 +70,13 @@ dokka {
         failOnWarning.set(true)
     }
     dokkaSourceSets.configureEach {
+        includes.from("Module.md")
         reportUndocumented.set(true)
+        sourceLink {
+            localDirectory.set(file("src/main/kotlin"))
+            remoteUrl("https://github.com/assinafy/mobile-android-sdk/tree/main/sdk/src/main/kotlin")
+            remoteLineSuffix.set("#L")
+        }
     }
 }
 

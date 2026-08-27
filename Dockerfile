@@ -1,4 +1,4 @@
-FROM eclipse-temurin:25.0.3_9-jdk-noble@sha256:e94f1dc880339ab3884b69176b79c8dc4124b722e059c7ff7f0bf53b603a46f8
+FROM eclipse-temurin:25.0.4_7-jdk-noble@sha256:534968c051301957beae735e7ba1db54d99ddecf08746d3b9d4f318cc132dbc3
 
 ARG ANDROID_COMMAND_LINE_TOOLS_VERSION=16111833
 ARG ANDROID_COMMAND_LINE_TOOLS_SHA256=0877a1d048fe4a24efe2eff536ca4223f7adeb58648bb81909d33c446918cfa8
@@ -28,7 +28,8 @@ RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
 RUN android sdk install \
         "build-tools/36.0.0" \
         "platform-tools" \
-        "platforms/android-36"
+        "platforms/android-37.0" \
+    && test -f "${ANDROID_HOME}/platforms/android-37.0/android.jar"
 
 WORKDIR /app
 COPY . .

@@ -3,6 +3,9 @@ package com.assinafy.sdk.util
 import com.assinafy.sdk.exceptions.ValidationException
 
 internal object ApiValidator {
+    private val verificationMethods = setOf("Email", "Whatsapp", "DigitalCertificate")
+    private val notificationMethods = setOf("Email", "Whatsapp")
+
     fun requireNonBlank(value: String?, name: String): String {
         if (value.isNullOrBlank()) {
             throw ValidationException("$name is required")
@@ -36,6 +39,38 @@ internal object ApiValidator {
         val distinct = values.distinct().sorted()
         if (distinct.withIndex().any { (index, value) -> value != index + 1 }) {
             throw ValidationException("Signing steps must form a contiguous sequence starting at 1")
+        }
+    }
+
+    /** Validates the API's signer verification/notification inference and coupling rules. */
+    fun requireValidSignerChannels(
+        verification: String?,
+        notifications: List<String>?,
+        allowMultipleNotifications: Boolean,
+    ) {
+        if (verification != null && verification !in verificationMethods) {
+            throw ValidationException("Unsupported verification method: $verification")
+        }
+        if (notifications == null) return
+        if (notifications.isEmpty() || notifications.any { it !in notificationMethods }) {
+            throw ValidationException("Notification methods must contain Email or Whatsapp")
+        }
+        if (!allowMultipleNotifications && notifications.size != 1) {
+            throw ValidationException("Exactly one notification method (Email or Whatsapp) is required")
+        }
+        if (verification != null && verification != "DigitalCertificate" && verification !in notifications) {
+            throw ValidationException("Verification and notification methods must match")
+        }
+    }
+
+    /** Requires every digital-certificate signer to be the only signer in its signing step. */
+    fun requireDigitalCertificateStepIsolation(signers: List<Pair<String?, Int?>>) {
+        val stepCounts = signers.groupingBy { it.second ?: 1 }.eachCount()
+        if (signers.any { (verification, step) ->
+                verification == "DigitalCertificate" && stepCounts.getValue(step ?: 1) > 1
+            }
+        ) {
+            throw ValidationException("A DigitalCertificate signer must be alone in its signing step")
         }
     }
 }

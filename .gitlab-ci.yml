@@ -1,8 +1,9 @@
-image: eclipse-temurin:25.0.3_9-jdk-noble@sha256:e94f1dc880339ab3884b69176b79c8dc4124b722e059c7ff7f0bf53b603a46f8
+image: eclipse-temurin:25.0.4_7-jdk-noble@sha256:534968c051301957beae735e7ba1db54d99ddecf08746d3b9d4f318cc132dbc3
 
 stages:
   - verify
   - integration
+  - release
 
 variables:
   ANDROID_HOME: "$CI_PROJECT_DIR/.android-sdk"
@@ -15,7 +16,7 @@ variables:
 default:
   interruptible: true
   cache:
-    key: gradle-9.5-android-36
+    key: gradle-9.5-agp-9.3.2-android-37.0
     paths:
       - .gradle-ci-home/caches/
       - .gradle-ci-home/wrapper/
@@ -33,7 +34,8 @@ default:
         mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
         rm /tmp/android-command-line-tools.zip
       fi
-    - '"$ANDROID_HOME/cmdline-tools/latest/bin/android" sdk install "build-tools/36.0.0" "platform-tools" "platforms/android-36"'
+    - '"$ANDROID_HOME/cmdline-tools/latest/bin/android" sdk install "build-tools/36.0.0" "platform-tools" "platforms/android-37.0"'
+    - 'test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"'
 
 verify:
   stage: verify
@@ -48,6 +50,7 @@ verify:
       :sdk:dokkaGeneratePublicationHtml
       :sdk:publishReleasePublicationToMavenLocal
       :consumer-smoke:assembleRelease
+      -Pversion=2.0.1-ci-SNAPSHOT
       --no-daemon
       --stacktrace
   artifacts:
@@ -78,9 +81,11 @@ live-sandbox:
     ASSINAFY_BASE_URL: "https://sandbox.assinafy.com.br/v1"
     ASSINAFY_TEST_EMAIL: "$ASSINAFY_SANDBOX_TEST_EMAIL"
     ASSINAFY_TEST_EMAIL_2: "$ASSINAFY_SANDBOX_TEST_EMAIL_2"
+    ASSINAFY_SIGNER_ACCESS_CODE: "$ASSINAFY_SANDBOX_SIGNER_ACCESS_CODE"
     ASSINAFY_REQUIRE_LIVE: "true"
-    ASSINAFY_LIVE_WRITES: "false"
+    ASSINAFY_LIVE_WRITES: "true"
   rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: manual
@@ -101,3 +106,29 @@ live-sandbox:
       - sdk/build/test-results/testDebugUnitTest/
     reports:
       junit: sdk/build/test-results/testDebugUnitTest/TEST-*.xml
+
+publish-release:
+  stage: release
+  timeout: 30 minutes
+  interruptible: false
+  resource_group: assinafy-release
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
+    - when: never
+  script:
+    - release_version="${CI_COMMIT_TAG#v}"
+    - >-
+      ./gradlew
+      :sdk:testDebugUnitTest
+      :sdk:publishReleasePublicationToGitHubPackagesRepository
+      -Pversion="$release_version"
+      --no-daemon
+      --stacktrace
+    - >-
+      ASSINAFY_REMOTE_PACKAGE_VERIFY=true
+      ./gradlew
+      :consumer-smoke:assembleRelease
+      -Pversion="$release_version"
+      --refresh-dependencies
+      --no-daemon
+      --stacktrace
