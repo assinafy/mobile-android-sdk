@@ -1,9 +1,10 @@
 # Assinafy v1 API coverage
 
-This SDK covers every operation in the Assinafy v1 OpenAPI document fetched on **2026-08-21** from
+This SDK covers every operation in the Assinafy v1 OpenAPI document published at
 [`https://api.assinafy.com.br/v1/docs/openapi.json`](https://api.assinafy.com.br/v1/docs/openapi.json).
 
 - OpenAPI SHA-256: `47fe244e05d7acd9cef0561da4b8c042e1eb549b015f731233475093b5602087`
+- Document unchanged between the 2026-08-21 and 2026-08-27 fetches
 - Paths: 67
 - Operations: **89 covered / 89 documented**
 - API base URL: `https://api.assinafy.com.br/v1`
@@ -170,11 +171,26 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 ## Retained compatibility route
 
 `templates.get(templateId, accountId)` calls
-`GET /v1/accounts/{accountId}/templates/{templateId}`. This live Assinafy route predates the
-2026-08-21 OpenAPI snapshot and is retained for source and deployed-service compatibility. It is
-not counted among the 89 OpenAPI operations. No other undocumented HTTP route is added by the SDK.
+`GET /v1/accounts/{accountId}/templates/{templateId}`. The route is absent from the OpenAPI document
+but answers `200` with the complete template — pages, roles, and tags — on the deployed service, so
+it is retained. It is not counted among the 89 OpenAPI operations. No other undocumented HTTP route
+is added by the SDK.
 
-The SDK also retains seven deployed-service wire compatibilities without adding operations:
+## Where the deployed service differs from the schema
+
+One operation's published request schema does not match the deployed service, verified against
+production on 2026-08-27:
+
+| Operation | Schema | Deployed service |
+|---|---|---|
+| `PUT /v1/public/documents/{documentId}/send-token` | Optional `{"email":string}` | `{"recipient":string,"channel":"email"\|"whatsapp"}`; both keys required — the schema body answers `400 O atributo "channel" é obrigatório.` |
+
+`documents.sendToken` sends the deployed contract, defaulting `channel` to `email`.
+
+## Retained compatibility behavior
+
+These are opt-in wire extensions kept for older deployments. None adds an operation, and none is on
+the default request path:
 
 - document upload adds multipart `name` and JSON-string `metadata` beside the OpenAPI `file` part
   only when the caller explicitly supplies metadata;
@@ -184,9 +200,9 @@ The SDK also retains seven deployed-service wire compatibilities without adding 
   null or blank to clear an expiration on deployments that support that extension;
 - notification resend adds the deployed API's `channel` JSON body only when the caller explicitly
   passes that compatibility parameter;
-- public token delivery supports the deployed `recipient`/`channel` body explicitly and as a
-  narrowly gated retry when the server rejects the OpenAPI `email` body for those missing fields;
-- document tag mutations pass the supplied strings unchanged: use IDs for the current OpenAPI, or
-  names only when targeting an older deployment that still requires its legacy tag-name contract;
+- document tag mutations pass the supplied strings unchanged. The schema documents tag IDs; the
+  deployed service also accepts a tag name and creates the tag if it does not exist yet;
 - account create/update may send the deprecated six-digit `primary_color` and `secondary_color`
-  fields when callers explicitly use them.
+  fields when callers explicitly use them;
+- `signers.create` may send the deprecated `cpf` and `metadata` fields when callers explicitly use
+  them; set an official identity document through `signers.update(governmentId = ...)` instead.

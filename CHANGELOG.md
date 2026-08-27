@@ -2,6 +2,24 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.0.2] - 2026-08-27
+
+### Fixed
+- `documents.sendToken` sends the `recipient` and `channel` pair the service requires. The published
+  schema shows an optional `{"email": ...}` body, which the service rejects, so a call that supplied
+  an address needed a second request and a call without one could not succeed. `channel` defaults to
+  `email`.
+- `assignments.create` and `assignments.estimateCost` accept exactly one notification method per
+  signer, applying the same verification/notification coupling rules already enforced for documents
+  created from a template.
+- `documents.waitUntilReady` returns once a document reaches `certificating` instead of polling to
+  its timeout; `DocumentStatus.READY` now lists every status from which metadata processing cannot
+  advance further.
+
+### Changed
+- Continuous integration verifies with a fixed placeholder version, so cutting a release no longer
+  requires editing the pipeline definitions.
+
 ## [2.0.1] - 2026-08-27
 
 ### Fixed

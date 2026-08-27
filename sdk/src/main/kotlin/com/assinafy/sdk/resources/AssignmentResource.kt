@@ -263,11 +263,7 @@ class AssignmentResource internal constructor(
             throw ValidationException("At least one field-placement entry is required for a collect assignment")
         }
         request.signers.forEach { signer ->
-            ApiValidator.requireValidSignerChannels(
-                signer.verificationMethod,
-                signer.notificationMethods,
-                allowMultipleNotifications = true,
-            )
+            ApiValidator.requireValidSignerChannels(signer.verificationMethod, signer.notificationMethods)
         }
         if (!estimate) {
             ApiValidator.requireValidSigningSteps(request.signers.map(SignerReference::step))

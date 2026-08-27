@@ -14,13 +14,16 @@ import com.assinafy.sdk.request.UpdateWorkspaceRequest
 
 /**
  * Workspace (account) management. A "workspace" and an "account" are the same API entity.
+ *
+ * Unlike the account-scoped resources, every method here names its target account explicitly:
+ * [list] spans all accounts the credential can reach, and [delete] is irreversible, so this resource
+ * deliberately has no default-account fallback.
  * API and transport failures use the SDK's typed exception hierarchy.
  */
 class WorkspaceResource internal constructor(
     http: ApiHttpClient,
-    defaultAccountId: String? = null,
     logger: Logger = NoOpLogger,
-) : BaseResource(http, defaultAccountId, logger) {
+) : BaseResource(http, logger = logger) {
 
     /**
      * Creates a workspace (`POST /accounts`).

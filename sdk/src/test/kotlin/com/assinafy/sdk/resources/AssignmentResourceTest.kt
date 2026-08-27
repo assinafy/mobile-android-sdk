@@ -104,6 +104,46 @@ class AssignmentResourceTest {
     }
 
     @Test
+    fun `create enforces the documented one-notification-method coupling rule`() {
+        val mock = MockApiHttpClient()
+        val resource = AssignmentResource(mock, "acc")
+
+        assertThatThrownBy {
+            runBlocking {
+                resource.create(
+                    "doc-1",
+                    CreateAssignmentRequest(
+                        signers = listOf(
+                            SignerReference(id = "s1", notificationMethods = listOf("Email", "Whatsapp")),
+                        ),
+                    ),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("Exactly one notification method")
+
+        assertThatThrownBy {
+            runBlocking {
+                resource.create(
+                    "doc-1",
+                    CreateAssignmentRequest(
+                        signers = listOf(
+                            SignerReference(
+                                id = "s1",
+                                verificationMethod = "Email",
+                                notificationMethods = listOf("Whatsapp"),
+                            ),
+                        ),
+                    ),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("Verification and notification methods must match")
+
+        assertThat(mock.calls).isEmpty()
+    }
+
+    @Test
     fun `create rejects every signer without an id`() {
         assertThatThrownBy {
             runBlocking {

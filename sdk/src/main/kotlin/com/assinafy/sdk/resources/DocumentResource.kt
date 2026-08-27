@@ -5,7 +5,6 @@ import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.SdkConstants
-import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.DocumentActivity
@@ -307,11 +306,7 @@ class DocumentResource internal constructor(
         signers.forEach {
             requireId(it.roleId, "Template role ID")
             requireId(it.id, "Template signer ID")
-            ApiValidator.requireValidSignerChannels(
-                it.verificationMethod,
-                it.notificationMethods,
-                allowMultipleNotifications = false,
-            )
+            ApiValidator.requireValidSignerChannels(it.verificationMethod, it.notificationMethods)
         }
         ApiValidator.requireValidSigningSteps(signers.map(TemplateSigner::step))
         logger.info("Creating document from template", mapOf("templateId" to tmplId, "accountId" to accId))
@@ -339,11 +334,7 @@ class DocumentResource internal constructor(
         val accId = accountId(accountId)
         ApiValidator.requireAtLeastOne(signers, "template signer")
         val costSigners = signers.map { signer ->
-            ApiValidator.requireValidSignerChannels(
-                signer.verificationMethod,
-                signer.notificationMethods,
-                allowMultipleNotifications = false,
-            )
+            ApiValidator.requireValidSignerChannels(signer.verificationMethod, signer.notificationMethods)
             buildMap<String, Any> {
                 put("role_id", requireId(signer.roleId, "Template role ID"))
                 signer.verificationMethod?.let { put("verification_method", it) }
@@ -383,49 +374,34 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Sends the public signing token. The OpenAPI request is empty or `{"email":"..."}`. Passing
-     * [channel] explicitly uses the deployed compatibility body `{"recipient":"...","channel":
-     * "email|whatsapp"}`. The documented email request is retried in that form only when a 400/422
-     * response specifically reports a missing `channel` or `recipient`.
+     * Sends a one-time access token for a public document.
+     *
+     * Wire request: `PUT /public/documents/{documentId}/send-token` with no credential and the
+     * complete body `{"recipient":"signer@example.com","channel":"email"}`. The service requires
+     * both keys and answers `400` when either is missing, so the SDK always sends both. The
+     * response is the bare success envelope `{"status":200,"message":"..."}`, returned as [Unit].
      *
      * @param documentId Stable public document identifier.
-     * @param email Optional validated destination; omit it to use the document's configured recipient.
-     * @param channel Optional deployed-service `email` or `whatsapp` delivery channel.
-     * @throws ValidationException for a blank document ID, invalid email/channel, or missing explicit recipient.
+     * @param email Destination for [channel]: an email address for `email`, or the signer's phone
+     * number for `whatsapp`. Required; only the `email` channel is format-validated.
+     * @param channel Delivery channel, `email` (default) or `whatsapp`.
+     * @throws ValidationException for a blank document ID or recipient, an unsupported channel, or
+     * a malformed address on the `email` channel.
      */
     suspend fun sendToken(documentId: String, email: String? = null, channel: String? = null) {
         val id = requireId(documentId, "Document ID")
-        val path = "/public/documents/${pathSegment(id)}/send-token"
-        val normalizedChannel = channel?.trim()?.lowercase()
-        if (normalizedChannel != null) {
-            if (normalizedChannel !in SEND_TOKEN_CHANNELS) {
-                throw ValidationException("Token channel must be email or whatsapp")
-            }
-            val recipient = email?.trim()?.takeIf { it.isNotEmpty() }
-                ?: throw ValidationException("Token recipient is required when channel is provided")
-            val normalizedRecipient = if (normalizedChannel == "email") requireValidEmail(recipient) else recipient
-            return callVoid("Failed to send signing token") {
-                publicHttp.put(path, toJson(mapOf("recipient" to normalizedRecipient, "channel" to normalizedChannel)))
-            }
+        val tokenChannel = requireId(channel ?: DEFAULT_SEND_TOKEN_CHANNEL, "Token channel").lowercase()
+        if (tokenChannel !in SEND_TOKEN_CHANNELS) {
+            throw ValidationException("Token channel must be email or whatsapp")
         }
-
-        val normalizedEmail = email?.let(::requireValidEmail)
-        try {
-            callVoid("Failed to send signing token") {
-                publicHttp.put(path, normalizedEmail?.let { toJson(mapOf("email" to it)) })
-            }
-        } catch (error: ApiException) {
-            if (normalizedEmail == null || !error.isLegacySendTokenValidation()) throw error
-            callVoid("Failed to send signing token") {
-                publicHttp.put(path, toJson(mapOf("recipient" to normalizedEmail, "channel" to "email")))
-            }
+        val recipient = requireId(email, "Token recipient")
+        val normalizedRecipient = if (tokenChannel == DEFAULT_SEND_TOKEN_CHANNEL) requireValidEmail(recipient) else recipient
+        callVoid("Failed to send signing token") {
+            publicHttp.put(
+                "/public/documents/${pathSegment(id)}/send-token",
+                toJson(mapOf("recipient" to normalizedRecipient, "channel" to tokenChannel)),
+            )
         }
-    }
-
-    private fun ApiException.isLegacySendTokenValidation(): Boolean {
-        if (statusCode != 400 && statusCode != 422) return false
-        val detail = "$message $responseData".lowercase()
-        return "channel" in detail || "recipient" in detail
     }
 
     /**
@@ -606,9 +582,10 @@ class DocumentResource internal constructor(
         }
     }
 
-    /** PDF upload validation constants. */
+    /** PDF upload and token-delivery validation constants. */
     companion object {
-        private val SEND_TOKEN_CHANNELS = setOf("email", "whatsapp")
+        private const val DEFAULT_SEND_TOKEN_CHANNEL = "email"
+        private val SEND_TOKEN_CHANNELS = setOf(DEFAULT_SEND_TOKEN_CHANNEL, "whatsapp")
         private val PDF_MAGIC = "%PDF-".toByteArray(Charsets.US_ASCII)
     }
 }

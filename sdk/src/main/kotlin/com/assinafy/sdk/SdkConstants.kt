@@ -40,8 +40,10 @@ object DocumentStatus {
     /**
      * Statuses at which a document has finished metadata processing and can proceed to an
      * assignment (or is already past that point). Used by `DocumentResource.waitUntilReady`.
+     * `certificating` is included because the API reports it once every signer has finished and the
+     * final artifact is being produced — further metadata polling would never advance from there.
      */
-    val READY = setOf("metadata_ready", "pending_signature", "certificated")
+    val READY = setOf("metadata_ready", "pending_signature", "certificating", CERTIFICATED)
 
     /** Terminal non-success statuses that stop a `DocumentResource.waitUntilReady` poll loop. */
     val FAILED = setOf("failed", "rejected_by_signer", "rejected_by_user", "expired")

@@ -278,6 +278,20 @@ class DocumentResourceTest {
     }
 
     @Test
+    fun `waitUntilReady stops on every documented ready status`() = runTest {
+        // certificating means signing already finished; metadata polling would never advance past it.
+        for (status in listOf("metadata_ready", "pending_signature", "certificating", "certificated")) {
+            val mock = MockApiHttpClient()
+            mock.enqueue(successResponse(docStatus(status)))
+
+            val doc = DocumentResource(mock, "acc").waitUntilReady("doc-1", pollIntervalMs = 1L)
+
+            assertThat(doc.status).isEqualTo(status)
+            assertThat(mock.callCount()).isEqualTo(1)
+        }
+    }
+
+    @Test
     fun `waitUntilReady throws when the document enters a failed status`() {
         val mock = MockApiHttpClient()
         mock.enqueue(HttpRawResponse(200, """{"status":200,"data":${docStatus("failed")}}""", emptyMap()))
@@ -366,20 +380,23 @@ class DocumentResourceTest {
             "/public/documents/doc-1",
             "/public/documents/doc-1/send-token",
         )
-        assertThat(public.lastCall().body).isEqualTo("""{"email":"recipient@example.com"}""")
+        assertThat(public.lastCall().body)
+            .isEqualTo("""{"recipient":"recipient@example.com","channel":"email"}""")
     }
 
     @Test
-    fun `send token omits the optional email body`() = runTest {
-        val public = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"message":"sent"}""", emptyMap()))
+    fun `send token defaults to the email channel in a single request`() = runTest {
+        val public = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200}""", emptyMap()))
 
-        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public).sendToken("doc-1")
+        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public).sendToken("doc-1", "recipient@example.com")
 
-        assertThat(public.lastCall().body).isNull()
+        assertThat(public.calls.map { it.body }).containsExactly(
+            """{"recipient":"recipient@example.com","channel":"email"}""",
+        )
     }
 
     @Test
-    fun `send token supports explicit deployed channels`() = runTest {
+    fun `send token sends the recipient and channel the API requires`() = runTest {
         val public = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200}""", emptyMap()))
         val resource = DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
 
@@ -393,45 +410,21 @@ class DocumentResourceTest {
     }
 
     @Test
-    fun `send token retries only legacy channel validation`() = runTest {
+    fun `send token rejects a missing recipient or unsupported channel before any request`() = runTest {
         val public = MockApiHttpClient()
-        public.enqueue(
-            HttpRawResponse(
-                422,
-                """{"status":422,"message":"channel is required","errors":{"channel":["required"]}}""",
-                emptyMap(),
-            ),
-        )
-        public.enqueue(HttpRawResponse(200, """{"status":200}""", emptyMap()))
+        val resource = DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
 
-        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
-            .sendToken("doc-1", "recipient@example.com")
+        assertThatThrownBy { runBlocking { resource.sendToken("doc-1") } }
+            .isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("Token recipient is required")
+        assertThatThrownBy { runBlocking { resource.sendToken("doc-1", "recipient@example.com", "sms") } }
+            .isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("Token channel must be email or whatsapp")
+        assertThatThrownBy { runBlocking { resource.sendToken("doc-1", "not-an-email") } }
+            .isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("Invalid email address")
 
-        assertThat(public.calls.map { it.body }).containsExactly(
-            """{"email":"recipient@example.com"}""",
-            """{"recipient":"recipient@example.com","channel":"email"}""",
-        )
-    }
-
-    @Test
-    fun `send token sees validation details in an error envelope`() = runTest {
-        val public = MockApiHttpClient()
-        public.enqueue(
-            HttpRawResponse(
-                200,
-                """{"status":422,"message":"Validation failed","errors":{"channel":["required"]}}""",
-                emptyMap(),
-            ),
-        )
-        public.enqueue(HttpRawResponse(200, """{"status":200}""", emptyMap()))
-
-        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
-            .sendToken("doc-1", "recipient@example.com")
-
-        assertThat(public.calls.map { it.body }).containsExactly(
-            """{"email":"recipient@example.com"}""",
-            """{"recipient":"recipient@example.com","channel":"email"}""",
-        )
+        assertThat(public.calls).isEmpty()
     }
 
     @Test

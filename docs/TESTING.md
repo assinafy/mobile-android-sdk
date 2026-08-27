@@ -3,9 +3,9 @@
 ## Supported build environment
 
 - Gradle Wrapper 9.5; use `./gradlew`, not a machine-wide Gradle installation.
-- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.1 with built-in Kotlin support.
+- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.2 with built-in Kotlin support.
 - Java 17 toolchain and bytecode for the published library.
-- Android SDK platform 36 and Build Tools 36.0.0.
+- Android SDK platform 37.0 and Build Tools 36.0.0.
 - Android API 21 minimum at runtime. The consuming application owns `targetSdk`.
 
 The wrapper distribution checksum is pinned in `gradle/wrapper/gradle-wrapper.properties`. The
@@ -13,7 +13,8 @@ container base image and Android command-line tools are also checksum/digest pin
 
 ## Local verification
 
-Install JDK 25 and Android SDK 36, make the Java 17 toolchain discoverable to Gradle, then run:
+Install JDK 25 and Android SDK platform 37.0, make the Java 17 toolchain discoverable to Gradle,
+then run:
 
 ```shell
 ./gradlew \
@@ -37,7 +38,7 @@ Useful focused checks:
 ./gradlew :sdk:assembleRelease --no-daemon
 ```
 
-AGP 9.3.1 exposes the library's configured debug unit-test variant; `:sdk:test` is the aggregate
+AGP 9.3.2 exposes the library's configured debug unit-test variant; `:sdk:test` is the aggregate
 task and runs every configured unit-test variant.
 
 Test reports are written below `sdk/build/reports/tests/` and

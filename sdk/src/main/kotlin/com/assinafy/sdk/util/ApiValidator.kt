@@ -42,20 +42,18 @@ internal object ApiValidator {
         }
     }
 
-    /** Validates the API's signer verification/notification inference and coupling rules. */
-    fun requireValidSignerChannels(
-        verification: String?,
-        notifications: List<String>?,
-        allowMultipleNotifications: Boolean,
-    ) {
+    /**
+     * Validates the API's signer verification/notification coupling rules. A supplied
+     * [notifications] list must hold exactly one method, and `Email`/`Whatsapp` verification must be
+     * paired with the same notification channel; `DigitalCertificate` accepts either. Omitting a
+     * side leaves it for the API to infer, and omitting both defaults to `Email`.
+     */
+    fun requireValidSignerChannels(verification: String?, notifications: List<String>?) {
         if (verification != null && verification !in verificationMethods) {
             throw ValidationException("Unsupported verification method: $verification")
         }
         if (notifications == null) return
-        if (notifications.isEmpty() || notifications.any { it !in notificationMethods }) {
-            throw ValidationException("Notification methods must contain Email or Whatsapp")
-        }
-        if (!allowMultipleNotifications && notifications.size != 1) {
+        if (notifications.size != 1 || notifications.single() !in notificationMethods) {
             throw ValidationException("Exactly one notification method (Email or Whatsapp) is required")
         }
         if (verification != null && verification != "DigitalCertificate" && verification !in notifications) {

@@ -177,7 +177,7 @@ and deletes the workspace immediately.
 | `search(query, status, page, perPage, accountId)` | `GET /v1/accounts/{accountId}/documents/search` | Optional `search`, `status`, `page`, `per-page` | `PaginatedResult<DocumentListItem>`; alias of full `DocumentDetails` |
 | `details(documentId)` | `GET /v1/documents/{documentId}` | none | `DocumentDetails` |
 | `get(documentId)` | Same as `details` | none | `DocumentDetails` |
-| `waitUntilReady(documentId, maxWaitMs, pollIntervalMs)` | Repeats `GET /v1/documents/{documentId}` | Local timing arguments only | First `DocumentDetails` in a ready state |
+| `waitUntilReady(documentId, maxWaitMs, pollIntervalMs)` | Repeats `GET /v1/documents/{documentId}` | Local timing arguments only | First `DocumentDetails` whose status is in `DocumentStatus.READY` |
 | `download(documentId, artifactName)` | `GET /v1/documents/{documentId}/download/{artifactName}` | none | Raw PDF/ZIP `ByteArray` |
 | `thumbnail(documentId)` | `GET /v1/documents/{documentId}/thumbnail` | none | Raw image `ByteArray` |
 | `downloadPage(documentId, pageId)` | `GET /v1/documents/{documentId}/pages/{pageId}/download` | none | Raw page image `ByteArray` |
@@ -188,7 +188,7 @@ and deletes the workspace immediately.
 | `estimateCostFromTemplate(templateId, signers, accountId)` | `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `{"signers":[{"role_id":string,"verification_method":string?,"notification_methods":[string]?}]}` | `CostEstimate` |
 | `verify(hash)` | `GET /v1/documents/{documentSignatureHash}/verify` (public) | none | `DocumentVerification` |
 | `getPublic(documentId)` | `GET /v1/public/documents/{documentId}` (public) | none | `PublicDocumentInfo` |
-| `sendToken(documentId, email?, channel?)` | `PUT /v1/public/documents/{documentId}/send-token` (public) | OpenAPI: none or `{"email":string}`; explicit deployed compatibility: `{"recipient":string,"channel":"email"\|"whatsapp"}` | `Unit` |
+| `sendToken(documentId, email?, channel?)` | `PUT /v1/public/documents/{documentId}/send-token` (public) | `{"recipient":string,"channel":"email"\|"whatsapp"}`; both keys are required by the service and `channel` defaults to `email` | `Unit` |
 | `isFullySigned(documentId)` | Calls `details` | local derivation | `true` when every signer is complete or status is `certificated`; does not guarantee the certificated artifact is ready during `certificating` |
 | `getSigningProgress(documentId)` | Calls `details` | local derivation | `SigningProgress` |
 | `getStatuses()` | `GET /v1/documents/statuses` | none | `List<DocumentStatusInfo>` |
@@ -205,11 +205,16 @@ Uploads must be non-empty PDF content, have a `.pdf` name, begin with `%PDF-`, a
 digital-certificate signers and contains their ICP-Brasil signatures plus the platform certification
 box. `bundle` is a ZIP containing the original,
 certificated, and certificate-page artifacts, plus PAdES when available. Readiness stops at
-`metadata_ready`, `pending_signature`, or `certificated`, and fails immediately for terminal
-processing/rejection/expiration states.
+`metadata_ready`, `pending_signature`, `certificating`, or `certificated`, and fails immediately for
+the terminal `failed`, `rejected_by_signer`, `rejected_by_user`, and `expired` states.
 
 `verify(hash)` always returns HTTP `200`. For an unknown hash or an unsigned document,
 `is_valid=false`, the other nullable certification details are null, and `message` explains why.
+
+`sendToken` diverges from the published OpenAPI schema, which shows an optional `{"email":...}` body.
+The deployed service rejects that body with `400` naming `channel`, then `recipient`, as missing, so
+the SDK always sends both keys. `email` is the recipient for the selected channel — an address on
+`email`, the signer's phone number on `whatsapp` — and only the address form is format-validated.
 
 The current OpenAPI multipart schema declares only `file`, which is exactly what the default
 `metadata=null` call sends. Supplying metadata explicitly opts into the deployed API's legacy `name`
@@ -356,17 +361,21 @@ Create body:
 }
 ```
 
-For an ordinary assignment, omit both channel fields to default to Email. `verification_method` is
-`Email`, `Whatsapp`, or `DigitalCertificate`; `notification_methods` may contain Email, WhatsApp, or
-both. Email and WhatsApp verification require that their matching channel be present; the other
-channel may also be included. Digital-certificate verification accepts either or both notification
-channels. WhatsApp delivery incurs its service cost and requires a paid subscription. A
-digital-certificate signer must be alone in its signing step. It also requires account entitlement
-and a CPF/CNPJ in the signer's `government_id` (set through `signers.update` after signer creation),
-costs two credits plus its selected notification channels, and completes through
-certificate-specific signing. Template creation and template estimates permit exactly one
-notification method when the list is supplied. The SDK validates the applicable channel and step
-rules before sending each request.
+Verification and notification are coupled. Send one, both, or neither; the API infers the missing
+side, and omitting both defaults to Email. Exactly one notification method is allowed per signer:
+
+| `verification_method` | Allowed `notification_methods` |
+|---|---|
+| `Email` | `["Email"]` |
+| `Whatsapp` | `["Whatsapp"]` |
+| `DigitalCertificate` | `["Email"]` or `["Whatsapp"]` |
+
+The SDK applies this table, the signing-step rules, and the collect field-placement rules locally, so
+an invalid pairing raises `ValidationException` instead of costing a round trip. WhatsApp delivery
+requires a paid subscription and costs 0.45 credits per signer. A digital-certificate signer must be
+alone in its signing step, requires account entitlement and a CPF/CNPJ in the signer's
+`government_id` (set through `signers.update` after signer creation), costs two credits in addition
+to its notification, and completes through certificate-specific signing.
 
 `method` is `virtual` or `collect`. Create requires an ID for every signer. Steps, if present, form a
 contiguous positive sequence; signers on a shared step act in parallel. A digital-certificate signer

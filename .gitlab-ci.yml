@@ -50,7 +50,7 @@ verify:
       :sdk:dokkaGeneratePublicationHtml
       :sdk:publishReleasePublicationToMavenLocal
       :consumer-smoke:assembleRelease
-      -Pversion=2.0.1-ci-SNAPSHOT
+      -Pversion=0.0.0-ci-SNAPSHOT
       --no-daemon
       --stacktrace
   artifacts:
