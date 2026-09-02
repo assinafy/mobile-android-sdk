@@ -2,6 +2,14 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.0.3] - 2026-09-02
+
+### Changed
+- Release artifacts are signed and published publicly through Maven Central, so consumers no longer
+  need GitHub Packages credentials.
+- Release CI waits for Central validation and public availability, then builds the minified in-tree
+  consumer using only the published coordinate.
+
 ## [2.0.2] - 2026-08-27
 
 ### Fixed

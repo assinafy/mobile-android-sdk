@@ -123,11 +123,32 @@ uses the same protected secret names.
 
 ## Release verification
 
-Before publishing:
+Before the first Maven Central release, verify ownership of the `com.assinafy` namespace in Central
+Portal and configure these protected GitLab CI variables:
+
+| CI variable | Value |
+|---|---|
+| `CENTRAL_USERNAME` | A newly generated Central Portal user token name |
+| `CENTRAL_PASSWORD` | The matching Central Portal user token password |
+| `MAVEN_SIGNING_KEY_FILE` | File variable containing the ASCII-armored GPG private key |
+| `MAVEN_SIGNING_PASSWORD` | Password for that GPG private key |
+
+`MAVEN_SIGNING_KEY` may be used instead of the file variable. Never commit or print any of these
+values. Before saving the private key, publish and re-fetch its unexpired public key from a
+[keyserver accepted by Central](https://central.sonatype.org/publish/requirements/gpg/), then verify
+a test signature uses the primary signing key rather than a signing subkey.
+
+The protected `publish-release` job runs only for a protected semantic-version tag, uploads the
+signed bundle with automatic publishing, and waits for Central to report `PUBLISHED`. The following
+`verify-release` job waits for public availability and resolves the artifact in the minified
+consumer app. If public propagation is transiently slow, retry only `verify-release`.
+
+Before tagging:
 
 1. Run the full local verification command from a clean checkout.
 2. Confirm no credential-like value or personal address is tracked.
 3. Inspect the generated POM and AAR under `sdk/build/`.
 4. Confirm `:consumer-smoke:assembleRelease` resolved the Maven-local artifact and ran R8.
 5. Run read-only sandbox checks; enable disposable writes only when the sandbox account is confirmed.
-6. Publish with an explicit release version and verify the remote artifact from a fresh project.
+6. Confirm the tag version is new; Maven Central versions cannot be replaced or deleted.
+7. Push a protected `vMAJOR.MINOR.PATCH` tag and require both release jobs to pass.

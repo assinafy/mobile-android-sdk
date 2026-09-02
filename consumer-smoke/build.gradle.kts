@@ -2,7 +2,7 @@ plugins {
     id("com.android.application")
 }
 
-val sdkVersion = providers.gradleProperty("version").orElse("2.0.2")
+val sdkVersion = providers.gradleProperty("version").orElse("2.0.3")
 
 android {
     namespace = "com.assinafy.smoke"

@@ -4,6 +4,7 @@ stages:
   - verify
   - integration
   - release
+  - release-verification
 
 variables:
   ANDROID_HOME: "$CI_PROJECT_DIR/.android-sdk"
@@ -22,7 +23,7 @@ default:
       - .gradle-ci-home/wrapper/
   before_script:
     - apt-get update
-    - apt-get install --yes --no-install-recommends ca-certificates curl openjdk-17-jdk-headless unzip
+    - apt-get install --yes --no-install-recommends ca-certificates curl jq openjdk-17-jdk-headless unzip
     - mkdir -p "$ANDROID_HOME/cmdline-tools"
     - |
       if [ ! -x "$ANDROID_HOME/cmdline-tools/latest/bin/android" ]; then
@@ -109,7 +110,7 @@ live-sandbox:
 
 publish-release:
   stage: release
-  timeout: 30 minutes
+  timeout: 45 minutes
   interruptible: false
   resource_group: assinafy-release
   rules:
@@ -117,18 +118,96 @@ publish-release:
     - when: never
   script:
     - release_version="${CI_COMMIT_TAG#v}"
-    - >-
-      ./gradlew
-      :sdk:testDebugUnitTest
-      :sdk:publishReleasePublicationToGitHubPackagesRepository
-      -Pversion="$release_version"
-      --no-daemon
-      --stacktrace
-    - >-
-      ASSINAFY_REMOTE_PACKAGE_VERIFY=true
-      ./gradlew
-      :consumer-smoke:assembleRelease
-      -Pversion="$release_version"
-      --refresh-dependencies
-      --no-daemon
-      --stacktrace
+    - |
+      set -eu
+      published_pom="https://repo.maven.apache.org/maven2/com/assinafy/assinafy-android-sdk/${release_version}/assinafy-android-sdk-${release_version}.pom"
+      if curl --fail --silent --output /dev/null "$published_pom"; then
+        echo "Maven Central already contains ${CI_COMMIT_TAG}; skipping the immutable upload"
+        exit 0
+      fi
+
+      : "${CENTRAL_USERNAME:?Set the protected CENTRAL_USERNAME CI variable}"
+      : "${CENTRAL_PASSWORD:?Set the protected CENTRAL_PASSWORD CI variable}"
+      : "${MAVEN_SIGNING_PASSWORD:?Set the protected MAVEN_SIGNING_PASSWORD CI variable}"
+      if [ -z "${MAVEN_SIGNING_KEY:-}" ] && [ -z "${MAVEN_SIGNING_KEY_FILE:-}" ]; then
+        echo "Set MAVEN_SIGNING_KEY or the MAVEN_SIGNING_KEY_FILE CI file variable" >&2
+        exit 1
+      fi
+
+      ./gradlew \
+        :sdk:testDebugUnitTest \
+        :sdk:centralBundle \
+        -Pversion="$release_version" \
+        --no-daemon \
+        --stacktrace
+
+      central_bearer="$(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 | tr -d '\n')"
+      deployment_id="$(
+        curl --fail --silent --show-error \
+          --header "Authorization: Bearer ${central_bearer}" \
+          --form "bundle=@sdk/build/distributions/central-bundle.zip;type=application/octet-stream" \
+          "https://central.sonatype.com/api/v1/publisher/upload?name=assinafy-android-${release_version}&publishingType=AUTOMATIC"
+      )"
+      deployment_id="$(printf '%s' "$deployment_id" | tr -d '\r\n')"
+      test -n "$deployment_id"
+
+      for attempt in $(seq 1 80); do
+        deployment_status="$(
+          curl --fail --silent --show-error --request POST \
+            --header "Authorization: Bearer ${central_bearer}" \
+            "https://central.sonatype.com/api/v1/publisher/status?id=${deployment_id}"
+        )"
+        deployment_state="$(printf '%s' "$deployment_status" | jq -r '.deploymentState')"
+        case "$deployment_state" in
+          PUBLISHED)
+            break
+            ;;
+          FAILED)
+            printf '%s\n' "$deployment_status" | jq . >&2
+            exit 1
+            ;;
+          PENDING|VALIDATING|VALIDATED|PUBLISHING)
+            ;;
+          *)
+            echo "Unexpected Maven Central deployment state: ${deployment_state}" >&2
+            printf '%s\n' "$deployment_status" | jq . >&2
+            exit 1
+            ;;
+        esac
+        if [ "$attempt" -eq 80 ]; then
+          echo "Maven Central deployment did not finish; deployment ID: ${deployment_id}" >&2
+          exit 1
+        fi
+        sleep 15
+      done
+
+verify-release:
+  stage: release-verification
+  timeout: 20 minutes
+  interruptible: false
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
+    - when: never
+  script:
+    - release_version="${CI_COMMIT_TAG#v}"
+    - |
+      set -eu
+      published_pom="https://repo.maven.apache.org/maven2/com/assinafy/assinafy-android-sdk/${release_version}/assinafy-android-sdk-${release_version}.pom"
+      for attempt in $(seq 1 20); do
+        if curl --fail --silent --output /dev/null "$published_pom"; then
+          break
+        fi
+        if [ "$attempt" -eq 20 ]; then
+          echo "Published artifact did not reach Maven Central: ${published_pom}" >&2
+          exit 1
+        fi
+        sleep 15
+      done
+
+      ASSINAFY_REMOTE_PACKAGE_VERIFY=true \
+        ./gradlew \
+          :consumer-smoke:assembleRelease \
+          -Pversion="$release_version" \
+          --refresh-dependencies \
+          --no-daemon \
+          --stacktrace

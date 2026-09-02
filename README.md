@@ -60,7 +60,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.0.2-local-SNAPSHOT \
+  -Pversion=2.0.3-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -76,30 +76,24 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.0.2-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.0.3-local-SNAPSHOT")
 }
 ```
 
-Published releases use the same coordinate in GitHub Packages. Add that repository only once the
-version you need exists there, and read the credentials from the environment:
+Published releases are public on Maven Central and require no package credentials:
 
 ```kotlin
 dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven {
-            url = uri("https://maven.pkg.github.com/assinafy/mobile-android-sdk")
-            credentials {
-                username = providers.environmentVariable("GITHUB_ACTOR").orNull
-                password = providers.environmentVariable("GITHUB_TOKEN").orNull
-            }
-        }
     }
 }
-```
 
-Never commit package credentials.
+dependencies {
+    implementation("com.assinafy:assinafy-android-sdk:2.0.3")
+}
+```
 
 ## Creating a client
 

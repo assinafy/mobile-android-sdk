@@ -1,13 +1,16 @@
+import org.gradle.api.tasks.bundling.Zip
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.dokka") version "2.2.0"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     `maven-publish`
+    signing
 }
 
 group = "com.assinafy"
 // Honor a release-automation -Pversion override and otherwise use the released version.
-version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.0.2"
+version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.0.3"
 
 val okHttpVersion = "5.5.0"
 val gsonVersion = "2.14.0"
@@ -86,6 +89,8 @@ val dokkaJavadocJar by tasks.registering(Jar::class) {
     archiveClassifier.set("javadoc")
 }
 
+val centralRepositoryDirectory = layout.buildDirectory.dir("central-repository")
+
 publishing {
     publications {
         register<MavenPublication>("release") {
@@ -125,14 +130,39 @@ publishing {
     }
     repositories {
         maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/assinafy/mobile-android-sdk")
-            credentials {
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
-            }
+            name = "CentralBundle"
+            url = centralRepositoryDirectory.get().asFile.toURI()
         }
     }
+}
+
+val centralPublishingRequested =
+    gradle.startParameter.taskNames.any {
+        it.endsWith("centralBundle") || it.endsWith("publishReleasePublicationToCentralBundleRepository")
+    }
+val signingKey =
+    providers.environmentVariable("MAVEN_SIGNING_KEY").orNull
+        ?: providers.environmentVariable("MAVEN_SIGNING_KEY_FILE").orNull?.let { file(it).readText() }
+
+signing {
+    isRequired = centralPublishingRequested
+    useInMemoryPgpKeys(signingKey, providers.environmentVariable("MAVEN_SIGNING_PASSWORD").orNull)
+    sign(publishing.publications["release"])
+}
+
+tasks.named("publishReleasePublicationToCentralBundleRepository") {
+    doFirst { delete(centralRepositoryDirectory) }
+}
+
+tasks.register<Zip>("centralBundle") {
+    group = "publishing"
+    description = "Creates the signed repository bundle accepted by Maven Central"
+    dependsOn("publishReleasePublicationToCentralBundleRepository")
+    from(centralRepositoryDirectory) {
+        exclude("**/maven-metadata.xml*")
+    }
+    archiveFileName.set("central-bundle.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
 }
 
 kotlin {
