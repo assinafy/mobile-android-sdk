@@ -7,6 +7,7 @@ import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.SdkConstants
 import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.models.DocumentDetails
+import com.assinafy.sdk.oauth.OAuthScope
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.CreateFieldRequest
@@ -62,6 +63,48 @@ class LiveIntegrationTest {
     private fun client(): AssinafyClient = AssinafyClient.create(
         AssinafyClientConfig(apiKey = apiKey, accountId = accountId, baseUrl = baseUrl, timeoutMs = 60_000L),
     )
+
+    /**
+     * Confirms the two discovery documents the OAuth flow is bootstrapped from still describe what
+     * `client.oauth` sends. The requests themselves carry no credential, but this stays behind the
+     * same opt-in gate as the rest of the live suite so `:sdk:test` remains an offline unit run.
+     */
+    @Test
+    fun `oauth discovery documents describe the flow this SDK implements`() = runBlocking<Unit> {
+        val sdk = AssinafyClient.create(AssinafyClientConfig(baseUrl = baseUrl, timeoutMs = 60_000L))
+
+        val resource = sdk.oauth.protectedResourceMetadata()
+        assertThat(resource.resource).startsWith("https://")
+        val issuer = resource.authorizationServer
+        assertThat(issuer).isNotNull()
+        assertThat(resource.bearerMethodsSupported).contains("header")
+
+        val server = sdk.oauth.authorizationServerMetadata(issuer)
+        assertThat(server.issuer).isEqualTo(issuer)
+        // PKCE is mandatory and S256 is the only accepted method, which is what PkcePair produces.
+        assertThat(server.codeChallengeMethodsSupported).containsExactly("S256")
+        assertThat(server.grantTypesSupported).contains("authorization_code", "refresh_token")
+        assertThat(server.responseTypesSupported).contains("code")
+        // A public client authenticates with PKCE alone; "none" is what makes that possible.
+        assertThat(server.tokenEndpointAuthMethodsSupported).contains("none")
+        // OAuthResource posts to "/oauth/token" relative to the client's base URL, so the published
+        // token endpoint must be exactly that.
+        assertThat(server.tokenEndpoint).isEqualTo(baseUrl.trimEnd('/') + "/oauth/token")
+        assertThat(server.authorizationEndpoint).startsWith(issuer)
+
+        val scopes = server.scopesSupported.orEmpty()
+        assertThat(scopes).contains(
+            OAuthScope.DOCUMENTS_READ,
+            OAuthScope.DOCUMENTS_WRITE,
+            OAuthScope.TEMPLATES_READ,
+            OAuthScope.TEMPLATES_WRITE,
+            OAuthScope.ACCOUNT_READ,
+            OAuthScope.OPENID,
+            OAuthScope.PROFILE,
+            OAuthScope.EMAIL,
+            OAuthScope.OFFLINE_ACCESS,
+        )
+    }
 
     @Suppress("DEPRECATION")
     @Test

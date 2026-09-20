@@ -31,6 +31,22 @@ class WebhookResource internal constructor(
      * (`PUT /accounts/{accountId}/webhooks/subscriptions`). When [RegisterWebhookRequest.events] is
      * null, [RegisterWebhookRequest.DEFAULT_EVENTS] is used; an explicit empty list is preserved.
      *
+     * Request body:
+     * ```json
+     * {
+     *   "events": ["document_ready", "document_prepared"], "is_active": true,
+     *   "url": "https://example.com/hooks/assinafy", "email": "ops@example.com"
+     * }
+     * ```
+     * Response `data` is the complete stored subscription:
+     * ```json
+     * {
+     *   "events": ["document_ready", "document_prepared"], "is_active": true,
+     *   "url": "https://example.com/hooks/assinafy", "email": "ops@example.com",
+     *   "updated_at": "2026-05-10T14:58:24Z"
+     * }
+     * ```
+     *
      * @param request Destination URL, delivery contact, event IDs, and active state.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Complete subscription stored for the account.
@@ -53,7 +69,17 @@ class WebhookResource internal constructor(
     }
 
     /**
-     * Fetches the account's webhook subscription.
+     * Fetches the account's webhook subscription
+     * (`GET /accounts/{accountId}/webhooks/subscriptions`).
+     *
+     * Request body: none. Response `data`:
+     * ```json
+     * {
+     *   "events": ["document_ready", "document_prepared"], "is_active": true,
+     *   "url": "https://example.com/hooks/assinafy", "email": "ops@example.com",
+     *   "updated_at": "2026-05-10T14:58:24Z"
+     * }
+     * ```
      *
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Subscription, or `null` when the API returns HTTP 404.
@@ -71,6 +97,9 @@ class WebhookResource internal constructor(
      * The API has no delete endpoint for a subscription (`DELETE .../webhooks/subscriptions` returns
      * 404); to stop deliveries, inactivate it or overwrite it with [register].
      *
+     * Request body: none. Response `data` is the complete subscription with `is_active` now false,
+     * in the shape documented by [get].
+     *
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Complete inactive subscription.
      */
@@ -84,6 +113,16 @@ class WebhookResource internal constructor(
 
     /**
      * Lists webhook event types (`GET /webhooks/event-types`).
+     *
+     * Request body/query: none. Response `data`:
+     * ```json
+     * [{
+     *   "id": "document_ready",
+     *   "description": "Triggered when the last Signer of the assignment signs the Document."
+     * }]
+     * ```
+     * Reading this catalog lets an integration accept new server events without an SDK update;
+     * [com.assinafy.sdk.WebhookEvent] holds the identifiers known at release time.
      *
      * @return Wire event IDs and human-readable descriptions.
      */
@@ -99,6 +138,9 @@ class WebhookResource internal constructor(
      *
      * Only [ListParams.page] and [ListParams.perPage] are sent because the webhook endpoint does not
      * accept the document-specific filters in [ListParams].
+     *
+     * Request body: none. Response `data` is an array of dispatch records in the shape documented
+     * by [retryDispatch].
      *
      * @param params Pagination values; all other [ListParams] fields are ignored.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -117,7 +159,12 @@ class WebhookResource internal constructor(
     }
 
     /**
-     * Lists dispatch history with every current API filter.
+     * Lists dispatch history with every current API filter
+     * (`GET /accounts/{accountId}/webhooks`).
+     *
+     * Request body: none. Query: `event`, `delivered`, `from`, `to`, `page`, `per-page`. Response
+     * `data` is an array of dispatch records in the shape documented by [retryDispatch], and
+     * `X-Pagination-*` headers are exposed through [PaginatedResult.meta].
      *
      * @param params Event, delivery-state, timestamp-range, and pagination filters.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -135,7 +182,20 @@ class WebhookResource internal constructor(
     }
 
     /**
-     * Retries a failed webhook dispatch.
+     * Retries a failed webhook dispatch
+     * (`POST /accounts/{accountId}/webhooks/{historyId}/retry`).
+     *
+     * Request body: none. Response `data` is the updated delivery record:
+     * ```json
+     * {
+     *   "resource": "activity_dispatching_history",
+     *   "id": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6", "event": "document_ready",
+     *   "activity_id": 456, "endpoint": "https://example.com/hooks/assinafy",
+     *   "payload": {}, "delivered": true, "http_status": 200, "response_body": "OK",
+     *   "error": null, "created_at": "2026-01-15T10:30:00Z",
+     *   "updated_at": "2026-01-15T10:30:00Z"
+     * }
+     * ```
      *
      * @param dispatchId Stable delivery-attempt identifier.
      * @param accountId Account override; otherwise the client's default account is used.

@@ -13,6 +13,9 @@ class MockApiHttpClient(
     /** When set, [getBinary] throws this instead of returning bytes (to exercise error paths). */
     var binaryError: Throwable? = null
 
+    /** When set, every request throws this instead of responding (to exercise transport failures). */
+    var transportError: Throwable? = null
+
     data class Call(
         val method: String,
         val path: String,
@@ -26,7 +29,10 @@ class MockApiHttpClient(
         responseQueue.addLast(response)
     }
 
-    private fun nextResponse(): HttpRawResponse = if (responseQueue.isEmpty()) defaultResponse else responseQueue.removeFirst()
+    private fun nextResponse(): HttpRawResponse {
+        transportError?.let { throw it }
+        return if (responseQueue.isEmpty()) defaultResponse else responseQueue.removeFirst()
+    }
 
     override suspend fun get(path: String, queryParams: Map<String, Any?>): HttpRawResponse {
         calls.add(Call("GET", path, queryParams = queryParams))
@@ -83,6 +89,11 @@ class MockApiHttpClient(
 
     override suspend fun postSignature(path: String, imageData: ByteArray, contentType: String): HttpRawResponse {
         calls.add(Call("POST_SIGNATURE", path, body = contentType))
+        return nextResponse()
+    }
+
+    override suspend fun getAbsolute(url: String): HttpRawResponse {
+        calls.add(Call("GET_ABSOLUTE", url))
         return nextResponse()
     }
 

@@ -1,5 +1,6 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.exceptions.ValidationException
@@ -57,8 +58,52 @@ class AssignmentResource internal constructor(
      * Creates an assignment (`POST /documents/{documentId}/assignments`). The response includes the
      * per-signer `signing_urls` and a `summary`.
      *
-     * The JSON body contains `method`, signer `id`/verification/notification/step values, optional
-     * collect `entries`, `message`, `expires_at`, and `copy_receivers`; null values are omitted.
+     * Request body — null values are omitted, and `entries` is required only for `collect`:
+     * ```json
+     * {
+     *   "method": "virtual",
+     *   "signers": [{
+     *     "id": "62d6ee35c7741ca4006b9e11", "verification_method": "Email",
+     *     "notification_methods": ["Email"], "step": 1
+     *   }],
+     *   "message": "Please review and sign",
+     *   "expires_at": "2026-12-31T23:59:59Z",
+     *   "copy_receivers": ["62d6ee35c7741ca4006b9e12"],
+     *   "entries": [{
+     *     "page_id": "615601faf166d6d1d8e7dc30",
+     *     "fields": [{
+     *       "signer_id": "62d6ee35c7741ca4006b9e11", "field_id": "6152120297080d55bdd13197",
+     *       "display_settings": {
+     *         "left": 72, "top": 640, "width": 180, "height": 40, "fontSize": 12
+     *       }
+     *     }]
+     *   }]
+     * }
+     * ```
+     * Response `data`:
+     * ```json
+     * {
+     *   "resource": "assignment", "id": "615606ef81d199996981dbce",
+     *   "sender_email": "sender@example.com", "method": "virtual", "expires_at": null,
+     *   "message": "Please review and sign",
+     *   "signers": [{
+     *     "resource": "signer", "id": "62d6ee35c7741ca4006b9e11", "full_name": "John Signer",
+     *     "email": "john@example.com", "whatsapp_phone_number": "+5548999990000",
+     *     "has_accepted_terms": false, "verification_method": "Email",
+     *     "notification_methods": ["Email"], "step": 1, "notified": true, "completed": false,
+     *     "notification_history": []
+     *   }],
+     *   "copy_receivers": [],
+     *   "items": [],
+     *   "summary": { "signer_count": 1, "completed_count": 0, "signers": [] },
+     *   "signing_urls": [{
+     *     "signer_id": "62d6ee35c7741ca4006b9e11",
+     *     "url": "https://api.assinafy.com.br/v1/sign/doc1?email=john@example.com"
+     *   }]
+     * }
+     * ```
+     * Each `signing_urls` entry ends in the signer's one-time access code. Treat it as a
+     * credential: deliver it through the intended channel and never log or persist it.
      *
      * @param documentId Stable document identifier placed in the path.
      * @param request Assignment method, signers, optional field placements, and delivery settings.
@@ -79,10 +124,25 @@ class AssignmentResource internal constructor(
     /**
      * Estimates assignment cost with `POST /documents/{documentId}/assignments/estimate-cost`.
      *
-     * The request contains `method`, optional collect `entries`, and each signer's
-     * `verification_method`/`notification_methods`. Signer IDs, steps, messages, expiration, and copy
-     * receivers are deliberately omitted because they do not affect pricing. The response is the
-     * complete typed [CostEstimate] payload, including balances, sufficiency, and breakdown values.
+     * Request body carries only what affects pricing — signer IDs, steps, messages, expiration and
+     * copy receivers are deliberately omitted:
+     * ```json
+     * {
+     *   "method": "virtual",
+     *   "signers": [{ "verification_method": "Whatsapp", "notification_methods": ["Whatsapp"] }]
+     * }
+     * ```
+     * Response `data`:
+     * ```json
+     * {
+     *   "total_credits": 0.45, "document_balance": 12, "credit_balance": 30.5,
+     *   "has_sufficient_resources": true, "blocking_reason": null, "message": "",
+     *   "breakdown": [{ "code": "NotificationWhatsapp", "quantity": 1, "credits": 0.45 }]
+     * }
+     * ```
+     * `blocking_reason` is one of `PendingPayment`, `InsufficientDocuments`, or
+     * `InsufficientCredits`. A digital-certificate signer adds a `SignatureDigitalCertificate`
+     * breakdown line worth two credits on top of its notification.
      *
      * @param documentId Stable document identifier placed in the path.
      * @param request Proposed method, signer channels, and optional collect placements.
@@ -256,10 +316,10 @@ class AssignmentResource internal constructor(
     private fun validateRequest(request: CreateAssignmentRequest, estimate: Boolean) {
         val method = requireId(request.method, "Assignment method")
         if (method !in METHODS) throw ValidationException("Assignment method must be virtual or collect")
-        if (method == "virtual" && request.signers.isEmpty()) {
+        if (method == AssignmentMethod.VIRTUAL && request.signers.isEmpty()) {
             throw ValidationException("At least one signer is required for a virtual assignment")
         }
-        if (method == "collect" && request.entries.isNullOrEmpty()) {
+        if (method == AssignmentMethod.COLLECT && request.entries.isNullOrEmpty()) {
             throw ValidationException("At least one field-placement entry is required for a collect assignment")
         }
         request.signers.forEach { signer ->
@@ -294,6 +354,6 @@ class AssignmentResource internal constructor(
     /** Assignment-method and channel validation constants. */
     companion object {
         private val RESEND_CHANNELS = setOf("email", "whatsapp")
-        private val METHODS = setOf("virtual", "collect")
+        private val METHODS = setOf(AssignmentMethod.VIRTUAL, AssignmentMethod.COLLECT)
     }
 }

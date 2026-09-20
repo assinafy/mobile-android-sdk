@@ -44,4 +44,14 @@ interface ApiHttpClient {
      * `image/png` or `image/jpeg` — not multipart form data.
      */
     suspend fun postSignature(path: String, imageData: ByteArray, contentType: String): HttpRawResponse
+
+    /**
+     * GET an absolute [url], which may point at another origin than the configured base URL.
+     *
+     * Used only for OAuth discovery documents, which are published at the API host's root
+     * (`/.well-known/oauth-protected-resource`) and on the authorization server. The default
+     * transport attaches credentials to same-origin requests only, so a cross-origin discovery
+     * fetch never carries an API key or bearer token.
+     */
+    suspend fun getAbsolute(url: String): HttpRawResponse
 }

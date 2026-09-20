@@ -2,6 +2,35 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.1.0] - 2026-09-20
+
+### Added
+- `client.oauth` implements the OAuth 2.1 authorization-code flow with mandatory PKCE, for
+  applications acting in another user's workspace with that user's permission.
+  `authorizationRequest` builds the authorization URL together with a fresh PKCE pair and `state`;
+  `parseCallback` validates the redirect's `state` and `iss` before returning the code;
+  `exchangeCode`, `refresh` and `revoke` cover the token lifecycle; `userInfo` reads OpenID Connect
+  claims; `protectedResourceMetadata` and `authorizationServerMetadata` read the RFC 9728 and
+  RFC 8414 discovery documents. An OAuth access token is used by passing it as
+  `AssinafyClientConfig.token`.
+- `OAuthConfig`, `OAuthTokens`, `PkcePair`, `UserInfo`, `ProtectedResourceMetadata`,
+  `AuthorizationServerMetadata`, `OAuthChallenge` and `OAuthScope` model the flow.
+  `PkcePair.generate()` produces an RFC 7636 verifier and its S256 challenge.
+- `OAuthException` carries the flat `error`/`error_description` pair the OAuth endpoints return in
+  place of the API's response envelope, with `isAccessDenied` and `isInvalidGrant` for the two cases
+  callers branch on. `OAuthChallenge.parse` reads the `WWW-Authenticate` challenge that names a
+  missing scope.
+- `VerificationMethod` and `NotificationMethod` expose the signer channel values as constants,
+  including `DigitalCertificate` for ICP-Brasil A1/A3 signing.
+- `SignerReference.over(signerId, channel, step)` pairs a verification and notification channel, and
+  `SignerReference.withDigitalCertificate(signerId, notifyBy, step)` requests certificate signing.
+- `ApiHttpClient.getAbsolute(url)` fetches a full URL, for discovery documents published at the API
+  host root and on the authorization server. Credentials remain restricted to the configured origin.
+
+### Changed
+- `README.md` is a self-contained guide covering the complete document lifecycle, the OAuth flow,
+  and the signer channels, matching `README.en.md`.
+
 ## [2.0.3] - 2026-09-02
 
 ### Changed

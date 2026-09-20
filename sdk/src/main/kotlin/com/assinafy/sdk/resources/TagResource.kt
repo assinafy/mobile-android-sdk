@@ -19,7 +19,16 @@ class TagResource internal constructor(
 ) : BaseResource(http, defaultAccountId, logger) {
 
     /**
-     * Lists workspace tags, ordered alphabetically.
+     * Lists workspace tags with `GET /accounts/{accountId}/tags`, ordered alphabetically.
+     *
+     * Request body: none. Optional query: `search`. Response `data`:
+     * ```json
+     * [{
+     *   "resource": "tag", "id": "fa8c09f3e709a8a1c82d69b1454", "name": "Contracts",
+     *   "color": "ff8800", "created_at": "2026-05-14T12:00:00Z",
+     *   "updated_at": "2026-05-14T12:00:00Z"
+     * }]
+     * ```
      *
      * @param search Optional case-insensitive partial name filter.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -35,7 +44,17 @@ class TagResource internal constructor(
     }
 
     /**
-     * Creates a workspace tag.
+     * Creates a workspace tag with `POST /accounts/{accountId}/tags`.
+     *
+     * Request body: `{"name":"Contracts","color":"ff8800"}`; `color` is omitted when not supplied.
+     * Response `data` is the complete created tag:
+     * ```json
+     * {
+     *   "resource": "tag", "id": "fa8c09f3e709a8a1c82d69b1454", "name": "Contracts",
+     *   "color": "ff8800", "created_at": "2026-05-14T12:00:00Z",
+     *   "updated_at": "2026-05-14T12:00:00Z"
+     * }
+     * ```
      *
      * @param name Non-blank name, collapsed to single spaces and limited to 64 characters.
      * @param color Optional six-digit hexadecimal value, with or without a leading `#`.
@@ -57,8 +76,18 @@ class TagResource internal constructor(
     }
 
     /**
-     * Updates a tag's [name] and/or [color]. Omit a parameter to leave it unchanged. Pass
-     * [clearColor] = `true` to remove the color.
+     * Updates a tag's [name] and/or [color] with `PUT /accounts/{accountId}/tags/{tagId}`. Omit a
+     * parameter to leave it unchanged. Pass [clearColor] = `true` to remove the color.
+     *
+     * Request body carries only the supplied fields, e.g. `{"name":"Signed Contracts","color":"00aa55"}`;
+     * clearing sends an explicit `{"color":null}`. Response `data` is the complete updated tag:
+     * ```json
+     * {
+     *   "resource": "tag", "id": "fa8c09f3e709a8a1c82d69b1454", "name": "Signed Contracts",
+     *   "color": "00aa55", "created_at": "2026-05-14T12:00:00Z",
+     *   "updated_at": "2026-05-20T09:15:00Z"
+     * }
+     * ```
      *
      * @param tagId Stable tag identifier.
      * @param name Optional replacement name.
@@ -98,8 +127,12 @@ class TagResource internal constructor(
     }
 
     /**
-     * Deletes a tag. By default fails with a 409 if the tag is still attached to anything; pass
-     * [force] = `true` to detach it from all documents/templates first.
+     * Deletes a tag with `DELETE /accounts/{accountId}/tags/{tagId}`. By default fails with a 409
+     * if the tag is still attached to anything; pass [force] = `true` to detach it from all
+     * documents and templates first.
+     *
+     * Request body: none; [force] is sent as the `?force=true` query. Response `data`:
+     * `{"deleted":true}`.
      *
      * @param tagId Stable tag identifier.
      * @param force Whether the server should detach all uses before deletion.

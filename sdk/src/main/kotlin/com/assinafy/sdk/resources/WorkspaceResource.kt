@@ -5,6 +5,7 @@ import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.AccountTheme
+import com.assinafy.sdk.models.DocumentStatsGranularity
 import com.assinafy.sdk.models.DocumentStatsRow
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.Workspace
@@ -27,6 +28,17 @@ class WorkspaceResource internal constructor(
 
     /**
      * Creates a workspace (`POST /accounts`).
+     *
+     * Request body: `{"name":"Acme Inc.","notification_sender_type":"Account"}`; null fields are
+     * omitted. Response `data`:
+     * ```json
+     * {
+     *   "resource": "account", "id": "6401df46d6a6b0c692d9ec49", "name": "Acme Inc.",
+     *   "primary_color": "aabbcc", "secondary_color": "112233",
+     *   "notification_sender_type": "User", "roles": ["owner"],
+     *   "is_delete_allowed": true, "created_at": "2026-06-03T03:54:16Z"
+     * }
+     * ```
      *
      * @param request Name, sender identity, and optional legacy branding colors.
      * @return Complete created account.
@@ -57,6 +69,10 @@ class WorkspaceResource internal constructor(
     /**
      * Lists workspaces accessible to the credential (`GET /accounts`).
      *
+     * Request body/query: none. Response `data` is an array of the account payload documented by
+     * [get]. With an OAuth token it holds exactly the one workspace the user approved, so
+     * `list().data.first().id` is how an OAuth integration finds its workspace id.
+     *
      * @return Accounts and optional pagination-header metadata.
      */
     suspend fun list(): PaginatedResult<WorkspaceListItem> = callList("Failed to list workspaces", WorkspaceListItem::class.java) {
@@ -65,6 +81,16 @@ class WorkspaceResource internal constructor(
 
     /**
      * Fetches a workspace by ID (`GET /accounts/{accountId}`).
+     *
+     * Request body: none. Response `data`:
+     * ```json
+     * {
+     *   "resource": "account", "id": "6401df46d6a6b0c692d9ec49", "name": "Acme Inc.",
+     *   "primary_color": "aabbcc", "secondary_color": "112233",
+     *   "notification_sender_type": "User", "roles": ["owner"],
+     *   "is_delete_allowed": true, "created_at": "2026-06-03T03:54:16Z"
+     * }
+     * ```
      *
      * @param accountId Stable account identifier.
      * @return Complete account record.
@@ -78,6 +104,10 @@ class WorkspaceResource internal constructor(
 
     /**
      * Updates a workspace (`PUT /accounts/{accountId}`).
+     *
+     * Request body carries only the supplied fields, e.g.
+     * `{"name":"Acme Inc.","notification_sender_type":"Account"}`. Response `data` is the complete
+     * updated account documented by [get].
      *
      * @param accountId Stable account identifier.
      * @param request Non-empty set of account fields to replace.
@@ -111,6 +141,9 @@ class WorkspaceResource internal constructor(
     /**
      * Deletes a workspace (`DELETE /accounts/{accountId}`).
      *
+     * Request body: `{"force":false}`, sent only when [force] is supplied. Response `data` is an
+     * empty JSON array.
+     *
      * @param accountId Stable account identifier.
      * @param force Optional server-side force flag; omit it to use normal deletion safeguards.
      */
@@ -123,6 +156,14 @@ class WorkspaceResource internal constructor(
 
     /**
      * Fetches the account's branding theme (`GET /accounts/{accountId}/theme`).
+     *
+     * Request body: none. Response `data`:
+     * ```json
+     * {
+     *   "account_name": "Acme Inc.", "primary_color": "aabbcc", "secondary_color": "112233",
+     *   "logo": "https://api.assinafy.com.br/v1/accounts/6401df46d6a6b0c692d9ec49/logo"
+     * }
+     * ```
      *
      * @param accountId Stable account identifier.
      * @return Account name, colors, and optional logo URL.
@@ -138,6 +179,9 @@ class WorkspaceResource internal constructor(
      * Downloads the account logo image as raw bytes (`GET /accounts/{accountId}/logo`).
      * Returns `null` when the account has no logo set (the API responds `404`).
      *
+     * Request body: none. The response is the raw image, not the JSON envelope, and its bytes are
+     * returned unchanged.
+     *
      * @param accountId Stable account identifier.
      * @return Unmodified image bytes, or `null` for HTTP 404.
      */
@@ -149,7 +193,12 @@ class WorkspaceResource internal constructor(
     }
 
     /**
-     * Uploads or replaces the account logo as a single multipart `file` part.
+     * Uploads or replaces the account logo as a single multipart `file` part
+     * (`POST /accounts/{accountId}/logo`).
+     *
+     * Request body: `multipart/form-data` with one `file` part carrying the image bytes and
+     * [contentType]. Response is the success envelope with no `data` payload:
+     * `{"status":200,"message":""}`.
      *
      * @param accountId Stable account identifier.
      * @param fileData Non-empty image bytes.
@@ -173,7 +222,10 @@ class WorkspaceResource internal constructor(
     }
 
     /**
-     * Deletes the account's current logo.
+     * Deletes the account's current logo (`DELETE /accounts/{accountId}/logo`).
+     *
+     * Request body: none. Response is the success envelope with no `data` payload:
+     * `{"status":200,"message":""}`.
      *
      * @param accountId Stable account identifier.
      */
@@ -187,6 +239,23 @@ class WorkspaceResource internal constructor(
      *
      * @param accountId Stable account identifier.
      * @param granularity `monthly`, `daily`, or `null` for the API default.
+     * Request body: none. Query: optional `granularity=monthly|daily` and `month=YYYY-MM`.
+     * Response `data`:
+     * ```json
+     * [{
+     *   "period": "2026-06", "documents_uploaded": 42, "documents_sent": 37,
+     *   "signature_requests": 61, "signature_requests_notification_email": 55,
+     *   "signature_requests_notification_whatsapp": 18,
+     *   "signature_requests_notification_bypass": 3,
+     *   "signature_requests_verification_email": 48,
+     *   "signature_requests_verification_whatsapp": 6,
+     *   "signature_requests_verification_bypass": 3,
+     *   "signature_requests_verification_digital_certificate": 4,
+     *   "signature_requests_viewed": 44, "signature_requests_completed": 52,
+     *   "documents_certified": 30
+     * }]
+     * ```
+     *
      * @param month Required `YYYY-MM` target when [granularity] is `daily`.
      * @return Zero-filled KPI periods, newest-first. Monthly queries default to 12 rows;
      * notification counters can exceed total requests because a signer notified through multiple
@@ -199,10 +268,10 @@ class WorkspaceResource internal constructor(
         month: String? = null,
     ): List<DocumentStatsRow> {
         val id = requireId(accountId, "Account ID")
-        if (granularity != null && granularity !in setOf("monthly", "daily")) {
+        if (granularity != null && granularity !in GRANULARITIES) {
             throw ValidationException("Stats granularity must be monthly or daily")
         }
-        if (granularity == "daily" && month == null) {
+        if (granularity == DocumentStatsGranularity.DAILY.wireValue && month == null) {
             throw ValidationException("Month is required for daily statistics")
         }
         if (month != null && !MONTH.matches(month)) {
@@ -232,5 +301,6 @@ class WorkspaceResource internal constructor(
     companion object {
         private val HEX_COLOR = Regex("^[0-9a-fA-F]{6}$")
         private val MONTH = Regex("^\\d{4}-(0[1-9]|1[0-2])$")
+        private val GRANULARITIES = DocumentStatsGranularity.entries.map { it.wireValue }.toSet()
     }
 }

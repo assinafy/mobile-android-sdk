@@ -58,6 +58,58 @@ object AssignmentMethod {
     const val COLLECT = "collect"
 }
 
+/**
+ * How a signer proves their identity before signing, set per signer through
+ * [com.assinafy.sdk.request.SignerReference.verificationMethod].
+ *
+ * Verification and notification are **coupled**: send one, both, or neither and the API infers the
+ * missing side; sending neither defaults both to [EMAIL]. See [NotificationMethod] for the pairings
+ * the API accepts.
+ */
+object VerificationMethod {
+    /** One-time code sent by email, entered before signing. Free, and the default. */
+    const val EMAIL = "Email"
+
+    /**
+     * One-time code sent over WhatsApp. Requires the signer's `whatsapp_phone_number` and a paid
+     * subscription; it forces the WhatsApp notification channel, so the signer costs 0.45 credits.
+     */
+    const val WHATSAPP = "Whatsapp"
+
+    /**
+     * The signer signs with their own ICP-Brasil certificate (**A1** or **A3**) through the Web PKI
+     * browser extension, producing a qualified PAdES signature.
+     *
+     * Requires the account's Digital Certificate feature (Standard and Pro plans) and a CPF or CNPJ
+     * in the signer's `government_id`; the signer must be alone in their signing step, and the
+     * signature costs 2 credits on top of the notification. The certificate handshake itself runs in
+     * the browser extension, so send the signer to the web signing page rather than signing through
+     * this SDK's native flow.
+     */
+    const val DIGITAL_CERTIFICATE = "DigitalCertificate"
+
+    /** Every value the API accepts. */
+    val ALL = setOf(EMAIL, WHATSAPP, DIGITAL_CERTIFICATE)
+}
+
+/**
+ * How a signer is told that a signature is being requested, set per signer through
+ * [com.assinafy.sdk.request.SignerReference.notificationMethods]. Exactly one channel per signer.
+ */
+object NotificationMethod {
+    /** Email invitation carrying the signing link. Free. */
+    const val EMAIL = "Email"
+
+    /**
+     * WhatsApp message carrying the signing link. Requires the signer's `whatsapp_phone_number` and
+     * a paid subscription; costs 0.45 credits per signer, charged again on every resend.
+     */
+    const val WHATSAPP = "Whatsapp"
+
+    /** Every value the API accepts. */
+    val ALL = setOf(EMAIL, WHATSAPP)
+}
+
 /** Downloadable document artifact names for [com.assinafy.sdk.resources.DocumentResource.download]. */
 object DocumentArtifact {
     /** PDF originally uploaded to Assinafy. */

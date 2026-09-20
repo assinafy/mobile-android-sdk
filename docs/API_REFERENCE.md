@@ -68,6 +68,7 @@ Failures are:
 | `ValidationException` | A local required-field, format, range, file, or configuration check failed. No request is sent. |
 | `ApiException` | HTTP or envelope status was not 2xx. Inspect `statusCode` and `responseData`; do not branch on human-readable text, and redact response data before logging because servers can echo sensitive input. |
 | `NetworkException` | DNS, TLS, connection, timeout, or response-read failure. |
+| `OAuthException` | An OAuth endpoint or authorization redirect reported a flat `{error, error_description}` failure. Branch on `error`, never on message text. |
 | `AssinafyException` | Common SDK base exception and response-decoding failures. |
 
 Coroutine cancellation cancels the underlying OkHttp call and propagates cancellation; do not turn
@@ -80,7 +81,7 @@ resource integration and diagnostics:
 
 | Type/member | Contract |
 |---|---|
-| `ApiHttpClient` | Suspend transport interface for JSON verbs, multipart uploads, raw signature upload, and binary GET. Paths are relative to the configured API prefix. |
+| `ApiHttpClient` | Suspend transport interface for JSON verbs, multipart uploads, raw signature upload, binary GET, and absolute-URL GET. Paths are relative to the configured API prefix; `getAbsolute(url)` takes a full URL and is used only for OAuth discovery documents. |
 | `OkHttpApiClient(baseUrl, apiKey, token, timeoutMs)` | Default implementation. It URL-encodes query values, applies credentials only on the configured origin, retries only safe reads after 429, and returns `HttpRawResponse` without unwrapping it. |
 | `HttpRawResponse` | `statusCode:Int`, UTF-8 `body:String?`, and lower-cased `headers:Map<String,String>`. |
 | `ApiException.fromResponse(statusCode, responseData)` | Creates a typed exception from a parsed map, raw JSON/text, or empty body; extracts `message`/`error` when present and preserves the source in `responseData`. |
@@ -99,6 +100,7 @@ loopback development hosts. `apiKey` and `token` are mutually exclusive. The con
 | Property | Operations |
 |---|---|
 | `authentication` | Login, passwords, social identity, personal API keys |
+| `oauth` | OAuth 2.1 authorization-code flow with PKCE, refresh, revocation, userinfo, discovery |
 | `workspaces` | Accounts, themes, logos, account statistics |
 | `documents` | Documents, artifacts, public document access, template instantiation, document tags |
 | `signers` | Account-scoped signer CRUD and compatibility signer-flow aliases |
@@ -118,7 +120,9 @@ creates a virtual assignment. `waitForReady` controls only the final document re
 the uploaded document in the account; callers that require rollback should delete that document
 explicitly after deciding that deletion is safe.
 
-`SignerReference.ofId(signerId)` is shorthand for `SignerReference(id = signerId)`.
+`SignerReference.ofId(signerId)` is shorthand for `SignerReference(id = signerId)`;
+`SignerReference.over(signerId, channel, step)` pairs a verification and notification channel, and
+`SignerReference.withDigitalCertificate(signerId, notifyBy, step)` requests ICP-Brasil A1/A3 signing.
 `ListParams.toQueryMap()` returns its non-null values using the API's exact query names and joins tag
 IDs with commas. A custom `Logger` receives `debug`, `info`, `warn`, and `error` calls as
 `(message, context)`; the SDK does not include credential values in its contexts.
@@ -142,6 +146,71 @@ deployments may still require tag names on the same routes.
 
 Creating an API key rotates the previous key; deletion revokes it. Password reset/change and API-key
 rotation are state-changing security operations and should never be used as health checks.
+
+## OAuthResource
+
+`client.oauth` implements the OAuth 2.1 authorization-code flow with mandatory PKCE, for
+applications acting in another user's workspace with that user's permission. It needs
+`AssinafyClientConfig.oauth`; without it every method except discovery raises `ValidationException`.
+
+An Android application is a **public client**: `OAuthConfig.clientSecret` stays `null` and PKCE alone
+authenticates the client. `client_secret` is only for server-side confidential clients.
+
+These four endpoints do not use the `{status, message, data}` envelope. They answer with flat
+RFC 6749, OpenID Connect, and RFC 9728 objects, and failures raise `OAuthException` (carrying
+`error`, `errorDescription`, `statusCode`) rather than `ApiException`.
+
+| Function | Route and contract |
+|---|---|
+| `authorizationRequest(scopes, nonce, pkce, state)` | Local; no request. Builds `GET {authorizationServer}/oauth/authorize` with `response_type=code`, `client_id`, `redirect_uri`, space-separated `scope`, `state`, `code_challenge`, `code_challenge_method=S256`, `resource`, and `nonce` when supplied. Returns `AuthorizationRequest(url, state, pkce)`. Generates a fresh PKCE pair and `state` per call. |
+| `parseCallback(callbackUri, request \| expectedState)` | Local; no request. Verifies `state` matches and that `iss`, when present, equals the configured authorization server, then returns `code`. Raises `OAuthException` when the redirect carries `error`, and `ValidationException` on a `state`/`iss` mismatch or a response with neither `code` nor `error`. |
+| `exchangeCode(code, codeVerifier, redirectUri)` | `POST /v1/oauth/token` with `{"grant_type":"authorization_code","code","redirect_uri","client_id","code_verifier","resource"}`, plus `client_secret` for a confidential client. Returns `OAuthTokens`. |
+| `refresh(refreshToken)` | `POST /v1/oauth/token` with `{"grant_type":"refresh_token","refresh_token","client_id"}`, plus `client_secret` for a confidential client. Returns a new `OAuthTokens`, including a **new** refresh token that retires the old one. |
+| `revoke(token, tokenTypeHint)` | `POST /v1/oauth/revoke` with `{"token","client_id"}` and optional `token_type_hint` of `access_token` or `refresh_token`. Answers `200` for every token outcome; only failed client authentication answers `401`. |
+| `userInfo()` | `GET /v1/oauth/userinfo` using the client's bearer token. Requires the `openid` scope. Returns `UserInfo`. |
+| `protectedResourceMetadata()` | `GET {apiOrigin}/.well-known/oauth-protected-resource`. The origin is derived from the client's base URL, so the document is read from the host root rather than the `/v1` prefix. Returns `ProtectedResourceMetadata`. Needs no `OAuthConfig`. |
+| `authorizationServerMetadata(issuer)` | `GET {issuer}/.well-known/oauth-authorization-server`, served by the authorization server rather than this API. Returns `AuthorizationServerMetadata`. Needs no `OAuthConfig`. |
+
+Successful token response (`exchangeCode` and `refresh`):
+
+```json
+{
+  "access_token": "…",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "documents:read documents:write",
+  "refresh_token": "…",
+  "id_token": "…"
+}
+```
+
+`refresh_token` is present only when `offline_access` was requested and consented; `id_token` only
+when `openid` was granted. `scope` reports what was actually granted, and never contains
+`offline_access`. Failure response:
+
+```json
+{"error": "invalid_grant", "error_description": "Authorization code has expired."}
+```
+
+### OAuth types
+
+| Type | Contract |
+|---|---|
+| `OAuthConfig(clientId, redirectUri, scopes, clientSecret, authorizationServerUrl, resource)` | The registered application. `authorizationServerUrl` defaults to `https://auth.assinafy.com.br`; `resource` defaults to the client's base-URL origin. `toString()` redacts the secret. |
+| `PkcePair(codeVerifier, codeChallenge, codeChallengeMethod)` | `PkcePair.generate(verifierLength = 64)` draws the verifier from the RFC 7636 unreserved alphabet (43-128 characters) and sets `codeChallenge` to unpadded base64url SHA-256 of it. `toString()` redacts the verifier. |
+| `AuthorizationRequest(url, state, pkce)` | What to open, and what to keep in session until the redirect returns. |
+| `OAuthTokens(accessToken, tokenType, expiresIn, refreshToken, scope, idToken)` | Adds `scopes: List<String>` and `hasScope(name)`. `toString()` redacts every token. |
+| `UserInfo(sub, name, email, emailVerified)` | OpenID Connect claims; only `sub` is always present. |
+| `ProtectedResourceMetadata(resource, authorizationServers, scopesSupported, bearerMethodsSupported)` | RFC 9728 document. Only `resource` is required by the RFC, so the rest are nullable; `authorizationServer` returns the first advertised issuer. |
+| `AuthorizationServerMetadata(issuer, authorizationEndpoint, tokenEndpoint, revocationEndpoint, userinfoEndpoint, jwksUri, …)` | RFC 8414 document. Only `issuer`, `authorizationEndpoint` and `tokenEndpoint` are required by the RFC, so the rest are nullable. |
+| `OAuthChallenge(error, errorDescription, scope, resourceMetadata)` | `OAuthChallenge.parse(header)` reads a `WWW-Authenticate: Bearer …` value; `isInsufficientScope` names the case where `scope` is the permission to reconnect with. |
+| `OAuthException(error, errorDescription, statusCode)` | `isAccessDenied` and `isInvalidGrant` cover the two cases callers branch on; the companion holds every standard code. |
+| `OAuthScope` | `DOCUMENTS_READ`, `DOCUMENTS_WRITE`, `TEMPLATES_READ`, `TEMPLATES_WRITE`, `ACCOUNT_READ`, `OPENID`, `PROFILE`, `EMAIL`, `OFFLINE_ACCESS`. |
+
+Access tokens last one hour and a connection lasts 30 days from approval, which refreshing does not
+extend. A token is valid for exactly one workspace; any other workspace answers `403`. A call missing
+a scope answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"`, which is
+a prompt to reconnect with that scope rather than to retry.
 
 ## WorkspaceResource
 
@@ -624,8 +693,15 @@ channel. The verification counters partition `signature_requests` and therefore 
 - `DocumentArtifact`: `original`, `certificated`, `certificate-page`, `pades`, `bundle`.
 - `SignatureType`: `signature`, `initial`.
 - `AssignmentMethod`: `virtual`, `collect`.
+- `VerificationMethod`: `Email`, `Whatsapp`, `DigitalCertificate` (ICP-Brasil A1/A3), plus `ALL`.
+- `NotificationMethod`: `Email`, `Whatsapp`, plus `ALL`. Exactly one per signer, paired with the
+  verification method.
+- `OAuthScope`: `documents:read`, `documents:write`, `templates:read`, `templates:write`,
+  `account:read`, `openid`, `profile`, `email`, `offline_access`.
+- `OAuthConfig.DEFAULT_AUTHORIZATION_SERVER`: `https://auth.assinafy.com.br`.
+- `OAuthChallenge.INSUFFICIENT_SCOPE`: `insufficient_scope`.
 - `DocumentStatus.CERTIFICATED`: `certificated`.
-- `DocumentStatus.READY`: `metadata_ready`, `pending_signature`, `certificated`.
+- `DocumentStatus.READY`: `metadata_ready`, `pending_signature`, `certificating`, `certificated`.
 - `DocumentStatus.FAILED`: `failed`, `rejected_by_signer`, `rejected_by_user`, `expired`.
 - `SocialLoginProvider.GOOGLE`: `google`.
 - `DocumentStatsGranularity`: `MONTHLY` (`monthly`) and `DAILY` (`daily`).

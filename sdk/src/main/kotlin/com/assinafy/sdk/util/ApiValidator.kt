@@ -1,10 +1,10 @@
 package com.assinafy.sdk.util
 
+import com.assinafy.sdk.NotificationMethod
+import com.assinafy.sdk.VerificationMethod
 import com.assinafy.sdk.exceptions.ValidationException
 
 internal object ApiValidator {
-    private val verificationMethods = setOf("Email", "Whatsapp", "DigitalCertificate")
-    private val notificationMethods = setOf("Email", "Whatsapp")
 
     fun requireNonBlank(value: String?, name: String): String {
         if (value.isNullOrBlank()) {
@@ -49,14 +49,14 @@ internal object ApiValidator {
      * side leaves it for the API to infer, and omitting both defaults to `Email`.
      */
     fun requireValidSignerChannels(verification: String?, notifications: List<String>?) {
-        if (verification != null && verification !in verificationMethods) {
+        if (verification != null && verification !in VerificationMethod.ALL) {
             throw ValidationException("Unsupported verification method: $verification")
         }
         if (notifications == null) return
-        if (notifications.size != 1 || notifications.single() !in notificationMethods) {
+        if (notifications.size != 1 || notifications.single() !in NotificationMethod.ALL) {
             throw ValidationException("Exactly one notification method (Email or Whatsapp) is required")
         }
-        if (verification != null && verification != "DigitalCertificate" && verification !in notifications) {
+        if (verification != null && verification != VerificationMethod.DIGITAL_CERTIFICATE && verification !in notifications) {
             throw ValidationException("Verification and notification methods must match")
         }
     }
@@ -65,7 +65,7 @@ internal object ApiValidator {
     fun requireDigitalCertificateStepIsolation(signers: List<Pair<String?, Int?>>) {
         val stepCounts = signers.groupingBy { it.second ?: 1 }.eachCount()
         if (signers.any { (verification, step) ->
-                verification == "DigitalCertificate" && stepCounts.getValue(step ?: 1) > 1
+                verification == VerificationMethod.DIGITAL_CERTIFICATE && stepCounts.getValue(step ?: 1) > 1
             }
         ) {
             throw ValidationException("A DigitalCertificate signer must be alone in its signing step")

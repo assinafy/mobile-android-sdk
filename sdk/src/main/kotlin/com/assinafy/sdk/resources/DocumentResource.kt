@@ -32,6 +32,64 @@ import kotlinx.coroutines.withTimeoutOrNull
  * template-based creation, signature verification, and per-document tag attachment.
  * API failures surface as [com.assinafy.sdk.exceptions.ApiException]; transport failures surface as
  * [com.assinafy.sdk.exceptions.NetworkException].
+ *
+ * ### The document payload
+ *
+ * Every operation here that returns a document answers with this `data` shape. Methods below
+ * document only what they add to or omit from it.
+ *
+ * ```json
+ * {
+ *   "resource": "document",
+ *   "id": "615601fab04c0a3147bb1246",
+ *   "account_id": "d199996981dbd199996981db",
+ *   "template_id": null,
+ *   "name": "document.pdf",
+ *   "status": "metadata_ready",
+ *   "artifacts": {
+ *     "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+ *   },
+ *   "is_closed": false,
+ *   "signing_url": "https://api.assinafy.com.br/v1/sign/doc1",
+ *   "decline_reason": null,
+ *   "declined_by": null,
+ *   "tags": [{ "id": "tag-1", "name": "Contracts" }],
+ *   "assignment": {
+ *     "resource": "assignment",
+ *     "id": "615606ef81d199996981dbce",
+ *     "sender_email": "sender@example.com",
+ *     "method": "virtual",
+ *     "expires_at": null,
+ *     "message": "Please review and sign",
+ *     "signers": [{
+ *       "resource": "signer", "id": "62d6ee35c7741ca4006b9e11", "full_name": "John Signer",
+ *       "email": "john@example.com", "whatsapp_phone_number": "+5548999990000",
+ *       "has_accepted_terms": false, "verification_method": "Email",
+ *       "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true,
+ *       "notification_history": []
+ *     }],
+ *     "copy_receivers": [],
+ *     "items": [{
+ *       "id": "item-1", "page": null, "signer": {}, "field": {},
+ *       "display_settings": null, "value": null, "completed": true
+ *     }],
+ *     "summary": { "signer_count": 1, "completed_count": 1, "signers": [] },
+ *     "signing_urls": [{
+ *       "signer_id": "62d6ee35c7741ca4006b9e11",
+ *       "url": "https://api.assinafy.com.br/v1/sign/doc1?email=john@example.com"
+ *     }]
+ *   },
+ *   "pages": [{
+ *     "id": "615601faf166d6d1d8e7dc30", "number": 1, "height": 2100, "width": 1275,
+ *     "download_url": "https://api.assinafy.com.br/v1/documents/doc1/pages/1a/download"
+ *   }],
+ *   "created_at": "2026-06-03T03:54:16Z",
+ *   "updated_at": "2026-06-03T03:54:16Z"
+ * }
+ * ```
+ *
+ * A list, search, or upload projection omits fields it has not computed yet, which is why those
+ * members are nullable on the model.
  */
 class DocumentResource internal constructor(
     http: ApiHttpClient,
@@ -43,6 +101,11 @@ class DocumentResource internal constructor(
     /**
      * Uploads a PDF (`POST /accounts/{accountId}/documents`, multipart). Validated locally: must be a
      * non-empty `.pdf` ≤ 25 MB. The service accepts at most 2,000 PDF pages.
+     *
+     * Request body: `multipart/form-data` with one `file` part. When [metadata] is supplied the
+     * request also carries `name` and a JSON-string `metadata` part, a deployed-service extension
+     * beyond the OpenAPI `file`-only body. Response `data` is the document payload documented on this class, in
+     * `uploaded` or `metadata_processing` status with `assignment` and `pages` not yet populated.
      *
      * The current OpenAPI request contains only the `file` part. Supplying [metadata] opts into the
      * legacy sandbox extension that also sends `name` and `metadata` form fields.
@@ -81,6 +144,10 @@ class DocumentResource internal constructor(
     /**
      * Lists documents (`GET /accounts/{accountId}/documents`).
      *
+     * Request body: none. Query: `status`, `method`, `search`, `tags`, `sort`, `page`, `per-page`.
+     * Response `data` is an array of the document payload documented on this class, and `X-Pagination-*` headers are
+     * exposed through [PaginatedResult.meta].
+     *
      * @param params Status, method, search, tag-ID, sort, and pagination filters.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Matching document summaries and optional pagination-header metadata.
@@ -95,6 +162,8 @@ class DocumentResource internal constructor(
     /**
      * Lightweight document search (`GET /accounts/{accountId}/documents/search`). Returns the same
      * [DocumentListItem] shape as [list] but only supports `search`/`status`/`page`/`per-page`.
+     *
+     * Request body: none. Response `data` is an array of the document payload documented on this class.
      *
      * @param query Optional partial document-name search.
      * @param status Optional exact status filter.
@@ -125,6 +194,8 @@ class DocumentResource internal constructor(
     /**
      * Fetches full document details, including assignment and pages (`GET /documents/{documentId}`).
      *
+     * Request body: none. Response `data` is the document payload documented on this class, fully populated.
+     *
      * @param documentId Stable document identifier.
      * @return Complete document state.
      * @throws ValidationException if [documentId] is blank.
@@ -137,7 +208,7 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Alias for [details].
+     * Alias for [details]; same request and response.
      *
      * @param documentId Stable document identifier.
      * @return Complete document state.
@@ -147,6 +218,11 @@ class DocumentResource internal constructor(
     /**
      * Polls [details] until the document reaches a ready status (`metadata_ready`/`pending_signature`/
      * `certificated`). Throws if it reaches a terminal failure status or [maxWaitMs] elapses.
+     *
+     * Sends no request of its own: repeats `GET /documents/{documentId}` every [pollIntervalMs] and
+     * returns the document payload documented on this class from the first ready response. Its budget is independent of
+     * the client's per-request timeout because readiness spans several round trips plus server-side
+     * PDF processing.
      *
      * @param documentId Stable document identifier.
      * @param maxWaitMs Positive total polling budget in milliseconds.
@@ -192,6 +268,9 @@ class DocumentResource internal constructor(
      * Defaults to the `certificated` artifact, which is only available once the document is completed;
      * use [DocumentArtifact.ORIGINAL] for the uploaded file.
      *
+     * Request body: none. The response is the raw artifact, not the JSON envelope, and its bytes
+     * are returned unchanged. An artifact that does not exist yet answers `404`.
+     *
      * @param documentId Stable document identifier.
      * @param artifactName Artifact wire value from [DocumentArtifact].
      * @return Unmodified PDF or ZIP response bytes.
@@ -208,6 +287,9 @@ class DocumentResource internal constructor(
     /**
      * Downloads the document thumbnail (`GET /documents/{documentId}/thumbnail`).
      *
+     * Request body: none. The response is the raw image, not the JSON envelope; its bytes are
+     * returned unchanged.
+     *
      * @param documentId Stable document identifier.
      * @return Unmodified thumbnail image bytes.
      */
@@ -220,6 +302,9 @@ class DocumentResource internal constructor(
 
     /**
      * Downloads a page image (`GET /documents/{documentId}/pages/{pageId}/download`).
+     *
+     * Request body: none. The response is the raw 150-DPI page image, not the JSON envelope, which
+     * is the coordinate space `display_settings` positions collect fields in.
      *
      * @param documentId Stable document identifier.
      * @param pageId Page identifier from [DocumentDetails.pages].
@@ -236,6 +321,16 @@ class DocumentResource internal constructor(
     /**
      * Returns the document's activity log (`GET /documents/{documentId}/activities`).
      *
+     * Request body: none. Response `data` is one entry per recorded event, each carrying a snapshot
+     * of the event `payload` and the requesting `origin`:
+     * ```json
+     * [{
+     *   "resource": "activity", "id": "act-1", "event": "signer_signed_document",
+     *   "payload": {}, "origin": { "ip": "203.0.113.10", "user-agent": "Mozilla/5.0" },
+     *   "created_at": "2026-06-03T03:54:16Z"
+     * }]
+     * ```
+     *
      * @param documentId Stable document identifier.
      * @return Activities in the order returned by the API.
      */
@@ -248,6 +343,8 @@ class DocumentResource internal constructor(
     }
 
     /**
+     * Request body: none. Response `data` is an empty JSON array.
+     *
      * Deletes a document (`DELETE /documents/{documentId}`). The service permits deletion only in
      * states whose `GET /documents/statuses` entry advertises `deletable=true`.
      *
@@ -263,6 +360,8 @@ class DocumentResource internal constructor(
      * allows rename before assignment while status is `uploaded` or `metadata_ready`, and
      * normalizes diacritics and unsupported characters. The name is required and limited to 255
      * characters. Returns the updated document.
+     *
+     * Request body: `{"name":"Service agreement.pdf"}`. Response `data` is the document payload documented on this class.
      *
      * @param documentId Stable document identifier.
      * @param name Non-blank replacement name of at most [SdkConstants.MAX_DOCUMENT_NAME_LENGTH] characters.
@@ -286,6 +385,19 @@ class DocumentResource internal constructor(
     /**
      * Creates a document from a template
      * (`POST /accounts/{accountId}/templates/{templateId}/documents`).
+     *
+     * Request body maps one signer to each template role and carries the optional document
+     * settings:
+     * ```json
+     * {
+     *   "signers": [{ "role_id": "role-1", "id": "62d6ee35c7741ca4006b9e11" }],
+     *   "name": "Agreement for Ada.pdf",
+     *   "message": "Please review and sign",
+     *   "expires_at": "2026-12-31T23:59:59Z",
+     *   "editor_fields": [{ "field_id": "field-1", "value": "Example value" }]
+     * }
+     * ```
+     * Response `data` is the document payload documented on this class, already carrying its assignment.
      *
      * @param templateId Existing template identifier.
      * @param signers Non-empty role-mapped signers; this list replaces [options]' signer list.
@@ -317,7 +429,18 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Estimates the credit cost of creating a document from a template.
+     * Estimates the credit cost of creating a document from a template
+     * (`POST /accounts/{accountId}/templates/{templateId}/documents/estimate-cost`).
+     *
+     * Request body carries only what affects pricing — each role mapping's verification and
+     * notification channels — so signer IDs and steps are omitted. Response `data`:
+     * ```json
+     * {
+     *   "total_credits": 0.45, "document_balance": 12, "credit_balance": 30.5,
+     *   "has_sufficient_resources": true, "blocking_reason": null, "message": "",
+     *   "breakdown": [{ "code": "NotificationWhatsapp", "quantity": 1, "credits": 0.45 }]
+     * }
+     * ```
      *
      * @param templateId Existing template identifier.
      * @param signers Non-empty role mappings; signer IDs and signing steps are not sent for pricing.
@@ -350,6 +473,18 @@ class DocumentResource internal constructor(
     /**
      * Verifies a signed document by signature hash (`GET /documents/{hash}/verify`, public/no-auth).
      *
+     * Request body: none. This call always answers HTTP `200`; an unknown hash or unsigned document
+     * sets `is_valid` to false, leaves the details null, and explains why in `message`.
+     * Response `data`:
+     * ```json
+     * {
+     *   "hash": "FE32EDDADE7CBDDCBB934E7402047450B0E59C02", "id": "63ddb172402799bfc991d10d",
+     *   "status": "certificated", "page_count": "1", "signer_count": "1", "completed_count": 1,
+     *   "completed_at": "2026-01-27T19:27:44Z", "verified_at": "2026-01-27T19:27:46Z",
+     *   "is_valid": true, "message": ""
+     * }
+     * ```
+     *
      * @param hash Verification hash printed in the signed document.
      * @return Server validation result and matching document details when available.
      */
@@ -361,7 +496,17 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Fetches non-sensitive public document information without account credentials.
+     * Fetches non-sensitive public document information without account credentials
+     * (`GET /public/documents/{documentId}`).
+     *
+     * Request body: none, and no credential is sent — this uses the client's credential-free
+     * transport. Response `data` carries only signer-safe fields:
+     * ```json
+     * {
+     *   "id": "615601fab04c0a3147bb1246", "name": "document.pdf", "status": "pending_signature",
+     *   "account_name": "Acme Inc.", "signer_count": 1, "completed_count": 0
+     * }
+     * ```
      *
      * @param documentId Stable public document identifier.
      * @return Public document identity, status, and signer-safe fields exposed by the API.
@@ -405,6 +550,9 @@ class DocumentResource internal constructor(
     }
 
     /**
+     * Sends no request of its own: derived from [details], so it costs one
+     * `GET /documents/{documentId}`.
+     *
      * Checks whether every assignment signer has completed, including a certificated document.
      * A `true` result can precede certification artifact readiness while status is `certificating`.
      *
@@ -420,6 +568,9 @@ class DocumentResource internal constructor(
 
     /**
      * Derives signing counts and percentage from the current assignment summary.
+     *
+     * Sends no request of its own: derived from [details], so it costs one
+     * `GET /documents/{documentId}` and reads its `assignment.summary`.
      *
      * @param documentId Stable document identifier.
      * @return Signed, total, pending, and percentage values; all zero when no assignment exists.
@@ -437,6 +588,9 @@ class DocumentResource internal constructor(
     /**
      * Lists the document status catalog (`GET /documents/statuses`).
      *
+     * Request body/query: none. Response `data`:
+     * `[{"code":"metadata_ready","deletable":true}]`.
+     *
      * @return Status identifiers and optional deletable flags.
      */
     suspend fun getStatuses(): List<DocumentStatusInfo> {
@@ -450,6 +604,9 @@ class DocumentResource internal constructor(
      * Sends a legacy signer-data confirmation using the signer's access code. The supplied
      * non-empty map is encoded unchanged; prefer the typed signer-facing resource for the current
      * `full_name`, `email`, and `government_id` schema.
+     *
+     * Request: `PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}` with the
+     * supplied map as the JSON body. Response `data` is the updated signer record.
      *
      * @param documentId Stable document identifier.
      * @param signerAccessCode One-time signer code sent only in the query string.
@@ -491,7 +648,17 @@ class DocumentResource internal constructor(
     ): Signer = SignerDocumentResource(publicHttp).confirmData(documentId, signerAccessCode, request)
 
     /**
-     * Lists tags currently attached to a document.
+     * Lists tags currently attached to a document
+     * (`GET /accounts/{accountId}/documents/{documentId}/tags`).
+     *
+     * Request body: none. Response `data`:
+     * ```json
+     * [{
+     *   "resource": "tag", "id": "fa8c09f3e709a8a1c82d69b1454", "name": "Contracts",
+     *   "color": "ff8800", "created_at": "2026-05-14T12:00:00Z",
+     *   "updated_at": "2026-05-14T12:00:00Z"
+     * }]
+     * ```
      *
      * @param documentId Stable document identifier.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -510,6 +677,10 @@ class DocumentResource internal constructor(
      * Replaces the document's tag set with [tagNames], whose values are tag IDs in the current
      * OpenAPI. The parameter name is retained because older deployments require names on the same
      * route. Values are sent unchanged; an empty list detaches all tags.
+     *
+     * Request: `PUT /accounts/{accountId}/documents/{documentId}/tags` with body
+     * `{"tags":["fa8c09f3e709a8a1c82d69b1454"]}`. Response `data` is the resulting tag array, in
+     * the shape documented by [listTags].
      *
      * @param documentId Stable document identifier.
      * @param tagNames Complete tag-ID set; despite the legacy parameter name these are IDs, not names.
@@ -533,6 +704,10 @@ class DocumentResource internal constructor(
      * parameter name is retained because older deployments require names on the same route. Values
      * are sent unchanged; the API returns the resulting tag set.
      *
+     * Request: `POST /accounts/{accountId}/documents/{documentId}/tags` with body
+     * `{"tags":["fa8c09f3e709a8a1c82d69b1454"]}`. Response `data` is the resulting tag array, in
+     * the shape documented by [listTags].
+     *
      * @param documentId Stable document identifier.
      * @param tagNames Tag IDs to add; despite the legacy parameter name these are IDs, not names.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -551,7 +726,11 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Detaches a single tag from a document without deleting the tag.
+     * Detaches a single tag from a document without deleting the tag
+     * (`DELETE /accounts/{accountId}/documents/{documentId}/tags/{tagId}`).
+     *
+     * Request body: none. Response carries no `data` payload. The tag itself survives; use
+     * [com.assinafy.sdk.resources.TagResource.delete] to remove it from the workspace.
      *
      * @param documentId Stable document identifier.
      * @param tagId Stable tag identifier.

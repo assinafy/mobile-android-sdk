@@ -13,6 +13,7 @@ import com.assinafy.sdk.resources.AssignmentResource
 import com.assinafy.sdk.resources.AuthenticationResource
 import com.assinafy.sdk.resources.DocumentResource
 import com.assinafy.sdk.resources.FieldResource
+import com.assinafy.sdk.resources.OAuthResource
 import com.assinafy.sdk.resources.SignerDocumentResource
 import com.assinafy.sdk.resources.SignerResource
 import com.assinafy.sdk.resources.TagResource
@@ -55,6 +56,7 @@ data class UploadAndRequestSignaturesResult(
  * @property webhooks Webhook subscription and delivery-history operations.
  * @property templates Template read operations.
  * @property tags Account tag operations.
+ * @property oauth OAuth 2.1 authorization-code flow for acting in another user's workspace.
  * @property webhookVerifier Optional local webhook HMAC verification and payload parsing.
  */
 class AssinafyClient internal constructor(
@@ -69,6 +71,7 @@ class AssinafyClient internal constructor(
     val webhooks: WebhookResource,
     val templates: TemplateResource,
     val tags: TagResource,
+    val oauth: OAuthResource,
     val webhookVerifier: WebhookVerifier,
     private val logger: Logger,
 ) {
@@ -224,6 +227,7 @@ class AssinafyClient internal constructor(
                 webhooks = WebhookResource(httpClient, config.accountId, logger),
                 templates = TemplateResource(httpClient, config.accountId, logger),
                 tags = TagResource(httpClient, config.accountId, logger),
+                oauth = OAuthResource(publicHttpClient, httpClient, config.oauth, config.baseUrl, logger),
                 webhookVerifier = WebhookVerifier(config.webhookSecret),
                 logger = logger,
             )

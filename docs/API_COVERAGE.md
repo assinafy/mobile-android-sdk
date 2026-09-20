@@ -3,10 +3,10 @@
 This SDK covers every operation in the Assinafy v1 OpenAPI document published at
 [`https://api.assinafy.com.br/v1/docs/openapi.json`](https://api.assinafy.com.br/v1/docs/openapi.json).
 
-- OpenAPI SHA-256: `47fe244e05d7acd9cef0561da4b8c042e1eb549b015f731233475093b5602087`
-- Document unchanged between the 2026-08-21 and 2026-08-27 fetches
-- Paths: 67
-- Operations: **89 covered / 89 documented**
+- OpenAPI SHA-256: `6b55ce24462cd0f9393061a075f2c296fbe742fae493c9ba81c7def402618456`
+- Fetched 2026-09-20
+- Paths: 71
+- Operations: **93 covered / 93 documented**
 - API base URL: `https://api.assinafy.com.br/v1`
 
 Authentication modes below are:
@@ -14,6 +14,8 @@ Authentication modes below are:
 - **Account** — `X-Api-Key` or `Authorization: Bearer ...`; account-scoped calls use an explicit
   `accountId` or the client's default.
 - **Signer** — no account credential; `signer-access-code` is sent in the query string.
+- **OAuth** — `Authorization: Bearer` carrying a token issued by the authorization server, scoped to
+  one workspace and to the permissions its user approved.
 - **Public** — no credential.
 
 The SDK method column omits the leading `client.`. Kotlin aliases and local convenience helpers are
@@ -101,6 +103,27 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 | `POST /v1/accounts/{accountId}/fields/validate-multiple` | `fields.validateMultiple(entries, accountId)` | Account | Covered |
 | `GET /v1/field-types` | `fields.listTypes()` | Account | Covered |
 
+## OAuth (4/4)
+
+| Operation | SDK method | Auth | Status |
+|---|---|---|---|
+| `POST /v1/oauth/token` | `oauth.exchangeCode(code, codeVerifier, redirectUri)` and `oauth.refresh(refreshToken)` | Public | Covered |
+| `POST /v1/oauth/revoke` | `oauth.revoke(token, tokenTypeHint)` | Public | Covered |
+| `GET /v1/oauth/userinfo` | `oauth.userInfo()` | OAuth | Covered |
+| `GET /.well-known/oauth-protected-resource` | `oauth.protectedResourceMetadata()` | Public | Covered |
+
+`oauth.authorizationRequest(...)` and `oauth.parseCallback(...)` are local: they build the
+authorization URL with its PKCE pair and validate the redirect's `state` and `iss`. Neither performs
+a request, so neither maps to an operation above.
+
+`oauth.authorizationServerMetadata(issuer)` reads the RFC 8414 document from the authorization
+server (`https://auth.assinafy.com.br/.well-known/oauth-authorization-server`). That document is
+served by the issuer, not by this API, so it is likewise not one of the 93 operations.
+
+These four endpoints are the only ones that do not use the `{status, message, data}` envelope: they
+answer with flat RFC 6749, OpenID Connect, and RFC 9728 objects, and the SDK raises `OAuthException`
+carrying the standard `error` code rather than `ApiException`.
+
 ## Signers (5/5)
 
 | Operation | SDK method | Auth | Status |
@@ -173,8 +196,13 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 `templates.get(templateId, accountId)` calls
 `GET /v1/accounts/{accountId}/templates/{templateId}`. The route is absent from the OpenAPI document
 but answers `200` with the complete template — pages, roles, and tags — on the deployed service, so
-it is retained. It is not counted among the 89 OpenAPI operations. No other undocumented HTTP route
+it is retained. It is not counted among the 93 OpenAPI operations. No other undocumented HTTP route
 is added by the SDK.
+
+`POST /v1/signers/certificate/start` and `/complete` also answer on the deployed service and are
+deliberately not mapped: they drive the Web PKI browser-extension handshake for ICP-Brasil A1/A3
+signing, which a native client cannot complete. A digital-certificate signer is sent to the web
+signing page instead.
 
 ## Where the deployed service differs from the schema
 

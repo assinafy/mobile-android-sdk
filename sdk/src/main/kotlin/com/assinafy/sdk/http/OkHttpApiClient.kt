@@ -6,6 +6,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -130,6 +131,11 @@ class OkHttpApiClient private constructor(
     override suspend fun postSignature(path: String, imageData: ByteArray, contentType: String): HttpRawResponse {
         val body = imageData.toRequestBody(contentType.toMediaType())
         return execute(Request.Builder().url(url(path)).post(body).build())
+    }
+
+    override suspend fun getAbsolute(url: String): HttpRawResponse {
+        val parsed = requireNotNull(url.trim().toHttpUrlOrNull()) { "Discovery URL must be an absolute HTTP(S) URL" }
+        return execute(Request.Builder().url(parsed).get().build())
     }
 
     private fun url(path: String, queryParams: Map<String, Any?> = emptyMap()): HttpUrl {

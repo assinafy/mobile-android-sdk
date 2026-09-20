@@ -90,7 +90,13 @@ After setting the needed variables outside the repository, run the read-only sui
 
 The read-only smoke test exercises document statuses/search, account details/theme/logo, signer
 listing, fields, templates, users, webhook history/event types, and tags. It does not send messages
-or modify account state. Operations present in the current OpenAPI but not yet deployed to a given
+or modify account state.
+
+One live check needs no credential at all: the OAuth discovery test reads the RFC 9728
+protected-resource document from the API host and the RFC 8414 document from the authorization
+server it names, and asserts that the advertised token endpoint, grant types, PKCE methods, client
+authentication methods, and scopes still match what `client.oauth` sends. It runs whenever the live
+suite runs, including without `ASSINAFY_API_KEY`, and performs no authenticated request. Operations present in the current OpenAPI but not yet deployed to a given
 sandbox are reported as named JUnit skips instead of hiding the remaining live checks.
 
 Write tests require the additional `ASSINAFY_LIVE_WRITES` opt-in. They exercise reversible

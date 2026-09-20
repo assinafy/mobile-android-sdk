@@ -33,6 +33,16 @@ class SignerResource internal constructor(
      * the same email already exists in the workspace it is returned instead of creating a duplicate,
      * and the API's duplicate-email error (HTTP 400) is recovered by re-fetching the existing signer.
      *
+     * Request body: `{"full_name":"John Dove","email":"john@example.com","whatsapp_phone_number":"+5548999990000"}`;
+     * null fields are omitted. Response `data`:
+     * ```json
+     * {
+     *   "resource": "signer", "id": "62d6ee35c7741ca4006b9e11", "full_name": "John Signer",
+     *   "email": "john@example.com", "whatsapp_phone_number": "+5548999990000",
+     *   "has_accepted_terms": false
+     * }
+     * ```
+     *
      * @param request signer details; [CreateSignerRequest.email] is validated and normalized.
      * @param accountId overrides the client's default account.
      * @return the created or pre-existing [Signer].
@@ -72,6 +82,15 @@ class SignerResource internal constructor(
     /**
      * Fetches a signer by ID (`GET /accounts/{accountId}/signers/{signerId}`).
      *
+     * Request body: none. Response `data`:
+     * ```json
+     * {
+     *   "resource": "signer", "id": "62d6ee35c7741ca4006b9e11", "full_name": "John Signer",
+     *   "email": "john@example.com", "whatsapp_phone_number": "+5548999990000",
+     *   "has_accepted_terms": false
+     * }
+     * ```
+     *
      * @param signerId Stable signer identifier.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Complete account signer record.
@@ -87,6 +106,10 @@ class SignerResource internal constructor(
 
     /**
      * Lists signers (`GET /accounts/{accountId}/signers`).
+     *
+     * Request body: none. Query: `search`, `page`, `per-page`. Response `data` is an array of the
+     * signer payload documented by [get], and `X-Pagination-*` headers are exposed through
+     * [PaginatedResult.meta].
      *
      * @param params Search and pagination values; unsupported common filters are ignored.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -109,6 +132,11 @@ class SignerResource internal constructor(
      * changes while verification is in progress. Changing an unverified email or WhatsApp number
      * rotates its access/verification codes, so resend the notification before continuing.
      *
+     * Request body carries only the supplied fields, e.g.
+     * `{"full_name":"John Dove","email":"john@example.com","whatsapp_phone_number":"+5548999990000","government_id":"39053344705"}`.
+     * Response `data` is the complete updated signer documented by [get]. `government_id` holds the
+     * CPF or CNPJ that [com.assinafy.sdk.VerificationMethod.DIGITAL_CERTIFICATE] requires.
+     *
      * @param signerId Stable signer identifier.
      * @param request Mutable identity/contact fields; null fields are omitted.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -130,6 +158,8 @@ class SignerResource internal constructor(
     /**
      * Deletes a signer (`DELETE /accounts/{accountId}/signers/{signerId}`).
      *
+     * Request body: none. Response `data` is an empty JSON array.
+     *
      * @param signerId Stable signer identifier.
      * @param accountId Account override; otherwise the client's default account is used.
      */
@@ -144,6 +174,10 @@ class SignerResource internal constructor(
     /**
      * Finds a signer by exact (case-insensitive) email, paging through the `search` results.
      * Returns `null` if none matches.
+     *
+     * Issues repeated `GET /accounts/{accountId}/signers?search={email}` requests with no request
+     * body, and returns the first record whose `email` matches exactly, in the shape documented by
+     * [get]. The API's `search` is a partial match, so this narrowing is done client-side.
      *
      * @param email Valid email to match after trimming.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -171,6 +205,10 @@ class SignerResource internal constructor(
     /**
      * Fetches the current signer through a public signing-link access code.
      *
+     * Request: `GET /signers/self?signer-access-code={code}` with no body and no account
+     * credential. Response `data` is the signer payload documented by [get], with the signer's
+     * verification state. See [SignerDocumentResource.self] for the maintained version.
+     *
      * @param signerAccessCode One-time signer code sent only in the query string.
      * @return Current signer identity and signature state returned by the API.
      */
@@ -191,6 +229,10 @@ class SignerResource internal constructor(
     /**
      * Records signer terms acceptance (`PUT /signers/accept-terms`).
      *
+     * Request: the access code only as the `signer-access-code` query parameter, with an empty
+     * body. Response `data` is returned as a map. See [SignerDocumentResource.acceptTerms] for the
+     * maintained version.
+     *
      * @param signerAccessCode One-time signer code sent only in the query string.
      * @return API success data normalized to a map.
      */
@@ -204,6 +246,11 @@ class SignerResource internal constructor(
 
     /**
      * Verifies the signer's email or WhatsApp one-time password (`POST /verify`).
+     *
+     * Request: the access code as the `signer-access-code` query parameter and
+     * `{"verification-code":"123456"}` as the body — the wire key is hyphenated, and the same key
+     * carries a code delivered over WhatsApp. Response `data` is returned as a map. See
+     * [SignerDocumentResource.verifyEmail] for the maintained version.
      *
      * @param signerAccessCode One-time signer code sent only in the query string.
      * @param verificationCode Verification value sent using the exact `verification-code` JSON key.
@@ -220,7 +267,12 @@ class SignerResource internal constructor(
     }
 
     /**
-     * Uploads the signer's signature or initial image.
+     * Uploads the signer's signature or initial image (`POST /signature`).
+     *
+     * Request: the access code, `type`, and `reuse` as query parameters, and the **raw image bytes**
+     * as the body with an `image/png` or `image/jpeg` content type — not multipart form data.
+     * Response `data` is returned as a map. See [SignerDocumentResource.uploadSignature] for the
+     * maintained version, which accepts PNG only.
      *
      * @param type `"signature"` or `"initial"`.
      * @param imageData Raw PNG or legacy JPEG bytes.
@@ -259,7 +311,12 @@ class SignerResource internal constructor(
     }
 
     /**
-     * Downloads a signer's stored signature or initials as raw image bytes.
+     * Downloads a signer's stored signature or initials as raw image bytes
+     * (`GET /signature/{signatureType}`).
+     *
+     * Request: the access code as the `signer-access-code` query parameter, no body. The response
+     * is the raw image rather than the JSON envelope. See [SignerDocumentResource.downloadSignature]
+     * for the maintained version.
      *
      * @param signerAccessCode One-time signer code sent only in the query string.
      * @param type Stored image kind, normally [com.assinafy.sdk.SignatureType.SIGNATURE] or

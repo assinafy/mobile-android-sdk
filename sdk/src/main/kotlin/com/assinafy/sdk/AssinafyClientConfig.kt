@@ -1,5 +1,7 @@
 package com.assinafy.sdk
 
+import com.assinafy.sdk.oauth.OAuthConfig
+
 /**
  * Client configuration. [apiKey] and [token] are mutually exclusive; both may be omitted for login
  * and public signing operations. Use HTTPS whenever credentials are supplied.
@@ -13,6 +15,8 @@ package com.assinafy.sdk
  * @property webhookSecret Optional local HMAC secret used by `webhookVerifier`; never sent to the API.
  * @property timeoutMs Positive connect, read, and write timeout for each HTTP request, in milliseconds.
  * @property logger Optional SDK logging sink; `null` selects [Logger.NONE].
+ * @property oauth Registered OAuth application, required only by `client.oauth`. Leave it `null`
+ *   for API-key, bearer-token, and signer-facing usage.
  */
 data class AssinafyClientConfig(
     val apiKey: String? = null,
@@ -22,12 +26,13 @@ data class AssinafyClientConfig(
     val webhookSecret: String? = null,
     val timeoutMs: Long = SdkConstants.DEFAULT_TIMEOUT_MS,
     val logger: Logger? = null,
+    val oauth: OAuthConfig? = null,
 ) {
     /** Returns configuration diagnostics without exposing API, bearer, or webhook secrets. */
     override fun toString(): String =
         "AssinafyClientConfig(apiKey=${apiKey.redacted()}, token=${token.redacted()}, " +
             "accountId=$accountId, baseUrl=$baseUrl, webhookSecret=${webhookSecret.redacted()}, " +
-            "timeoutMs=$timeoutMs, logger=$logger)"
+            "timeoutMs=$timeoutMs, logger=$logger, oauth=$oauth)"
 
     private fun String?.redacted(): String = if (this == null) "null" else "***"
 }
