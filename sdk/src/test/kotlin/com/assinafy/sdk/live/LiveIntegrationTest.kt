@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test
 import java.util.UUID
 
 /**
- * Opt-in end-to-end checks against an Assinafy sandbox. Base credentials enable the mandatory
+ * Opt-in end-to-end checks against a live Assinafy deployment. Base credentials enable the mandatory
  * read-only contract test; mutating tests additionally require `ASSINAFY_LIVE_WRITES=true` and use
  * only unique disposable records or state restored after each scenario.
  *
@@ -41,7 +41,7 @@ class LiveIntegrationTest {
 
     private val apiKey = System.getenv("ASSINAFY_API_KEY").orEmpty()
     private val accountId = System.getenv("ASSINAFY_ACCOUNT_ID").orEmpty()
-    private val baseUrl = System.getenv("ASSINAFY_BASE_URL") ?: "https://sandbox.assinafy.com.br/v1"
+    private val baseUrl = System.getenv("ASSINAFY_BASE_URL") ?: "https://api.assinafy.com.br/v1"
     private val liveRequired = System.getenv("ASSINAFY_REQUIRE_LIVE") == "true"
     private val writesEnabled = System.getenv("ASSINAFY_LIVE_WRITES") == "true"
     private val testEmail = System.getenv("ASSINAFY_TEST_EMAIL").orEmpty()
@@ -155,31 +155,31 @@ class LiveIntegrationTest {
     }
 
     @Test
-    fun `account statistics are readable when deployed in the sandbox`() = runBlocking<Unit> {
-        val rows = sandboxEndpoint("Account statistics") { client().workspaces.getStats(accountId) }
+    fun `account statistics are readable when deployed`() = runBlocking<Unit> {
+        val rows = optionalEndpoint("Account statistics") { client().workspaces.getStats(accountId) }
         assertThat(rows.all { it.period.isNotBlank() }).isTrue()
     }
 
     @Test
-    fun `user statistics are readable when deployed in the sandbox`() = runBlocking<Unit> {
-        val rows = sandboxEndpoint("User statistics") { client().users.getStats() }
+    fun `user statistics are readable when deployed`() = runBlocking<Unit> {
+        val rows = optionalEndpoint("User statistics") { client().users.getStats() }
         assertThat(rows.all { it.period.isNotBlank() }).isTrue()
     }
 
     @Test
-    fun `notification preferences are readable when deployed in the sandbox`() = runBlocking<Unit> {
-        sandboxEndpoint("Notification preferences") { client().users.getNotificationPreferences() }
+    fun `notification preferences are readable when deployed`() = runBlocking<Unit> {
+        optionalEndpoint("Notification preferences") { client().users.getNotificationPreferences() }
     }
 
     @Test
     fun `existing signer detail and email lookup are readable when present`() = runBlocking<Unit> {
         val sdk = client()
         val signer = sdk.signers.list(ListParams(perPage = 25)).data.firstOrNull()
-        assumeTrue(signer != null, "Sandbox account needs an existing signer fixture")
+        assumeTrue(signer != null, "Account needs an existing signer fixture")
 
         assertThat(sdk.signers.get(signer!!.id).id.isNotBlank()).isTrue()
         val signerWithEmail = sdk.signers.list(ListParams(perPage = 100)).data.firstOrNull { !it.email.isNullOrBlank() }
-        assumeTrue(signerWithEmail != null, "Sandbox account needs an existing signer with an email fixture")
+        assumeTrue(signerWithEmail != null, "Account needs an existing signer with an email fixture")
         assertThat(sdk.signers.findByEmail(signerWithEmail!!.email!!)?.id?.isNotBlank()).isTrue()
     }
 
@@ -187,7 +187,7 @@ class LiveIntegrationTest {
     fun `existing field validation reads are operational when present`() = runBlocking<Unit> {
         val sdk = client()
         val field = sdk.fields.list(includeInactive = true, includeStandard = true).firstOrNull()
-        assumeTrue(field != null, "Sandbox account needs an existing field fixture")
+        assumeTrue(field != null, "Account needs an existing field fixture")
 
         assertThat(sdk.fields.get(field!!.id).id.isNotBlank()).isTrue()
         sdk.fields.validate(field.id, null)
@@ -199,7 +199,7 @@ class LiveIntegrationTest {
     fun `existing document projections are readable when present`() = runBlocking<Unit> {
         val sdk = client()
         val listed = sdk.documents.list(ListParams(perPage = 25)).data.firstOrNull()
-        assumeTrue(listed != null, "Sandbox account needs an existing document fixture")
+        assumeTrue(listed != null, "Account needs an existing document fixture")
 
         val details = sdk.documents.details(listed!!.id)
         assertThat(details.id.isNotBlank()).isTrue()
@@ -222,7 +222,7 @@ class LiveIntegrationTest {
                 break
             }
         }
-        assumeTrue(ready != null, "Sandbox account needs a ready document with a rendered page fixture")
+        assumeTrue(ready != null, "Account needs a ready document with a rendered page fixture")
 
         val original = sdk.documents.download(ready!!.id, DocumentArtifact.ORIGINAL)
         assertThat(original.copyOf(PDF_MAGIC.size).contentEquals(PDF_MAGIC)).isTrue()
@@ -234,12 +234,12 @@ class LiveIntegrationTest {
     fun `template detail and estimate are operational when a template exists`() = runBlocking<Unit> {
         val sdk = client()
         val listed = sdk.templates.list(ListParams(perPage = 25)).data.firstOrNull()
-        assumeTrue(listed != null, "Sandbox account needs an existing template fixture")
+        assumeTrue(listed != null, "Account needs an existing template fixture")
 
         val template = sdk.templates.get(listed!!.id)
         assertThat(template.id.isNotBlank()).isTrue()
         val roles = template.roles.orEmpty()
-        assumeTrue(roles.isNotEmpty(), "Sandbox template fixture needs at least one signer role")
+        assumeTrue(roles.isNotEmpty(), "Template fixture needs at least one signer role")
         sdk.documents.estimateCostFromTemplate(
             template.id,
             roles.map {
@@ -306,7 +306,7 @@ class LiveIntegrationTest {
     fun `notification preference update is restored`() = runBlocking<Unit> {
         requireWrites()
         val sdk = client()
-        val original = sandboxEndpoint("Notification preferences") { sdk.users.getNotificationPreferences() }
+        val original = optionalEndpoint("Notification preferences") { sdk.users.getNotificationPreferences() }
 
         reversible(
             block = {
@@ -417,7 +417,7 @@ class LiveIntegrationTest {
                 ).isTrue()
                 assertThat(sdk.documents.thumbnail(renamed.id).isNotEmpty()).isTrue()
                 val page = sdk.documents.details(renamed.id).pages?.firstOrNull()
-                assertThat(page != null).withFailMessage("Uploaded sandbox PDF did not produce a rendered page").isTrue()
+                assertThat(page != null).withFailMessage("Uploaded PDF did not produce a rendered page").isTrue()
                 assertThat(sdk.documents.downloadPage(renamed.id, page!!.id).isNotEmpty()).isTrue()
             },
             cleanup = {
@@ -459,7 +459,7 @@ class LiveIntegrationTest {
                         signers = emails.indices.map {
                             UploadAndRequestSignaturesRequest.SignerEntry(signerNames[it], emails[it])
                         },
-                        message = "Automated sandbox SDK verification",
+                        message = "Automated SDK verification",
                         accountId = accountId,
                     ),
                 )
@@ -477,7 +477,7 @@ class LiveIntegrationTest {
                 ).isTrue()
                 assertThat(sdk.documents.thumbnail(document.id).isNotEmpty()).isTrue()
                 val page = sdk.documents.details(document.id).pages?.firstOrNull()
-                assertThat(page != null).withFailMessage("Uploaded sandbox PDF did not produce a rendered page").isTrue()
+                assertThat(page != null).withFailMessage("Uploaded PDF did not produce a rendered page").isTrue()
                 assertThat(sdk.documents.downloadPage(document.id, page!!.id).isNotEmpty()).isTrue()
                 sdk.documents.activities(document.id)
                 sdk.documents.getPublic(document.id)
@@ -545,11 +545,11 @@ class LiveIntegrationTest {
         requireWritesAndEmails()
         val sdk = client()
         val listedTemplate = sdk.templates.list(ListParams(perPage = 25)).data.firstOrNull()
-        assumeTrue(listedTemplate != null, "Sandbox account needs an existing template fixture")
+        assumeTrue(listedTemplate != null, "Account needs an existing template fixture")
         val template = sdk.templates.get(listedTemplate!!.id)
         assumeTrue(
             !template.roles.isNullOrEmpty() && template.roles!!.size <= 2,
-            "Sandbox account needs a compatible template fixture with one or two signer roles",
+            "Account needs a compatible template fixture with one or two signer roles",
         )
         val suffix = UUID.randomUUID().toString().take(8)
         val emails = listOf(testEmail, secondTestEmail)
@@ -582,7 +582,7 @@ class LiveIntegrationTest {
                     CreateDocumentFromTemplateRequest(
                         signers = signers,
                         name = documentName,
-                        message = "Automated sandbox SDK verification",
+                        message = "Automated SDK verification",
                     ),
                 )
                 documentId = created.id
@@ -610,7 +610,7 @@ class LiveIntegrationTest {
     }
 
     private fun requireWrites() {
-        assumeTrue(writesEnabled, "Set ASSINAFY_LIVE_WRITES=true to run reversible sandbox write tests")
+        assumeTrue(writesEnabled, "Set ASSINAFY_LIVE_WRITES=true to run reversible write tests")
     }
 
     private fun requireWritesAndEmails() {
@@ -669,13 +669,13 @@ class LiveIntegrationTest {
         failure?.let { throw it }
     }
 
-    private suspend fun <T> sandboxEndpoint(
+    private suspend fun <T> optionalEndpoint(
         name: String,
         block: suspend () -> T,
     ): T = try {
         block()
     } catch (error: ApiException) {
-        assumeTrue(error.statusCode != 404, "$name is not deployed in this sandbox")
+        assumeTrue(error.statusCode != 404, "$name is not deployed on this host")
         throw error
     }
 

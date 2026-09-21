@@ -37,7 +37,7 @@ class UserResource internal constructor(
      *   "to_be_deleted_at":null
      * }
      * ```
-     * The older sandbox `{ "user": {...}, "accounts": [...] }` data variant is normalized to the same model.
+     * The older `{ "user": {...}, "accounts": [...] }` data variant is normalized to the same model.
      *
      * @return Complete authenticated-user profile.
      */

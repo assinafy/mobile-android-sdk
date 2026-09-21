@@ -29,7 +29,7 @@ class UserResourceTest {
     }
 
     @Test
-    fun `getCurrent normalizes the sandbox legacy user wrapper`() = runTest {
+    fun `getCurrent normalizes the legacy user wrapper`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(ok("""{"user":$USER_DATA,"accounts":[]}"""))
 
