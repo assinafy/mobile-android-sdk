@@ -293,7 +293,7 @@ class AssignmentResource internal constructor(
         val signers = request.signers.map { ref -> normaliseRef(ref, estimate) }
         return buildMap {
             put("method", requireId(request.method, "Assignment method"))
-            if (signers.isNotEmpty()) put("signers", signers)
+            put("signers", signers)
             request.entries?.let { put("entries", it) }
             if (!estimate) {
                 request.message?.let { put("message", it) }
@@ -316,8 +316,11 @@ class AssignmentResource internal constructor(
     private fun validateRequest(request: CreateAssignmentRequest, estimate: Boolean) {
         val method = requireId(request.method, "Assignment method")
         if (method !in METHODS) throw ValidationException("Assignment method must be virtual or collect")
-        if (method == AssignmentMethod.VIRTUAL && request.signers.isEmpty()) {
-            throw ValidationException("At least one signer is required for a virtual assignment")
+        // Required for both methods: creation needs to know who signs, and an estimate is priced
+        // per signer. The contract marks `signers` required only for `virtual`, but the API
+        // answers a signer-less body with 400 "Pelo menos um signatários precisa ser informado."
+        if (request.signers.isEmpty()) {
+            throw ValidationException("At least one signer is required")
         }
         if (method == AssignmentMethod.COLLECT && request.entries.isNullOrEmpty()) {
             throw ValidationException("At least one field-placement entry is required for a collect assignment")

@@ -1,8 +1,11 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
+import com.assinafy.sdk.request.AssignmentEntry
+import com.assinafy.sdk.request.AssignmentFieldPlacement
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.SignerReference
 import com.google.gson.Gson
@@ -101,6 +104,46 @@ class AssignmentResourceTest {
         val signer = (body["signers"] as List<Map<String, Any>>)[0]
         assertThat(signer["verification_method"]).isEqualTo("Whatsapp")
         assertThat(signer.containsKey("id")).isFalse
+    }
+
+    @Test
+    fun `collect estimate sends signers alongside entries`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(HttpRawResponse(200, """{"status":200,"data":{"total_credits":2}}""", emptyMap()))
+
+        AssignmentResource(mock, "acc").estimateCost(
+            "doc-1",
+            CreateAssignmentRequest(
+                method = AssignmentMethod.COLLECT,
+                signers = listOf(SignerReference(verificationMethod = "DigitalCertificate")),
+                entries = listOf(AssignmentEntry(pageId = "p1", fields = listOf(AssignmentFieldPlacement(signerId = "s1", fieldId = "f1")))),
+            ),
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val body = gson.fromJson(mock.lastCall().body, Map::class.java) as Map<String, Any>
+        // collect is priced per signer too, so the channels must reach the API.
+        assertThat(body.containsKey("signers")).isTrue
+        assertThat(body.containsKey("entries")).isTrue
+    }
+
+    @Test
+    fun `every assignment body requires at least one signer`() {
+        val resource = AssignmentResource(MockApiHttpClient(), "acc")
+
+        // The API refuses a signer-less body in either mode.
+        assertThatThrownBy {
+            runBlocking {
+                resource.estimateCost(
+                    "doc-1",
+                    CreateAssignmentRequest(
+                        method = AssignmentMethod.COLLECT,
+                        signers = emptyList(),
+                        entries = listOf(AssignmentEntry(pageId = "p1", fields = listOf(AssignmentFieldPlacement(signerId = "s1", fieldId = "f1")))),
+                    ),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java).hasMessageContaining("At least one signer")
     }
 
     @Test

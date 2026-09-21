@@ -2,6 +2,17 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.2.0] - 2026-09-21
+
+### Fixed
+
+- Require at least one signer on every assignment body, not just `virtual` ones, and always send
+  the `signers` key. The published contract marks `signers` as required only for `virtual`, but the
+  API prices per signer in both modes and answers a signer-less body with
+  `400 "Pelo menos um signatários precisa ser informado."` `normalise` omitted the key entirely
+  when the list was empty, so a `collect` estimate could never be priced. The check is now
+  unconditional, which also closes the same hole on `create`.
+
 ## [2.1.0] - 2026-09-20
 
 ### Added
