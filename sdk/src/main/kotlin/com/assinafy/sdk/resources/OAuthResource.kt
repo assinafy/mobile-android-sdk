@@ -55,9 +55,9 @@ import kotlin.coroutines.cancellation.CancellationException
  * ```
  *
  * ### Environments
- * Sandbox and production expose the same OAuth surface. The resource indicator and the
+ * Production exposes the OAuth surface. The resource indicator and the
  * protected-resource metadata URL are derived from the client's base URL, so pointing a client at
- * `https://sandbox.assinafy.com.br/v1` targets the sandbox flow with no other change. Register a
+ * `https://api.assinafy.com.br/v1` targets the flow with no other change. Register a
  * redirect URI per environment — they are matched character for character.
  *
  * @param publicHttp Credential-free transport used for the token and revocation endpoints, which
@@ -66,7 +66,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * @param config Registered application; `null` until one is supplied through
  *   [com.assinafy.sdk.AssinafyClientConfig.oauth].
  * @param baseUrl API prefix, used to derive the resource indicator and the protected-resource
- *   metadata URL so sandbox and self-hosted prefixes resolve correctly.
+ *   metadata URL so self-hosted prefixes resolve correctly.
  * @param logger SDK logger; tokens, codes, verifiers and secrets are never logged.
  */
 class OAuthResource internal constructor(

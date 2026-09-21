@@ -15,7 +15,7 @@ companion documents go deeper:
   body, response model, and error semantics.
 - [Operation index](docs/API_COVERAGE.md) — every published v1 operation mapped to SDK methods,
   plus the places where the deployed service and the published schema differ.
-- [Building and testing](docs/TESTING.md) — the supported build environment and the sandbox test
+- [Building and testing](docs/TESTING.md) — the supported build environment and the live test
   boundary.
 
 ## Contents
@@ -106,15 +106,11 @@ as properties. Build one per configuration and reuse it for the process lifetime
 connection pool and dispatcher are shared.
 
 ```kotlin
-fun accountClient(apiKey: String, accountId: String, sandbox: Boolean): AssinafyClient =
+fun accountClient(apiKey: String, accountId: String): AssinafyClient =
     AssinafyClient.create(
         apiKey = apiKey,
         accountId = accountId,
-        baseUrl = if (sandbox) {
-            "https://sandbox.assinafy.com.br/v1"
-        } else {
-            SdkConstants.DEFAULT_BASE_URL // https://api.assinafy.com.br/v1
-        },
+        baseUrl = SdkConstants.DEFAULT_BASE_URL, // https://api.assinafy.com.br/v1
     )
 ```
 
@@ -126,7 +122,7 @@ val client = AssinafyClient.create(
         apiKey = apiKey,          // sent as X-Api-Key
         token = null,             // or a bearer token; the two are mutually exclusive
         accountId = accountId,    // default account for account-scoped calls
-        baseUrl = "https://sandbox.assinafy.com.br/v1",
+        baseUrl = "https://api.assinafy.com.br/v1",
         webhookSecret = null,     // local HMAC verification only; never sent to Assinafy
         timeoutMs = 30_000L,      // connect, read, and write
         logger = null,            // Logger.NONE by default; secrets are never logged
@@ -165,7 +161,7 @@ construct a credentialless client and pass the short-lived access code per call:
 
 ```kotlin
 val signerClient = AssinafyClient.create(
-    AssinafyClientConfig(baseUrl = "https://sandbox.assinafy.com.br/v1"),
+    AssinafyClientConfig(baseUrl = "https://api.assinafy.com.br/v1"),
 )
 ```
 
@@ -339,7 +335,7 @@ val server = client.oauth.authorizationServerMetadata(issuer) // RFC 8414, serve
 ```
 
 The `resource` indicator and the metadata URL are derived from the client's `baseUrl`, so pointing
-the client at sandbox already targets the sandbox flow. Only `authorizationServerUrl` needs setting
+the client already targets the flow. Only `authorizationServerUrl` needs setting
 outside production — read it from `resource.authorizationServer` rather than guessing.
 
 ### OAuth errors
@@ -894,7 +890,7 @@ Locally, with the toolchain installed:
   --no-daemon
 ```
 
-Live sandbox tests are skipped unless their environment is supplied, and mutating tests need a second
+Live tests are skipped unless their environment is supplied, and mutating tests need a second
 explicit opt-in. [Building and testing](docs/TESTING.md) documents the full environment, the safe
 live-test boundary, and the release checklist.
 

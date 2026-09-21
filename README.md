@@ -78,15 +78,11 @@ propriedades. Construa um por configuração e reutilize durante toda a vida do 
 pool de conexões OkHttp e o dispatcher sejam compartilhados.
 
 ```kotlin
-fun accountClient(apiKey: String, accountId: String, sandbox: Boolean): AssinafyClient =
+fun accountClient(apiKey: String, accountId: String): AssinafyClient =
     AssinafyClient.create(
         apiKey = apiKey,
         accountId = accountId,
-        baseUrl = if (sandbox) {
-            "https://sandbox.assinafy.com.br/v1"
-        } else {
-            SdkConstants.DEFAULT_BASE_URL // https://api.assinafy.com.br/v1
-        },
+        baseUrl = SdkConstants.DEFAULT_BASE_URL, // https://api.assinafy.com.br/v1
     )
 ```
 
@@ -99,7 +95,7 @@ val client = AssinafyClient.create(
         apiKey = apiKey,          // enviada como X-Api-Key
         token = null,             // ou um token bearer; os dois são mutuamente exclusivos
         accountId = accountId,    // conta padrão para chamadas com escopo de conta
-        baseUrl = "https://sandbox.assinafy.com.br/v1",
+        baseUrl = "https://api.assinafy.com.br/v1",
         webhookSecret = null,     // só verificação HMAC local; nunca enviado à Assinafy
         timeoutMs = 30_000L,      // conexão, leitura e escrita
         logger = null,            // Logger.NONE por padrão; segredos nunca vão para o log
@@ -141,7 +137,7 @@ credenciais e passe o código de acesso de curta duração por chamada:
 
 ```kotlin
 val signerClient = AssinafyClient.create(
-    AssinafyClientConfig(baseUrl = "https://sandbox.assinafy.com.br/v1"),
+    AssinafyClientConfig(baseUrl = "https://api.assinafy.com.br/v1"),
 )
 ```
 
@@ -319,7 +315,7 @@ val server = client.oauth.authorizationServerMetadata(issuer) // RFC 8414, servi
 ```
 
 O indicador `resource` e a URL de metadados são derivados do `baseUrl` do cliente, então apontar o
-cliente para o sandbox já direciona o fluxo para o sandbox. Só o `authorizationServerUrl` precisa ser
+cliente já direciona o fluxo. Só o `authorizationServerUrl` precisa ser
 informado fora de produção — leia-o de `resource.authorizationServer` em vez de adivinhar.
 
 ### Erros de OAuth
@@ -852,9 +848,8 @@ tem orçamento próprio e independente.
 | | |
 | --- | --- |
 | Produção | `SdkConstants.DEFAULT_BASE_URL` — `https://api.assinafy.com.br/v1` |
-| Sandbox | `https://sandbox.assinafy.com.br/v1` |
 
-O sandbox espelha a produção. Desenvolva contra o sandbox e troque apenas o `baseUrl` para ir ao ar.
+Produção é o único ambiente suportado; informe outro `baseUrl` para apontar para outra implantação.
 
 ## Build e testes
 
@@ -881,7 +876,7 @@ Com a toolchain instalada localmente:
   --no-daemon
 ```
 
-Os testes ao vivo contra o sandbox são ignorados sem as variáveis de ambiente correspondentes, e os
+Os testes ao vivo são ignorados sem as variáveis de ambiente correspondentes, e os
 que escrevem exigem uma segunda autorização explícita. [Build e testes](docs/TESTING.md) documenta o
 ambiente completo, o limite seguro dos testes ao vivo e o checklist de release.
 

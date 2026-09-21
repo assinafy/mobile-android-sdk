@@ -49,7 +49,7 @@ class SignerDocumentResource internal constructor(
      *   "is_signature_reusable": true
      * }
      * ```
-     * Signature-state flags remain nullable because older sandbox responses can omit them.
+     * Signature-state flags remain nullable because older responses can omit them.
      *
      * @param signerAccessCode One-time code from the signer's signing link.
      * @return The signer's identity and stored-signature state.

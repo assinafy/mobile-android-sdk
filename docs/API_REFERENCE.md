@@ -10,15 +10,14 @@ See [Supported Assinafy v1 operations](API_COVERAGE.md) for the operation index.
 
 ## Transport, authentication, and errors
 
-Production is `https://api.assinafy.com.br/v1`; sandbox is
-`https://sandbox.assinafy.com.br/v1`.
+Production is `https://api.assinafy.com.br/v1`.
 
 ```kotlin
 val client = AssinafyClient.create(
     AssinafyClientConfig(
         apiKey = BuildConfig.ASSINAFY_API_KEY,
         accountId = BuildConfig.ASSINAFY_ACCOUNT_ID,
-        baseUrl = "https://sandbox.assinafy.com.br/v1",
+        baseUrl = "https://api.assinafy.com.br/v1",
     )
 )
 ```
@@ -461,7 +460,7 @@ costs 2 credits in addition to notification costs. The estimate uses breakdown c
 `SignatureDigitalCertificate` for that signer cost and may report `PendingPayment`,
 `InsufficientDocuments`, or `InsufficientCredits` in `blocking_reason`.
 
-In sandbox and stage environments, `listWhatsappNotifications` returns simulated messages without
+In non-production environments, `listWhatsappNotifications` returns simulated messages without
 real delivery. Its button URLs contain signer access or verification codes; treat those URLs as
 credentials and do not log, persist, or publish them.
 

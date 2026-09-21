@@ -80,7 +80,7 @@ class AssinafyClientTest {
             AssinafyClientConfig(
                 apiKey = "k",
                 accountId = "acc",
-                baseUrl = "https://sandbox.assinafy.com.br/v1/",
+                baseUrl = "https://api.assinafy.com.br/v1/",
             ),
         )
         assertThat(client).isNotNull

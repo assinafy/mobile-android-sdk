@@ -141,7 +141,7 @@ internal fun base64UrlNoPadding(bytes: ByteArray): String {
  *   the production issuer; for any other environment read it from
  *   `client.oauth.protectedResourceMetadata().authorizationServer` rather than guessing.
  * @property resource RFC 8707 resource indicator naming the API the token is for. `null` derives it
- *   from the client's base URL origin, which is correct for both sandbox and production.
+ *   from the client's base URL origin.
  */
 data class OAuthConfig(
     val clientId: String,

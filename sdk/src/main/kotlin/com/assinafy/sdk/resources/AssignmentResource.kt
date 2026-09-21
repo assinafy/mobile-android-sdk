@@ -230,7 +230,7 @@ class AssignmentResource internal constructor(
      *
      * Sends a `PUT` to
      * `/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend`. The current
-     * OpenAPI request has no body; [channel] opts into the deployed sandbox compatibility body
+     * OpenAPI request has no body; [channel] opts into the deployed compatibility body
      * `{"channel":"email"}` or `{"channel":"whatsapp"}`. Response `data` is
      * [ResendEmailResponse]: delivery acceptance plus document and signer IDs.
      *

@@ -60,7 +60,7 @@ docker compose run --rm build
 The `test` service runs the SDK tests. The `build` service runs the complete module build, including
 compilation, tests, Android lint, and packaging tasks selected by Gradle's `build` lifecycle.
 
-## Opt-in sandbox integration tests
+## Opt-in live integration tests
 
 Live tests are skipped by JUnit assumptions unless their environment is supplied. Keep every value
 in a local secret manager or protected CI variable; never put values in Gradle files, shell history,
@@ -68,14 +68,14 @@ test source, commits, reports, or issue comments.
 
 | Environment variable | Purpose |
 |---|---|
-| `ASSINAFY_API_KEY` | Sandbox API credential |
-| `ASSINAFY_ACCOUNT_ID` | Existing sandbox account used by the checks |
-| `ASSINAFY_BASE_URL` | Sandbox v1 endpoint override |
-| `ASSINAFY_TEST_EMAIL` | First sandbox-only test recipient for flows that require one |
-| `ASSINAFY_TEST_EMAIL_2` | Second sandbox-only test recipient for multi-signer flows |
+| `ASSINAFY_API_KEY` | API credential |
+| `ASSINAFY_ACCOUNT_ID` | Existing account used by the checks |
+| `ASSINAFY_BASE_URL` | v1 endpoint override; defaults to production |
+| `ASSINAFY_TEST_EMAIL` | First test recipient for flows that require one |
+| `ASSINAFY_TEST_EMAIL_2` | Second test recipient for multi-signer flows |
 | `ASSINAFY_SIGNER_ACCESS_CODE` | Optional disposable signer-flow code |
 | `ASSINAFY_REQUIRE_LIVE` | Fail instead of skip when base live credentials are absent; set by protected CI |
-| `ASSINAFY_LIVE_WRITES` | Explicit opt-in gate for tests that create, update, or delete sandbox data |
+| `ASSINAFY_LIVE_WRITES` | Explicit opt-in gate for tests that create, update, or delete real data |
 
 After setting the needed variables outside the repository, run the read-only suite:
 
@@ -97,12 +97,12 @@ protected-resource document from the API host and the RFC 8414 document from the
 server it names, and asserts that the advertised token endpoint, grant types, PKCE methods, client
 authentication methods, and scopes still match what `client.oauth` sends. It runs whenever the live
 suite runs, including without `ASSINAFY_API_KEY`, and performs no authenticated request. Operations present in the current OpenAPI but not yet deployed to a given
-sandbox are reported as named JUnit skips instead of hiding the remaining live checks.
+live are reported as named JUnit skips instead of hiding the remaining live checks.
 
 Write tests require the additional `ASSINAFY_LIVE_WRITES` opt-in. They exercise reversible
 preference, field, signer, document, assignment, notification, tag, and compatible-template flows.
 Every created record uses a unique SDK test name and cleanup runs even after a failed assertion. Run
-them only against an isolated sandbox account; confirm the base URL and account before enabling the
+them only against an isolated live account; confirm the base URL and account before enabling the
 gate.
 
 Never use live automation to rotate/revoke API keys, change passwords, delete an existing account,
@@ -117,15 +117,11 @@ verification tasks. GitHub actions are commit-SHA pinned, checkout persistence i
 permissions are read-only, concurrency cancels superseded pull-request work, and reports are uploaded
 from the actual Android/Gradle output paths.
 
-The protected live job runs only on a schedule or an explicit manual dispatch. Keep sandbox
-credentials in the protected `sandbox` environment, restrict who can dispatch write tests, and do
-not expose secrets to pull requests from forks. A mirrored repository should accept dependency
-updates on the canonical GitLab side so automated GitHub-only branches are not overwritten.
-
-The protected environment stores `ASSINAFY_SANDBOX_API_KEY`,
-`ASSINAFY_SANDBOX_ACCOUNT_ID`, `ASSINAFY_SANDBOX_TEST_EMAIL`, and
-`ASSINAFY_SANDBOX_TEST_EMAIL_2`. CI maps them to the runtime names listed above; the GitLab pipeline
-uses the same protected secret names.
+The live suite is run by hand: the GitLab pipeline no longer ships a job for it, because the
+only deployment left is production and these tests create real data. Supply the variables above
+locally, restrict who holds those credentials, and never expose them to forks. A mirrored
+repository should accept dependency updates on the canonical GitLab side so automated
+GitHub-only branches are not overwritten.
 
 ## Release verification
 
@@ -155,6 +151,6 @@ Before tagging:
 2. Confirm no credential-like value or personal address is tracked.
 3. Inspect the generated POM and AAR under `sdk/build/`.
 4. Confirm `:consumer-smoke:assembleRelease` resolved the Maven-local artifact and ran R8.
-5. Run read-only sandbox checks; enable disposable writes only when the sandbox account is confirmed.
+5. Run read-only live checks; enable disposable writes only when the live account is confirmed.
 6. Confirm the tag version is new; Maven Central versions cannot be replaced or deleted.
 7. Push a protected `vMAJOR.MINOR.PATCH` tag and require both release jobs to pass.

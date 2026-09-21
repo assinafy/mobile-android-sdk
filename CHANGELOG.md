@@ -2,6 +2,19 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.3.0] - 2026-09-21
+
+### Removed
+
+- Sandbox support. The sandbox is no longer a supported environment, so the live suite defaults to
+  production, the `live-sandbox` jobs are gone from both the GitLab and GitHub pipelines, and no
+  documented example points at a retired host.
+
+  That job was also failing: it pinned `ASSINAFY_BASE_URL` to the sandbox, and
+  `oauth discovery documents describe the flow this SDK implements` fetches
+  `/.well-known/oauth-protected-resource`, which the sandbox answers with `403` while production
+  serves it. The SDK builds that URL from the base URL's origin, which was correct all along.
+
 ## [2.2.0] - 2026-09-21
 
 ### Fixed

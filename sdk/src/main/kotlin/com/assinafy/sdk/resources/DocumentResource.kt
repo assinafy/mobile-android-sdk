@@ -108,7 +108,7 @@ class DocumentResource internal constructor(
      * `uploaded` or `metadata_processing` status with `assignment` and `pages` not yet populated.
      *
      * The current OpenAPI request contains only the `file` part. Supplying [metadata] opts into the
-     * legacy sandbox extension that also sends `name` and `metadata` form fields.
+     * legacy extension that also sends `name` and `metadata` form fields.
      *
      * @param fileData Complete PDF bytes, beginning with the `%PDF-` signature.
      * @param fileName Non-blank `.pdf` multipart file name.
