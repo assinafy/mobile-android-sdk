@@ -30,6 +30,9 @@ object OAuthScope {
     /** Read the workspace's profile, theme and logo. */
     const val ACCOUNT_READ = "account:read"
 
+    /** Configure and deactivate the workspace webhook subscription. */
+    const val WEBHOOKS_WRITE = "webhooks:write"
+
     /** Identify the authenticated user and enable `GET /oauth/userinfo`. */
     const val OPENID = "openid"
 

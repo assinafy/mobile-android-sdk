@@ -26,7 +26,7 @@ class OAuthResourceTest {
     private val config = OAuthConfig(
         clientId = "client-123",
         redirectUri = "https://myapp.example/oauth/callback",
-        scopes = listOf(OAuthScope.DOCUMENTS_READ, OAuthScope.DOCUMENTS_WRITE, OAuthScope.OFFLINE_ACCESS),
+        scopes = listOf(OAuthScope.DOCUMENTS_READ, OAuthScope.WEBHOOKS_WRITE, OAuthScope.OFFLINE_ACCESS),
     )
 
     private fun resource(
@@ -98,7 +98,7 @@ class OAuthResourceTest {
         assertThat(params["response_type"]).isEqualTo("code")
         assertThat(params["client_id"]).isEqualTo("client-123")
         assertThat(params["redirect_uri"]).isEqualTo("https://myapp.example/oauth/callback")
-        assertThat(params["scope"]).isEqualTo("documents:read documents:write offline_access")
+        assertThat(params["scope"]).isEqualTo("documents:read webhooks:write offline_access")
         assertThat(params["code_challenge_method"]).isEqualTo("S256")
         assertThat(params["code_challenge"]).isEqualTo(request.pkce.codeChallenge)
         assertThat(params["state"]).isEqualTo(request.state)

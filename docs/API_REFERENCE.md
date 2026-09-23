@@ -204,7 +204,7 @@ when `openid` was granted. `scope` reports what was actually granted, and never 
 | `AuthorizationServerMetadata(issuer, authorizationEndpoint, tokenEndpoint, revocationEndpoint, userinfoEndpoint, jwksUri, …)` | RFC 8414 document. Only `issuer`, `authorizationEndpoint` and `tokenEndpoint` are required by the RFC, so the rest are nullable. |
 | `OAuthChallenge(error, errorDescription, scope, resourceMetadata)` | `OAuthChallenge.parse(header)` reads a `WWW-Authenticate: Bearer …` value; `isInsufficientScope` names the case where `scope` is the permission to reconnect with. |
 | `OAuthException(error, errorDescription, statusCode)` | `isAccessDenied` and `isInvalidGrant` cover the two cases callers branch on; the companion holds every standard code. |
-| `OAuthScope` | `DOCUMENTS_READ`, `DOCUMENTS_WRITE`, `TEMPLATES_READ`, `TEMPLATES_WRITE`, `ACCOUNT_READ`, `OPENID`, `PROFILE`, `EMAIL`, `OFFLINE_ACCESS`. |
+| `OAuthScope` | `DOCUMENTS_READ`, `DOCUMENTS_WRITE`, `TEMPLATES_READ`, `TEMPLATES_WRITE`, `ACCOUNT_READ`, `WEBHOOKS_WRITE`, `OPENID`, `PROFILE`, `EMAIL`, `OFFLINE_ACCESS`. |
 
 Access tokens last one hour and a connection lasts 30 days from approval, which refreshing does not
 extend. A token is valid for exactly one workspace; any other workspace answers `403`. A call missing
@@ -696,7 +696,7 @@ channel. The verification counters partition `signature_requests` and therefore 
 - `NotificationMethod`: `Email`, `Whatsapp`, plus `ALL`. Exactly one per signer, paired with the
   verification method.
 - `OAuthScope`: `documents:read`, `documents:write`, `templates:read`, `templates:write`,
-  `account:read`, `openid`, `profile`, `email`, `offline_access`.
+  `account:read`, `webhooks:write`, `openid`, `profile`, `email`, `offline_access`.
 - `OAuthConfig.DEFAULT_AUTHORIZATION_SERVER`: `https://auth.assinafy.com.br`.
 - `OAuthChallenge.INSUFFICIENT_SCOPE`: `insufficient_scope`.
 - `DocumentStatus.CERTIFICATED`: `certificated`.

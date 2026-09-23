@@ -6,8 +6,6 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  schedule:
-    - cron: '23 6 * * 1'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,7 +23,6 @@ env:
 jobs:
   verify:
     name: Build, test, lint, and publish locally
-    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 

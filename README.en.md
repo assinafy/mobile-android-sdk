@@ -64,7 +64,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.1.0-local-SNAPSHOT \
+  -Pversion=2.4.0-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -80,7 +80,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.1.0-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.4.0-local-SNAPSHOT")
 }
 ```
 
@@ -95,7 +95,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.1.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.4.0")
 }
 ```
 
@@ -211,6 +211,7 @@ val client = AssinafyClient.create(
 | `OAuthScope.DOCUMENTS_WRITE` | Create documents and send them for signature (spends notification credits) |
 | `OAuthScope.TEMPLATES_READ` / `TEMPLATES_WRITE` | Read / maintain templates, roles, fields, and tags |
 | `OAuthScope.ACCOUNT_READ` | Read the workspace profile, theme, and logo |
+| `OAuthScope.WEBHOOKS_WRITE` | Configure and deactivate the workspace webhook subscription |
 | `OAuthScope.OPENID` · `PROFILE` · `EMAIL` | Identify the user and receive their name / email |
 | `OAuthScope.OFFLINE_ACCESS` | Receive a refresh token and keep working while the user is away |
 

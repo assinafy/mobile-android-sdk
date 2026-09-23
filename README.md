@@ -58,7 +58,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.1.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.4.0")
 }
 ```
 
@@ -67,7 +67,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.1.0-local-SNAPSHOT \
+  -Pversion=2.4.0-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -190,6 +190,7 @@ val client = AssinafyClient.create(
 | `OAuthScope.DOCUMENTS_WRITE` | Criar documentos e enviá-los para assinatura (consome créditos de notificação) |
 | `OAuthScope.TEMPLATES_READ` / `TEMPLATES_WRITE` | Ler / manter templates, papéis, campos e tags |
 | `OAuthScope.ACCOUNT_READ` | Ler perfil, tema e logo do workspace |
+| `OAuthScope.WEBHOOKS_WRITE` | Configurar e desativar a assinatura de webhooks do workspace |
 | `OAuthScope.OPENID` · `PROFILE` · `EMAIL` | Identificar a pessoa e receber nome / e-mail |
 | `OAuthScope.OFFLINE_ACCESS` | Receber um refresh token e continuar funcionando sem a pessoa presente |
 
