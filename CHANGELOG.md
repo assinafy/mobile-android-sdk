@@ -4,6 +4,11 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 
 ## [Unreleased]
 
+### Removed
+
+- The `live-sandbox` job from the GitLab CI pipeline. The opt-in live suite runs only from a local
+  checkout with the `ASSINAFY_*` environment variables; no CI pipeline holds live credentials.
+
 ## [2.5.0] - 2026-09-25
 
 ### Migration
