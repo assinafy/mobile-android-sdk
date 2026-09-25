@@ -59,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.4.0")
 }
 ```
 
