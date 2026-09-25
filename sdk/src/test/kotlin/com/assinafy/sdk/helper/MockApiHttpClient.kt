@@ -16,11 +16,15 @@ class MockApiHttpClient(
     /** When set, every request throws this instead of responding (to exercise transport failures). */
     var transportError: Throwable? = null
 
+    /** When set, [postForm] runs the interface default, as a transport written before it existed does. */
+    var legacyPostForm = false
+
     data class Call(
         val method: String,
         val path: String,
         val body: String? = null,
         val queryParams: Map<String, Any?> = emptyMap(),
+        val form: Map<String, String> = emptyMap(),
     )
 
     private var responseQueue: ArrayDeque<HttpRawResponse> = ArrayDeque()
@@ -41,6 +45,12 @@ class MockApiHttpClient(
 
     override suspend fun post(path: String, jsonBody: String?): HttpRawResponse {
         calls.add(Call("POST", path, body = jsonBody))
+        return nextResponse()
+    }
+
+    override suspend fun postForm(path: String, fields: Map<String, String>): HttpRawResponse {
+        if (legacyPostForm) return super.postForm(path, fields)
+        calls.add(Call("POST_FORM", path, form = fields))
         return nextResponse()
     }
 

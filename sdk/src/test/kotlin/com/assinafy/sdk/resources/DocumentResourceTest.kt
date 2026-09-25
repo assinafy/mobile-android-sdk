@@ -353,7 +353,7 @@ class DocumentResourceTest {
         val public = MockApiHttpClient()
         public.enqueue(
             successResponse(
-                """{"hash":"hash-123","id":"doc-1","status":"certificated","page_count":"1","signer_count":"1","completed_count":1,"completed_at":"2026-01-01T00:00:00Z","verified_at":"2026-01-01T00:00:01Z","is_valid":true,"message":""}""",
+                """{"hash":"hash-123","id":"doc-1","agreement_code":"550E8400-E29B-41D4-A716-446655440000","status":"certificated","page_count":"1","signer_count":"1","completed_count":1,"completed_at":"2026-01-01T00:00:00Z","verified_at":"2026-01-01T00:00:01Z","is_valid":true,"message":""}""",
             ),
         )
 
@@ -362,6 +362,7 @@ class DocumentResourceTest {
         assertThat(authenticated.calls).isEmpty()
         assertThat(public.lastCall().path).isEqualTo("/documents/hash-123/verify")
         assertThat(result.isValid).isTrue
+        assertThat(result.agreementCode).isEqualTo("550E8400-E29B-41D4-A716-446655440000")
     }
 
     @Test

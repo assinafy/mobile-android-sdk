@@ -3,6 +3,7 @@ package com.assinafy.sdk.resources
 import com.assinafy.sdk.exceptions.NetworkException
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
+import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
 import com.assinafy.sdk.oauth.OAuthChallenge
 import com.assinafy.sdk.oauth.OAuthConfig
@@ -10,7 +11,6 @@ import com.assinafy.sdk.oauth.OAuthException
 import com.assinafy.sdk.oauth.OAuthScope
 import com.assinafy.sdk.oauth.PkcePair
 import com.assinafy.sdk.oauth.base64UrlNoPadding
-import com.google.gson.Gson
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
@@ -18,10 +18,11 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.net.URI
 import java.security.MessageDigest
+import kotlin.coroutines.Continuation
 
 class OAuthResourceTest {
 
-    private val gson = Gson()
+    private val iss = "&iss=https%3A%2F%2Fauth.assinafy.com.br"
 
     private val config = OAuthConfig(
         clientId = "client-123",
@@ -40,9 +41,6 @@ class OAuthResourceTest {
             java.net.URLDecoder.decode(it.substringBefore('='), "UTF-8") to
                 java.net.URLDecoder.decode(it.substringAfter('=', ""), "UTF-8")
         }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun body(raw: String?): Map<String, Any?> = gson.fromJson(raw, Map::class.java) as Map<String, Any?>
 
     // ---- PKCE -------------------------------------------------------------------------------
 
@@ -178,7 +176,7 @@ class OAuthResourceTest {
     fun `parse callback surfaces a declined approval as access_denied`() {
         val request = resource().authorizationRequest()
         val callback = "https://myapp.example/oauth/callback" +
-            "?error=access_denied&error_description=User+declined&state=${request.state}"
+            "?error=access_denied&error_description=User+declined&state=${request.state}$iss"
 
         val thrown = runCatching { resource().parseCallback(callback, request) }.exceptionOrNull()
 
@@ -188,17 +186,28 @@ class OAuthResourceTest {
     }
 
     @Test
+    fun `parse callback requires the issuer on approvals and errors alike`() {
+        val request = resource().authorizationRequest()
+
+        listOf("code=c", "error=access_denied").forEach { result ->
+            assertThatThrownBy {
+                resource().parseCallback("https://myapp.example/oauth/callback?$result&state=${request.state}", request)
+            }.isInstanceOf(ValidationException::class.java).hasMessageContaining("issuer")
+        }
+    }
+
+    @Test
     fun `parse callback rejects a response carrying neither code nor error`() {
         val request = resource().authorizationRequest()
 
         assertThatThrownBy {
-            resource().parseCallback("https://myapp.example/oauth/callback?state=${request.state}", request)
-        }.isInstanceOf(ValidationException::class.java)
+            resource().parseCallback("https://myapp.example/oauth/callback?state=${request.state}$iss", request)
+        }.isInstanceOf(ValidationException::class.java).hasMessageContaining("neither")
     }
 
     @Test
     fun `parse callback accepts a stored state without the original request`() {
-        val callback = "https://myapp.example/oauth/callback?code=abc&state=stored-state"
+        val callback = "https://myapp.example/oauth/callback?code=abc&state=stored-state$iss"
 
         assertThat(resource().parseCallback(callback, "stored-state")).isEqualTo("abc")
     }
@@ -222,9 +231,10 @@ class OAuthResourceTest {
         val tokens = resource(mock).exchangeCode("the-code", "the-verifier")
 
         val call = mock.lastCall()
-        assertThat(call.method).isEqualTo("POST")
+        // POST_FORM: form-encoded and never replayed by the transport.
+        assertThat(call.method).isEqualTo("POST_FORM")
         assertThat(call.path).isEqualTo("/oauth/token")
-        val sent = body(call.body)
+        val sent = call.form
         assertThat(sent["grant_type"]).isEqualTo("authorization_code")
         assertThat(sent["code"]).isEqualTo("the-code")
         assertThat(sent["code_verifier"]).isEqualTo("the-verifier")
@@ -243,13 +253,16 @@ class OAuthResourceTest {
     }
 
     @Test
-    fun `exchange code sends client_secret only for a confidential client`() = runTest {
+    fun `a configured client secret is refused before anything is built or sent`() {
         val mock = MockApiHttpClient()
-        mock.enqueue(tokenResponse)
+        val withSecret = resource(mock, config.copy(clientSecret = "sh-1"))
 
-        resource(mock, config.copy(clientSecret = "sh-1")).exchangeCode("c", "v")
-
-        assertThat(body(mock.lastCall().body)["client_secret"]).isEqualTo("sh-1")
+        assertThatThrownBy { withSecret.authorizationRequest() }.isInstanceOf(ValidationException::class.java)
+            .hasMessageContaining("create a new Public application").hasMessageNotContaining("sh-1")
+        assertThatThrownBy { runBlocking { withSecret.exchangeCode("c", "v") } }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { withSecret.refresh("rt") } }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { withSecret.revoke("t") } }.isInstanceOf(ValidationException::class.java)
+        assertThat(mock.calls).isEmpty()
     }
 
     @Test
@@ -271,12 +284,46 @@ class OAuthResourceTest {
 
         resource(mock).refresh("rt-0")
 
-        val sent = body(mock.lastCall().body)
+        val sent = mock.lastCall().form
+        assertThat(mock.lastCall().method).isEqualTo("POST_FORM")
         assertThat(mock.lastCall().path).isEqualTo("/oauth/token")
         assertThat(sent["grant_type"]).isEqualTo("refresh_token")
         assertThat(sent["refresh_token"]).isEqualTo("rt-0")
         assertThat(sent["client_id"]).isEqualTo("client-123")
         assertThat(sent).doesNotContainKey("redirect_uri")
+    }
+
+    @Test
+    fun `refresh rejects a success that carries no new refresh token`() {
+        mapOf(
+            "missing" to """{"access_token":"at-2","token_type":"Bearer","expires_in":3600}""",
+            "blank" to """{"access_token":"at-2","refresh_token":"  ","expires_in":3600}""",
+            "unchanged" to """{"access_token":"at-2","refresh_token":"rt-0","expires_in":3600}""",
+        ).forEach { (case, body) ->
+            val mock = MockApiHttpClient()
+            mock.enqueue(HttpRawResponse(200, body, emptyMap()))
+
+            val thrown = runCatching { runBlocking { resource(mock).refresh(" rt-0 ") } }.exceptionOrNull()
+
+            assertThat(thrown).describedAs(case).isInstanceOf(OAuthException::class.java)
+            assertThat((thrown as OAuthException).error).describedAs(case).isEqualTo("invalid_response")
+            assertThat(thrown.message).describedAs(case).doesNotContain("rt-0").doesNotContain("at-2")
+        }
+    }
+
+    @Test
+    fun `a transport written before postForm still links and fails token requests without sending`() {
+        // A JVM default method rather than a DefaultImpls-only member: an implementation compiled
+        // against an older SDK resolves to this body instead of throwing AbstractMethodError.
+        val postForm = ApiHttpClient::class.java.getMethod("postForm", String::class.java, Map::class.java, Continuation::class.java)
+        assertThat(postForm.isDefault).isTrue
+
+        val legacy = MockApiHttpClient().apply { legacyPostForm = true }
+
+        assertThatThrownBy { runBlocking { resource(legacy).refresh("rt-0") } }
+            .hasRootCauseInstanceOf(UnsupportedOperationException::class.java)
+            .hasMessageContaining("does not implement ApiHttpClient.postForm")
+        assertThat(legacy.calls).isEmpty()
     }
 
     @Test
@@ -332,7 +379,8 @@ class OAuthResourceTest {
 
         resource(mock).revoke("rt-1", tokenTypeHint = "refresh_token")
 
-        val sent = body(mock.lastCall().body)
+        val sent = mock.lastCall().form
+        assertThat(mock.lastCall().method).isEqualTo("POST_FORM")
         assertThat(mock.lastCall().path).isEqualTo("/oauth/revoke")
         assertThat(sent["token"]).isEqualTo("rt-1")
         assertThat(sent["token_type_hint"]).isEqualTo("refresh_token")

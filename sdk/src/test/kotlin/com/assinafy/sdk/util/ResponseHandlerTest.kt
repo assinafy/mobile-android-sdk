@@ -31,6 +31,21 @@ class ResponseHandlerTest {
     }
 
     @Test
+    fun `a 403 exposes the insufficient_scope challenge so the caller reconnects instead of retrying`() {
+        val response = HttpRawResponse(
+            403,
+            """{"status":403,"message":"You are not allowed to perform this action.","data":null}""",
+            mapOf("www-authenticate" to """Bearer error="insufficient_scope", scope="documents:write""""),
+        )
+
+        val error = runCatching { ResponseHandler.handle(response, TestModel::class.java) }.exceptionOrNull() as ApiException
+
+        assertThat(error.challenge!!.isInsufficientScope).isTrue
+        assertThat(error.challenge!!.scope).isEqualTo("documents:write")
+        assertThat(ApiException.fromResponse(403, null).challenge).isNull()
+    }
+
+    @Test
     fun `handle throws ApiException on non-2xx envelope status`() {
         val response = HttpRawResponse(200, """{"status":400,"message":"Bad request","data":{}}""", emptyMap())
         assertThatThrownBy {

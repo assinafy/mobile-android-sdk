@@ -1,4 +1,5 @@
 import org.gradle.api.tasks.bundling.Zip
+import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 
 plugins {
     id("com.android.library")
@@ -10,7 +11,7 @@ plugins {
 
 group = "com.assinafy"
 // Honor a release-automation -Pversion override and otherwise use the released version.
-version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.4.1"
+version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.5.0"
 
 val okHttpVersion = "5.5.0"
 val gsonVersion = "2.14.0"
@@ -167,6 +168,12 @@ tasks.register<Zip>("centralBundle") {
 
 kotlin {
     jvmToolchain(17)
+    compilerOptions {
+        // Interface members with a body compile to JVM default methods plus DefaultImpls bridges, so an
+        // ApiHttpClient implementation compiled against an older SDK still links when a newer member
+        // (postForm) is called. DISABLE (DefaultImpls only) would turn that call into AbstractMethodError.
+        jvmDefault.set(JvmDefaultMode.ENABLE)
+    }
 }
 
 dependencies {

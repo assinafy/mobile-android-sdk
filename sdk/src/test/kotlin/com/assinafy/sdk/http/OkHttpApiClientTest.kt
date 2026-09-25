@@ -5,12 +5,14 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
+import mockwebserver3.SocketEffect
 import okhttp3.Headers.Companion.headersOf
 import okhttp3.OkHttpClient
 import okhttp3.TlsVersion
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class OkHttpApiClientTest {
@@ -170,6 +172,35 @@ class OkHttpApiClientTest {
             val req = server.takeRequest()
             assertThat(req.method).isEqualTo("POST")
             assertThat(req.bodySize).isZero()
+        }
+    }
+
+    @Test
+    fun `form posts are url-encoded and never replayed once they may have reached the server`() {
+        MockWebServer().use { server ->
+            val dropBeforeResponse = MockResponse.Builder().onResponseStart(SocketEffect.ShutdownConnection).build()
+            server.enqueue(envelope())
+            server.enqueue(dropBeforeResponse)
+            server.enqueue(envelope())
+            server.enqueue(dropBeforeResponse)
+            server.enqueue(envelope())
+            server.start()
+            val client = OkHttpApiClient(server.url("/").toString(), apiKey = null, token = null)
+            runBlocking { client.get("/warm-up") }
+
+            // OkHttp silently replays a request whose pooled connection drops before the response...
+            assertThat(runBlocking { client.get("/replayed") }.statusCode).isEqualTo(200)
+            assertThat(server.requestCount).isEqualTo(3)
+
+            // ...but a form post (an OAuth token request) is sent exactly once.
+            assertThatThrownBy { runBlocking { client.postForm("/oauth/token", mapOf("grant_type" to "refresh_token", "refresh_token" to "a b&c")) } }
+                .isInstanceOf(IOException::class.java)
+            assertThat(server.requestCount).isEqualTo(4)
+
+            repeat(3) { server.takeRequest() }
+            val sent = server.takeRequest()
+            assertThat(sent.headers["Content-Type"]).isEqualTo("application/x-www-form-urlencoded")
+            assertThat(sent.body!!.utf8()).isEqualTo("grant_type=refresh_token&refresh_token=a+b%26c")
         }
     }
 

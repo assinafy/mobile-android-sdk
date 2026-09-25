@@ -5,6 +5,7 @@ import com.assinafy.sdk.exceptions.ApiException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.ConnectionSpec
+import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -12,9 +13,11 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.TlsVersion
+import okio.BufferedSink
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -29,7 +32,8 @@ import kotlin.coroutines.resumeWithException
  * Authentication headers are attached only to requests that match the configured base URL's
  * scheme, host, and port, so redirects to another origin cannot receive credentials. HTTP 429 is
  * retried at most twice for read-only methods, honoring bounded server delay headers; mutation
- * requests are never replayed.
+ * requests are never replayed after a 429, and [postForm] requests are never retransmitted at all.
+ * HTTPS negotiates TLS 1.2 or 1.3 only.
  *
  */
 class OkHttpApiClient private constructor(
@@ -69,6 +73,19 @@ class OkHttpApiClient private constructor(
     override suspend fun post(path: String, jsonBody: String?): HttpRawResponse {
         val body = jsonBody?.toRequestBody(JSON) ?: EMPTY_BODY
         return execute(Request.Builder().url(url(path)).post(body).build())
+    }
+
+    override suspend fun postForm(path: String, fields: Map<String, String>): HttpRawResponse {
+        val form = FormBody.Builder().apply { fields.forEach { (name, value) -> add(name, value) } }.build()
+        // OkHttp retransmits bodies after a dropped connection, a 408 or 503, or a redirect unless
+        // they are one-shot; a replayed refresh grant would reuse an already rotated refresh token.
+        val oneShot = object : RequestBody() {
+            override fun contentType() = form.contentType()
+            override fun contentLength() = form.contentLength()
+            override fun isOneShot() = true
+            override fun writeTo(sink: BufferedSink) = form.writeTo(sink)
+        }
+        return execute(Request.Builder().url(url(path)).post(oneShot).build())
     }
 
     override suspend fun postMultipart(
@@ -124,7 +141,7 @@ class OkHttpApiClient private constructor(
         val body = raw.body ?: ByteArray(0)
         if (raw.statusCode !in 200..299) {
             val errorBody = body.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
-            throw ApiException.fromResponse(raw.statusCode, errorBody)
+            throw ApiException.fromResponse(raw.statusCode, errorBody, raw.headers["www-authenticate"])
         }
         if (body.isEmpty()) throw ApiException("Empty binary response", raw.statusCode)
         return body

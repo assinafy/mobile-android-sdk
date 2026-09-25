@@ -138,8 +138,10 @@ internal fun base64UrlNoPadding(bytes: ByteArray): String {
  *   different URIs.
  * @property scopes Permissions requested at connect time, within what the application is registered
  *   for. Defaults to read-only document access.
- * @property clientSecret Confidential-client secret, sent as `client_secret_post`. Leave `null` in
- *   a distributed application.
+ * @property clientSecret Must stay `null`. The SDK never sends a client secret: `client.oauth`
+ *   rejects a non-null value with a `ValidationException` before any request, because a secret
+ *   inside an APK is extractable. An application registered as `Confidential` cannot be switched
+ *   to `Public`: create a new `Public` application, use its [clientId], and have users connect again.
  * @property authorizationServerUrl Issuer that owns the browser-facing approval page. Defaults to
  *   the production issuer; for any other environment read it from
  *   `client.oauth.protectedResourceMetadata().authorizationServer` rather than guessing.
@@ -150,11 +152,13 @@ data class OAuthConfig(
     val clientId: String,
     val redirectUri: String,
     val scopes: List<String> = listOf(OAuthScope.DOCUMENTS_READ),
+    @Deprecated("Android apps are public OAuth clients: leave this null. A non-null value is refused; register a Public application and use its client_id.")
     val clientSecret: String? = null,
     val authorizationServerUrl: String = DEFAULT_AUTHORIZATION_SERVER,
     val resource: String? = null,
 ) {
     /** Returns a diagnostic representation with the client secret redacted. */
+    @Suppress("DEPRECATION")
     override fun toString(): String =
         "OAuthConfig(clientId=$clientId, redirectUri=$redirectUri, scopes=$scopes, " +
             "clientSecret=${if (clientSecret == null) "null" else "***"}, " +

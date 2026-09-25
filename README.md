@@ -59,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.4.1")
+    implementation("com.assinafy:assinafy-android-sdk:2.5.0")
 }
 ```
 
@@ -68,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.4.1-local-SNAPSHOT \
+  -Pversion=2.5.0-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -159,7 +159,10 @@ com a chave de API — nada desta seção se aplica.
 
 Um app Android é um **cliente público**: ele roda no dispositivo da pessoa e não consegue guardar
 segredo. Registre-o como `Public`, deixe `clientSecret` nulo e autentique só com PKCE. Uma
-`client_secret` embarcada em um APK é extraível por qualquer um que abra o pacote.
+`client_secret` embarcada em um APK é extraível por qualquer um que abra o pacote, então o SDK
+nunca a envia: um `clientSecret` preenchido é recusado com `ValidationException`. Um app registrado
+como `Confidential` precisa passar para uma aplicação nova — veja
+[Migrar de uma aplicação Confidential](#migrar-de-uma-aplicação-confidential).
 
 Registre a aplicação no app da Assinafy em **Configurações → Aplicações OAuth → Nova aplicação**.
 Você recebe um `client_id` e cadastra uma ou mais URIs de redirecionamento — elas são comparadas
@@ -272,17 +275,51 @@ val documents = workspaceClient.documents.list(accountId = workspaceId)
 O access token dura 1 hora. Com `offline_access`, renove sem a pessoa:
 
 ```kotlin
-val renewed = client.oauth.refresh(store.refreshToken)
-store.save(refreshToken = renewed.refreshToken) // grave antes de usar o novo access token
+val sent = store.refreshToken
+val renewed = try {
+    // NonCancellable: sair da tela no meio do refresh não pode descartar um token já girado.
+    withContext(NonCancellable) {
+        client.oauth.refresh(sent).also {
+            store.save(accessToken = it.accessToken, refreshToken = it.refreshToken) // os dois, antes de usar
+        }
+    }
+} catch (error: AssinafyException) {
+    val cause = error.cause
+    return when {
+        // Falhou antes de o pedido sair do aparelho: `sent` continua válido, tente de novo mais tarde.
+        error is NetworkException &&
+            (cause is UnknownHostException || cause is ConnectException || cause is SSLHandshakeException) ->
+            retryLater()
+        // Outro refresh gravou um token mais novo nesse meio-tempo: siga com os tokens gravados.
+        store.refreshToken != sent -> useStoredTokens()
+        // Qualquer outra falha pode ter chegado ao servidor e girado `sent`: nunca o envie de novo.
+        else -> askUserToConnectAgain()
+    }
+}
+
+// O cliente do passo 4 continua enviando o token expirado: faça as próximas chamadas com o novo.
+val workspaceClient = AssinafyClient.create(
+    AssinafyClientConfig(token = renewed.accessToken, baseUrl = SdkConstants.DEFAULT_BASE_URL),
+)
+val documents = workspaceClient.documents.list(accountId = workspaceId)
 ```
 
 > **Todo refresh gira o token.** Cada renovação devolve um refresh token novo e aposenta o anterior.
 > Um refresh token reutilizado não pode ser distinguido de um roubado sendo replicado, então ele
-> encerra a conexão inteira e a pessoa precisa conectar de novo. Grave o novo token antes de
-> qualquer outra coisa, trate timeout como "pode ter funcionado" (releia o token gravado em vez de
-> repetir às cegas) e renove um de cada vez por conexão.
+> encerra a conexão inteira e a pessoa precisa conectar de novo. Grave os dois tokens novos antes de
+> qualquer outra coisa e renove um de cada vez por conexão. O SDK envia cada pedido de token uma única
+> vez e nunca o repete sozinho, e recusa com `OAuthException` `invalid_response` uma resposta de
+> sucesso sem refresh token novo.
 >
-> Uma conexão dura **30 dias a partir da aprovação**. Renovar não estende esse prazo.
+> **Nunca envie o mesmo refresh token duas vezes.** Timeout, conexão derrubada, status de erro ou
+> `invalid_response` não dizem se o servidor girou o token. Reler o armazenamento não torna a nova
+> tentativa segura: se a resposta se perdeu, ele ainda guarda o token aposentado. Siga só se um token
+> diferente e mais novo foi gravado; senão, peça à pessoa que conecte de novo. Só uma falha que
+> comprovadamente aconteceu antes de qualquer envio — `UnknownHostException`, `ConnectException` ou
+> `SSLHandshakeException` como causa da `NetworkException` — pode ser repetida com o mesmo token.
+>
+> Um refresh token vale **30 dias**, e cada renovação devolve um novo com mais 30 dias. A conexão só
+> expira se o app ficar 30 dias sem renovar; depois disso, a pessoa precisa conectar de novo.
 
 ### 6. Desconectar
 
@@ -332,19 +369,40 @@ padrão.
 | `OAuthException.isInvalidGrant` | Código expirado/reutilizado, `code_verifier` ou `redirect_uri` divergente, refresh token já usado ou permissões alteradas — reconecte |
 | `OAuthException.INVALID_CLIENT` | `client_id` errado ou aplicação desativada |
 | `ApiException` com status `401` | Token expirado ou revogado — renove; se falhar, peça nova conexão |
-| `ApiException` com status `403` | Falta escopo, outro workspace, ou área que OAuth nunca alcança |
+| `ApiException` com status `403` e `challenge?.isInsufficientScope == true` | Falta escopo — reconecte pedindo `challenge.scope` |
+| `ApiException` com status `403`, sem esse `challenge` | Outro workspace, o papel da pessoa, ou área que OAuth nunca alcança |
 
 Uma chamada sem o escopo necessário responde `403` com
 `WWW-Authenticate: Bearer error="insufficient_scope", scope="documents:write"`. Isso é um pedido
-para reconectar com aquele escopo, **não** para repetir a chamada. `OAuthChallenge.parse` lê esse
-header.
+para reconectar com aquele escopo, **não** para repetir a chamada. `ApiException.challenge` traz esse
+header já interpretado; `OAuthChallenge.parse` lê um valor cru.
+
+### Migrar de uma aplicação Confidential
+
+Versões anteriores enviavam o `clientSecret` quando ele estava configurado. Agora o SDK o recusa:
+toda chamada de `client.oauth` que usa a aplicação registrada lança `ValidationException` antes de
+enviar qualquer coisa, então a recusa nunca gasta um refresh token gravado. O tipo de uma aplicação
+não pode ser alterado depois de criada, então um app registrado como `Confidential` passa para uma
+aplicação nova:
+
+1. No app da Assinafy, crie uma em **Configurações → Aplicações OAuth → Nova aplicação**, do tipo
+   **Public**, com as mesmas URIs de redirecionamento e as permissões que você usa.
+2. Coloque o `client_id` dela no `OAuthConfig` e remova o `clientSecret`.
+3. Descarte os tokens emitidos para a aplicação antiga e peça a cada pessoa que conecte de novo. Esses
+   tokens pertencem ao `client_id` antigo: a aplicação nova não consegue renová-los, e revogá-los por
+   ela não tem efeito. Os access tokens já emitidos continuam valendo até expirar, em no máximo uma
+   hora.
+4. O segredo antigo foi embarcado nos seus APKs, então trate-o como exposto. Quando nenhuma versão
+   que você ainda suporta usar a aplicação antiga, desative-a ou exclua-a na Assinafy; isso desconecta
+   de uma vez tudo o que foi conectado por ela.
 
 ### Antes de ir para produção
 
 - Um par PKCE e um `state` novos a cada tentativa de conexão
 - `state` e `iss` conferidos na URI de redirecionamento — `parseCallback` faz os dois
 - `client_secret` só no servidor, nunca em app, código de navegador ou repositório
-- O novo refresh token gravado antes de ser usado, e um refresh por vez por conexão
+- Os dois tokens novos gravados antes de serem usados, um refresh por vez por conexão, e nenhum
+  refresh token enviado duas vezes
 - `401` tratado: renovar e, se falhar, pedir nova conexão
 - O id do workspace guardado por conexão, e o `scope` devolvido realmente lido
 - Toda URI de redirecionamento de produção cadastrada, `https://` e exata

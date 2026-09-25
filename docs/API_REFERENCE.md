@@ -65,7 +65,7 @@ Failures are:
 | Exception | Meaning |
 |---|---|
 | `ValidationException` | A local required-field, format, range, file, or configuration check failed. No request is sent. |
-| `ApiException` | HTTP or envelope status was not 2xx. Inspect `statusCode` and `responseData`; do not branch on human-readable text, and redact response data before logging because servers can echo sensitive input. |
+| `ApiException` | HTTP or envelope status was not 2xx. Inspect `statusCode`, `responseData`, and `challenge` (the parsed `WWW-Authenticate: Bearer` challenge, if any); do not branch on human-readable text, and redact response data before logging because servers can echo sensitive input. |
 | `NetworkException` | DNS, TLS, connection, timeout, or response-read failure. |
 | `OAuthException` | An OAuth endpoint or authorization redirect reported a flat `{error, error_description}` failure. Branch on `error`, never on message text. |
 | `AssinafyException` | Common SDK base exception and response-decoding failures. |
@@ -80,8 +80,8 @@ resource integration and diagnostics:
 
 | Type/member | Contract |
 |---|---|
-| `ApiHttpClient` | Suspend transport interface for JSON verbs, multipart uploads, raw signature upload, binary GET, and absolute-URL GET. Paths are relative to the configured API prefix; `getAbsolute(url)` takes a full URL and is used only for OAuth discovery documents. |
-| `OkHttpApiClient(baseUrl, apiKey, token, timeoutMs)` | Default implementation. It URL-encodes query values, applies credentials only on the configured origin, retries only safe reads after 429, and returns `HttpRawResponse` without unwrapping it. |
+| `ApiHttpClient` | Suspend transport interface for JSON verbs, form posts, multipart uploads, raw signature upload, binary GET, and absolute-URL GET. Paths are relative to the configured API prefix; `getAbsolute(url)` takes a full URL and is used only for OAuth discovery documents; `postForm(path, fields)` sends `application/x-www-form-urlencoded` for the OAuth token and revocation endpoints and is never replayed. Its default implementation sends nothing and throws `UnsupportedOperationException`, so an implementation written for an earlier version still compiles and links. |
+| `OkHttpApiClient(baseUrl, apiKey, token, timeoutMs)` | Default implementation. It negotiates TLS 1.2 or 1.3 for HTTPS, URL-encodes query values, applies credentials only on the configured origin, retries only safe reads after 429, sends `postForm` bodies at most once (never retransmitted after a dropped connection), and returns `HttpRawResponse` without unwrapping it. |
 | `HttpRawResponse` | `statusCode:Int`, UTF-8 `body:String?`, and lower-cased `headers:Map<String,String>`. |
 | `ApiException.fromResponse(statusCode, responseData)` | Creates a typed exception from a parsed map, raw JSON/text, or empty body; extracts `message`/`error` when present and preserves the source in `responseData`. |
 
@@ -153,7 +153,14 @@ applications acting in another user's workspace with that user's permission. It 
 `AssinafyClientConfig.oauth`; without it every method except discovery raises `ValidationException`.
 
 An Android application is a **public client**: `OAuthConfig.clientSecret` stays `null` and PKCE alone
-authenticates the client. `client_secret` is only for server-side confidential clients.
+authenticates the client. The SDK never sends `client_secret`; a non-null `clientSecret` raises
+`ValidationException` before any request, because a secret shipped in an APK is extractable.
+
+An application's type cannot be changed after it is created, so an app registered as `Confidential`
+moves to a new `Public` application: configure its `client_id` without `clientSecret`, discard the
+tokens issued to the old application (the new `client_id` can neither refresh nor revoke them), and
+have each user connect again. Once no supported version uses the old application, disable or delete
+it; its secret shipped inside APKs.
 
 These four endpoints do not use the `{status, message, data}` envelope. They answer with flat
 RFC 6749, OpenID Connect, and RFC 9728 objects, and failures raise `OAuthException` (carrying
@@ -162,10 +169,10 @@ RFC 6749, OpenID Connect, and RFC 9728 objects, and failures raise `OAuthExcepti
 | Function | Route and contract |
 |---|---|
 | `authorizationRequest(scopes, nonce, pkce, state)` | Local; no request. Builds `GET {authorizationServer}/oauth/authorize` with `response_type=code`, `client_id`, `redirect_uri`, space-separated `scope`, `state`, `code_challenge`, `code_challenge_method=S256`, `resource`, and `nonce` when supplied. Returns `AuthorizationRequest(url, state, pkce)`. Generates a fresh PKCE pair and `state` per call. |
-| `parseCallback(callbackUri, request \| expectedState)` | Local; no request. Verifies `state` matches and that `iss`, when present, equals the configured authorization server, then returns `code`. Raises `OAuthException` when the redirect carries `error`, and `ValidationException` on a `state`/`iss` mismatch or a response with neither `code` nor `error`. |
-| `exchangeCode(code, codeVerifier, redirectUri)` | `POST /v1/oauth/token` with `{"grant_type":"authorization_code","code","redirect_uri","client_id","code_verifier","resource"}`, plus `client_secret` for a confidential client. Returns `OAuthTokens`. |
-| `refresh(refreshToken)` | `POST /v1/oauth/token` with `{"grant_type":"refresh_token","refresh_token","client_id"}`, plus `client_secret` for a confidential client. Returns a new `OAuthTokens`, including a **new** refresh token that retires the old one. |
-| `revoke(token, tokenTypeHint)` | `POST /v1/oauth/revoke` with `{"token","client_id"}` and optional `token_type_hint` of `access_token` or `refresh_token`. Answers `200` for every token outcome; only failed client authentication answers `401`. |
+| `parseCallback(callbackUri, request \| expectedState)` | Local; no request. Verifies `state` matches and that `iss` equals the configured authorization server — a missing `iss` is a mismatch — before reading anything else, then returns `code`. Raises `OAuthException` when the redirect carries `error`, and `ValidationException` on a `state`/`iss` mismatch or a response with neither `code` nor `error`. |
+| `exchangeCode(code, codeVerifier, redirectUri)` | `POST /v1/oauth/token`, form-encoded (`application/x-www-form-urlencoded`) and sent once, with `grant_type=authorization_code`, `code`, `redirect_uri`, `client_id`, `code_verifier`, `resource`. Returns `OAuthTokens`. |
+| `refresh(refreshToken)` | `POST /v1/oauth/token`, form-encoded and sent once, with `grant_type=refresh_token`, `refresh_token`, `client_id`. Returns a new `OAuthTokens`, including a **new** refresh token that retires the old one. A 2xx whose `refresh_token` is missing, blank, or the one sent raises `OAuthException` `invalid_response`. |
+| `revoke(token, tokenTypeHint)` | `POST /v1/oauth/revoke`, form-encoded, with `token`, `client_id` and optional `token_type_hint` of `access_token` or `refresh_token`. Answers `200` for every token outcome; only failed client authentication answers `401`. |
 | `userInfo()` | `GET /v1/oauth/userinfo` using the client's bearer token. Requires the `openid` scope. Returns `UserInfo`. |
 | `protectedResourceMetadata()` | `GET {apiOrigin}/.well-known/oauth-protected-resource`. The origin is derived from the client's base URL, so the document is read from the host root rather than the `/v1` prefix. Returns `ProtectedResourceMetadata`. Needs no `OAuthConfig`. |
 | `authorizationServerMetadata(issuer)` | `GET {issuer}/.well-known/oauth-authorization-server`, served by the authorization server rather than this API. Returns `AuthorizationServerMetadata`. Needs no `OAuthConfig`. |
@@ -195,7 +202,7 @@ when `openid` was granted. `scope` reports what was actually granted, and never 
 
 | Type | Contract |
 |---|---|
-| `OAuthConfig(clientId, redirectUri, scopes, clientSecret, authorizationServerUrl, resource)` | The registered application. `authorizationServerUrl` defaults to `https://auth.assinafy.com.br`; `resource` defaults to the client's base-URL origin. `toString()` redacts the secret. |
+| `OAuthConfig(clientId, redirectUri, scopes, clientSecret, authorizationServerUrl, resource)` | The registered application. `authorizationServerUrl` defaults to `https://auth.assinafy.com.br`; `resource` defaults to the client's base-URL origin. `clientSecret` is deprecated and must stay `null` (a non-null value is rejected, never sent); `toString()` redacts it. |
 | `PkcePair(codeVerifier, codeChallenge, codeChallengeMethod)` | `PkcePair.generate(verifierLength = 64)` draws the verifier from the RFC 7636 unreserved alphabet (43-128 characters) and sets `codeChallenge` to unpadded base64url SHA-256 of it. `toString()` redacts the verifier. |
 | `AuthorizationRequest(url, state, pkce)` | What to open, and what to keep in session until the redirect returns. |
 | `OAuthTokens(accessToken, tokenType, expiresIn, refreshToken, scope, idToken)` | Adds `scopes: List<String>` and `hasScope(name)`. `toString()` redacts every token. |
@@ -206,10 +213,17 @@ when `openid` was granted. `scope` reports what was actually granted, and never 
 | `OAuthException(error, errorDescription, statusCode)` | `isAccessDenied` and `isInvalidGrant` cover the two cases callers branch on; the companion holds every standard code. |
 | `OAuthScope` | `DOCUMENTS_READ`, `DOCUMENTS_WRITE`, `TEMPLATES_READ`, `TEMPLATES_WRITE`, `ACCOUNT_READ`, `WEBHOOKS_WRITE`, `OPENID`, `PROFILE`, `EMAIL`, `OFFLINE_ACCESS`. |
 
-Access tokens last one hour and a connection lasts 30 days from approval, which refreshing does not
-extend. A token is valid for exactly one workspace; any other workspace answers `403`. A call missing
-a scope answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"`, which is
-a prompt to reconnect with that scope rather than to retry.
+Access tokens last one hour. A refresh token is valid for 30 days, and every refresh returns a new
+one with a fresh 30 days, so a connection only expires after 30 days without a refresh. Save each
+rotated refresh token and its access token before using the response, and keep the refresh and the
+save together under `NonCancellable`: a refresh cancelled mid-request can lose a token the server
+already rotated. Never send the same refresh token twice: after a failure that may have reached the
+server, continue only if a different, newer token was saved, and otherwise ask the user to connect
+again. Only a `NetworkException` caused by `UnknownHostException`, `ConnectException` or
+`SSLHandshakeException` happened before anything was sent and is safe to retry with the same token. A
+token is valid for exactly one workspace; any other workspace answers `403`. A call missing a scope
+answers `403` with `WWW-Authenticate: Bearer error="insufficient_scope", scope="…"`, exposed as
+`ApiException.challenge`, which is a prompt to reconnect with that scope rather than to retry.
 
 ## WorkspaceResource
 
@@ -632,7 +646,7 @@ changing standard requests.
 | `DocumentDetails` | `resource:String?`, `id:String`, `account_id→accountId:String?`, `template_id→templateId:String?`, `name:String`, `status:String`, `assignment:Assignment?`, deployed response `download_url→downloadUrl:String?` and `download_final_url→downloadFinalUrl:String?`, `signing_url→signingUrl:String?`, `artifacts:DocumentArtifacts?`, `tags:List<Tag>?`, `pages:List<DocumentPage>?`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?`, `is_closed→isClosed:Boolean?`, `decline_reason→declineReason:String?`, `declined_by→declinedBy:Signer?`, deployed response `activities:List<DocumentActivity>?` |
 | `PublicDocumentInfo` | `id:String`, `name:String`, `resource:String?`, `account_id→accountId:String?`, `template_id→templateId:String?`, `status:String?`, `artifacts:DocumentArtifacts?`, `is_closed→isClosed:Boolean?`, `signing_url→signingUrl:String?`, `decline_reason→declineReason:String?`, `declined_by→declinedBy:Signer?`, `tags:List<Tag>?`, `assignment:Assignment?`, `pages:List<DocumentPage>?`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?`; deployed responses `page_count→pageCount:Number?`, `created_by→createdBy:String?` |
 | `DocumentActivity` | `id:Long`, `event:String`, `message:String?`, deployed-widened `payload:Any?` (the frozen schema declares an object), `origin:Map<String,Any>?`, `created_at→createdAt:String?` |
-| `DocumentVerification` | `hash:String`, `id:String?`, `status:String?`, `page_count→pageCount:String?`, `signer_count→signerCount:String?`, `completed_count→completedCount:Int?`, `completed_at→completedAt:String?`, `verified_at→verifiedAt:String`, `is_valid→isValid:Boolean`, `message:String` |
+| `DocumentVerification` | `hash:String`, `id:String?`, `status:String?`, `page_count→pageCount:String?`, `signer_count→signerCount:String?`, `completed_count→completedCount:Int?`, `completed_at→completedAt:String?`, `verified_at→verifiedAt:String`, `is_valid→isValid:Boolean`, `message:String`, `agreement_code→agreementCode:String?` |
 | `DocumentStatusInfo` | `code:String`, `deletable:Boolean?` |
 | `SigningProgress` | Local `signed:Int`, `total:Int`, `pending:Int`, `percentage:Double` |
 | `Assignment` | `resource:String?`, `id:String`, `sender_email→senderEmail:String?`, `method:String?`, `expires_at→expiresAt:String?`, compatibility `expiration:String?`, `message:String?`, `signers:List<Signer>`, `copy_receivers→copyReceivers:List<Signer>?`, `items:List<AssignmentItem>?`, `summary:AssignmentSummary?`, `signing_urls→signingUrls:List<SigningUrl>?` |

@@ -34,6 +34,7 @@ data class DocumentArtifacts(
  * @property verifiedAt Timestamp at which verification ran.
  * @property isValid Whether the hash identifies a valid Assinafy document.
  * @property message Human-readable verification result.
+ * @property agreementCode Agreement code printed on the document certificate, when one exists.
  */
 data class DocumentVerification(
     @SerializedName("hash") val hash: String,
@@ -46,6 +47,7 @@ data class DocumentVerification(
     @SerializedName("verified_at") val verifiedAt: String,
     @SerializedName("is_valid") val isValid: Boolean,
     @SerializedName("message") val message: String,
+    @SerializedName("agreement_code") val agreementCode: String? = null,
 )
 
 /**

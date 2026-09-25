@@ -2,6 +2,54 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [Unreleased]
+
+## [2.5.0] - 2026-09-25
+
+### Migration
+
+- Apps registered as `Confidential` must move to a new `Public` application, because an
+  application's type cannot be changed: configure its `client_id` without `clientSecret`, discard the
+  tokens issued to the old application, and have each user connect again. Until then every
+  `client.oauth` call that uses the application raises `ValidationException`. See "Moving from a
+  Confidential application" in the README.
+
+### Added
+
+- `DocumentVerification.agreementCode` carries the agreement code printed on the document certificate.
+- `ApiException.challenge` carries the parsed `WWW-Authenticate: Bearer` challenge, so a `403` for a
+  missing OAuth scope names the scope to reconnect with.
+- `ApiHttpClient.postForm(path, fields)` sends an `application/x-www-form-urlencoded` body at most once.
+  Its default implementation sends nothing and throws `UnsupportedOperationException`, so
+  `ApiHttpClient` implementations written for earlier versions still compile and link.
+
+### Changed
+
+- OAuth token and revocation requests are form-encoded and sent exactly once. Neither the SDK nor
+  OkHttp replays them after a dropped connection, a `408`/`503`, or a redirect, so a refresh never
+  reuses a refresh token the server already rotated.
+- `parseCallback` requires `iss` on every redirect, approvals and errors alike.
+- `refresh` raises `OAuthException` `invalid_response` when a successful answer carries no new refresh
+  token (missing, blank, or the one sent) instead of returning tokens without a usable replacement.
+
+### Deprecated
+
+- `OAuthConfig.clientSecret`, kept for source compatibility; it must stay `null`.
+
+### Fixed
+
+- Refresh-token lifetime: each refresh returns a refresh token valid for a fresh 30 days, and a
+  connection expires only after 30 days without a refresh.
+- Refresh guidance: after a failure that may have reached the server, never resend the same refresh
+  token; continue only with a different, newer saved token, and otherwise ask the user to connect
+  again. Only `UnknownHostException`, `ConnectException` and `SSLHandshakeException` are safe to
+  retry. The example saves both returned tokens and builds later calls on the new access token.
+
+### Security
+
+- `client.oauth` never sends `client_secret`, which an APK cannot keep secret. A non-null
+  `OAuthConfig.clientSecret` raises `ValidationException` before any request is sent.
+
 ## [2.4.1] - 2026-09-25
 
 ### Security

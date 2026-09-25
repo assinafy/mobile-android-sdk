@@ -70,7 +70,7 @@ internal object ResponseHandler {
 
     private fun validateSuccess(response: HttpRawResponse) {
         if (response.statusCode !in 200..299) {
-            throw ApiException.fromResponse(response.statusCode, tryParseBody(response.body))
+            throw ApiException.fromResponse(response.statusCode, tryParseBody(response.body), response.headers["www-authenticate"])
         }
     }
 

@@ -13,6 +13,25 @@ interface ApiHttpClient {
     /** POST [path] with an optional JSON [jsonBody] (a null value sends an empty body). */
     suspend fun post(path: String, jsonBody: String? = null): HttpRawResponse
 
+    /**
+     * POST [fields] to [path] as `application/x-www-form-urlencoded`, the encoding of the OAuth token
+     * and revocation endpoints.
+     *
+     * The request is sent at most once and never replayed — not even transparently after a dropped
+     * connection — because repeating a refresh-token grant reuses a refresh token the first attempt
+     * may already have rotated, which ends the user's whole OAuth connection.
+     *
+     * The default implementation sends nothing and throws [UnsupportedOperationException], so an
+     * implementation written before this member existed still compiles and links. It does not fall
+     * back to [post], which promises neither form encoding nor a single transmission.
+     */
+    suspend fun postForm(path: String, fields: Map<String, String>): HttpRawResponse =
+        throw UnsupportedOperationException(
+            "${javaClass.name} does not implement ApiHttpClient.postForm, which OAuth token and revocation " +
+                "requests need. Override it to POST an application/x-www-form-urlencoded body exactly once, " +
+                "never retransmitted (with OkHttp, a RequestBody whose isOneShot() returns true).",
+        )
+
     /** POST a multipart upload (`file` + `name` + optional `metadata`) to [path]. */
     suspend fun postMultipart(path: String, fileName: String, fileData: ByteArray, name: String, metadata: String?): HttpRawResponse
 
