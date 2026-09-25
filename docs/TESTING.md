@@ -117,9 +117,9 @@ verification tasks. GitHub actions are commit-SHA pinned, checkout persistence i
 permissions are read-only, concurrency cancels superseded pull-request work, and reports are uploaded
 from the actual Android/Gradle output paths.
 
-GitHub Actions does not run the live suite. GitLab retains a protected `live-sandbox` job on
-release tags and schedules; it can also be started manually from `main`. Keep its credentials
-protected and never expose them to forks. A mirrored repository should accept dependency updates
+GitHub Actions does not run the live suite, and neither does GitLab CI: it stays opt-in and runs
+from a local checkout with the `ASSINAFY_*` environment variables, keeping live credentials out of
+every pipeline and fork. A mirrored repository should accept dependency updates
 on the canonical GitLab side so automated GitHub-only branches are not overwritten.
 
 ## Release verification
