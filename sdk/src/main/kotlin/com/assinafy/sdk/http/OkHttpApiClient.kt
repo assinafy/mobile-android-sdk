@@ -4,6 +4,7 @@ import com.assinafy.sdk.SdkConstants
 import com.assinafy.sdk.exceptions.ApiException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.ConnectionSpec
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -13,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.TlsVersion
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -31,7 +33,7 @@ import kotlin.coroutines.resumeWithException
  *
  */
 class OkHttpApiClient private constructor(
-    private val client: OkHttpClient,
+    internal val client: OkHttpClient,
     baseUrl: String,
 ) : ApiHttpClient {
 
@@ -243,6 +245,7 @@ class OkHttpApiClient private constructor(
                     origin.host in LOOPBACK_HOSTS,
             ) { "Credentials require an HTTPS base URL" }
             return OkHttpClient.Builder()
+                .connectionSpecs(CONNECTION_SPECS)
                 .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .writeTimeout(timeoutMs, TimeUnit.MILLISECONDS)
@@ -268,6 +271,12 @@ class OkHttpApiClient private constructor(
         }
 
         internal fun forTesting(client: OkHttpClient, baseUrl: String): OkHttpApiClient = OkHttpApiClient(client, baseUrl, Unit)
+
+        // HTTPS requires TLS 1.2 or later; cleartext stays for the HTTP base URLs this class accepts.
+        private val CONNECTION_SPECS = listOf(
+            ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS).tlsVersions(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2).build(),
+            ConnectionSpec.CLEARTEXT,
+        )
 
         private val LOOPBACK_HOSTS = setOf("localhost", "127.0.0.1", "::1")
     }

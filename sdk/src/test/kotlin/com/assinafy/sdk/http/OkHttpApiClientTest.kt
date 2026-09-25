@@ -7,6 +7,7 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.Headers.Companion.headersOf
 import okhttp3.OkHttpClient
+import okhttp3.TlsVersion
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -15,6 +16,14 @@ import java.util.concurrent.TimeUnit
 class OkHttpApiClientTest {
 
     private fun envelope(data: String = "{}") = MockResponse(body = """{"status":200,"data":$data}""")
+
+    @Test
+    fun `https requires TLS 1_2 or later`() {
+        val tls = OkHttpApiClient("https://api.assinafy.com.br/v1", apiKey = null, token = null)
+            .client.connectionSpecs.filter { it.isTls }
+        assertThat(tls).isNotEmpty()
+        tls.forEach { assertThat(it.tlsVersions).containsOnly(TlsVersion.TLS_1_3, TlsVersion.TLS_1_2) }
+    }
 
     @Test
     fun `getBinary throws ApiException on non-2xx response`() {

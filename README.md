@@ -36,6 +36,7 @@ kotlinx-coroutines — nada além disso.
 | Bytecode do consumidor | Java 17 |
 | JDK de build | JDK 25 LTS, com toolchain Java 17 para compilação |
 | Linguagem | Kotlin com coroutines |
+| TLS | 1.2 ou superior; o cliente padrão recusa TLS 1.0 e 1.1 |
 
 A aplicação consumidora é dona do `targetSdk`. O AAR declara a permissão Android `INTERNET` e carrega
 um arquivo ProGuard de consumidor, então um build de release minificado não precisa de configuração
@@ -58,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.4.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.4.1")
 }
 ```
 
@@ -67,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.4.0-local-SNAPSHOT \
+  -Pversion=2.4.1-local-SNAPSHOT \
   --no-daemon
 ```
 

@@ -51,6 +51,7 @@ companion documents go deeper:
 | Consumer bytecode | Java 17 |
 | Build JDK | JDK 25 LTS, with a Java 17 toolchain for compilation |
 | Language | Kotlin with coroutines |
+| TLS | 1.2 or later; the default client refuses TLS 1.0 and 1.1 |
 
 The consuming application owns `targetSdk`. The AAR declares the Android `INTERNET` permission and
 carries a consumer ProGuard file, so a minified release build needs no extra configuration: the SDK's
@@ -64,7 +65,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.4.0-local-SNAPSHOT \
+  -Pversion=2.4.1-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -80,7 +81,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.4.0-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.4.1-local-SNAPSHOT")
 }
 ```
 
@@ -95,7 +96,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.4.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.4.1")
 }
 ```
 
