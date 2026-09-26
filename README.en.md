@@ -65,7 +65,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.5.0-local-SNAPSHOT \
+  -Pversion=2.5.1-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -81,7 +81,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.0-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.5.1-local-SNAPSHOT")
 }
 ```
 

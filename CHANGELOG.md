@@ -4,6 +4,13 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-09-25
+
+### Changed
+
+- Published to Maven Central. 2.4.1 (TLS 1.2 or newer) and 2.5.0 (OAuth changes) were tagged but never
+  reached Maven Central; 2.5.1 carries both, and the SDK code is unchanged from 2.5.0.
+
 ### Removed
 
 - The `live-sandbox` job from the GitLab CI pipeline. The opt-in live suite runs only from a local

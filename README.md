@@ -68,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.5.0-local-SNAPSHOT \
+  -Pversion=2.5.1-local-SNAPSHOT \
   --no-daemon
 ```
 
