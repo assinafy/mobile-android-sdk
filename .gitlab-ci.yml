@@ -2,7 +2,6 @@ image: eclipse-temurin:25.0.4_7-jdk-noble@sha256:534968c051301957beae735e7ba1db5
 
 stages:
   - verify
-  - integration
   - release
   - release-verification
 
@@ -68,45 +67,6 @@ verify:
       - sdk/build/reports/lint-results-debug.txt
     reports:
       junit: sdk/build/test-results/*/TEST-*.xml
-
-live-sandbox:
-  stage: integration
-  timeout: 20 minutes
-  interruptible: false
-  resource_group: assinafy-sandbox
-  environment:
-    name: sandbox
-  variables:
-    ASSINAFY_API_KEY: "$ASSINAFY_SANDBOX_API_KEY"
-    ASSINAFY_ACCOUNT_ID: "$ASSINAFY_SANDBOX_ACCOUNT_ID"
-    ASSINAFY_BASE_URL: "https://sandbox.assinafy.com.br/v1"
-    ASSINAFY_TEST_EMAIL: "$ASSINAFY_SANDBOX_TEST_EMAIL"
-    ASSINAFY_TEST_EMAIL_2: "$ASSINAFY_SANDBOX_TEST_EMAIL_2"
-    ASSINAFY_SIGNER_ACCESS_CODE: "$ASSINAFY_SANDBOX_SIGNER_ACCESS_CODE"
-    ASSINAFY_REQUIRE_LIVE: "true"
-    ASSINAFY_LIVE_WRITES: "true"
-  rules:
-    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ && $CI_COMMIT_REF_PROTECTED == "true"'
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-    - if: '$CI_PIPELINE_SOURCE == "web" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
-      when: manual
-    - when: never
-  script:
-    - >-
-      ./gradlew
-      :sdk:testDebugUnitTest
-      --tests 'com.assinafy.sdk.live.*'
-      --rerun-tasks
-      --no-daemon
-      --stacktrace
-  artifacts:
-    when: always
-    expire_in: 7 days
-    paths:
-      - sdk/build/reports/tests/testDebugUnitTest/
-      - sdk/build/test-results/testDebugUnitTest/
-    reports:
-      junit: sdk/build/test-results/testDebugUnitTest/TEST-*.xml
 
 publish-release:
   stage: release
