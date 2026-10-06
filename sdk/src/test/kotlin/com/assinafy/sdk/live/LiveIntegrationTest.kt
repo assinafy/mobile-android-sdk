@@ -37,11 +37,12 @@ import java.util.UUID
  * disposable `ASSINAFY_SIGNER_ACCESS_CODE`; tests that need existing documents or templates state
  * that fixture requirement through a JUnit assumption.
  */
+@Suppress("DEPRECATION")
 class LiveIntegrationTest {
 
     private val apiKey = System.getenv("ASSINAFY_API_KEY").orEmpty()
     private val accountId = System.getenv("ASSINAFY_ACCOUNT_ID").orEmpty()
-    private val baseUrl = System.getenv("ASSINAFY_BASE_URL") ?: "https://api.assinafy.com.br/v1"
+    private val baseUrl = System.getenv("ASSINAFY_BASE_URL") ?: "https://sandbox.assinafy.com.br/v1"
     private val liveRequired = System.getenv("ASSINAFY_REQUIRE_LIVE") == "true"
     private val writesEnabled = System.getenv("ASSINAFY_LIVE_WRITES") == "true"
     private val testEmail = System.getenv("ASSINAFY_TEST_EMAIL").orEmpty()
@@ -245,8 +246,8 @@ class LiveIntegrationTest {
             roles.map {
                 TemplateSigner(
                     roleId = it.id,
-                    verificationMethod = "Email",
-                    notificationMethods = listOf("Email"),
+                    verificationMethod = com.assinafy.sdk.VerificationMethod.EMAIL,
+                    notificationMethods = listOf(com.assinafy.sdk.NotificationMethod.EMAIL),
                 )
             },
         )
@@ -299,7 +300,7 @@ class LiveIntegrationTest {
         assumeTrue(signer.hasSignature == true, "Signer access-code fixture needs a stored signature")
 
         assertThat(sdk.signerDocuments.downloadSignature(signerAccessCode).isNotEmpty()).isTrue()
-        assertThat(sdk.signers.downloadSignature(signerAccessCode, "signature").isNotEmpty()).isTrue()
+        assertThat(sdk.signers.downloadSignature(signerAccessCode, com.assinafy.sdk.SignatureType.SIGNATURE).isNotEmpty()).isTrue()
     }
 
     @Test
@@ -548,7 +549,7 @@ class LiveIntegrationTest {
         assumeTrue(listedTemplate != null, "Account needs an existing template fixture")
         val template = sdk.templates.get(listedTemplate!!.id)
         assumeTrue(
-            !template.roles.isNullOrEmpty() && template.roles!!.size <= 2,
+            !template.roles.isNullOrEmpty() && template.roles.size <= 2,
             "Account needs a compatible template fixture with one or two signer roles",
         )
         val suffix = UUID.randomUUID().toString().take(8)
@@ -566,12 +567,12 @@ class LiveIntegrationTest {
                         CreateSignerRequest(fullName = signerNames[index], email = emails[index]),
                     ).id
                 }
-                val signers = template.roles!!.mapIndexed { index, role ->
+                val signers = template.roles.mapIndexed { index, role ->
                     TemplateSigner(
                         roleId = role.id,
                         id = resolvedSignerIds[index],
-                        verificationMethod = "Email",
-                        notificationMethods = listOf("Email"),
+                        verificationMethod = com.assinafy.sdk.VerificationMethod.EMAIL,
+                        notificationMethods = listOf(com.assinafy.sdk.NotificationMethod.EMAIL),
                         step = 1,
                     )
                 }
@@ -652,7 +653,7 @@ class LiveIntegrationTest {
         try {
             cleanup()
         } catch (caught: Throwable) {
-            if (failure == null) failure = caught else failure?.addSuppressed(caught)
+            if (failure == null) failure = caught else failure.addSuppressed(caught)
         }
         failure?.let { throw it }
     }
@@ -663,7 +664,7 @@ class LiveIntegrationTest {
             try {
                 action()
             } catch (caught: Throwable) {
-                if (failure == null) failure = caught else failure?.addSuppressed(caught)
+                if (failure == null) failure = caught else failure.addSuppressed(caught)
             }
         }
         failure?.let { throw it }

@@ -18,8 +18,11 @@ import com.assinafy.sdk.oauth.ProtectedResourceMetadata
 import com.assinafy.sdk.oauth.UserInfo
 import com.assinafy.sdk.util.ResponseHandler
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
+import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
+import com.google.gson.Strictness
 import java.net.URI
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -96,6 +99,24 @@ class OAuthResource internal constructor(
      * the authorization server shows an error on its own page, because redirecting to an unverified
      * address would be unsafe.
      *
+     * Browser request: `GET https://auth.assinafy.com.br/oauth/authorize`; no request body.
+     * Complete query fields (no verifier or client secret is sent):
+     * ```json
+     * {
+     *   "response_type": "code",
+     *   "client_id": "public-client-id",
+     *   "redirect_uri": "https://example.com/callback",
+     *   "scope": "documents:read account:read openid offline_access",
+     *   "state": "per-attempt-state",
+     *   "code_challenge": "S256-challenge",
+     *   "code_challenge_method": "S256",
+     *   "resource": "https://api.assinafy.com.br",
+     *   "nonce": "per-attempt-nonce"
+     * }
+     * ```
+     * The response is the interactive approval page, followed by the registered redirect with
+     * `code`, `state` and `iss`, or `error`, `error_description`, `state` and `iss`.
+     *
      * @param scopes Permissions to request; defaults to [OAuthConfig.scopes].
      * @param nonce Optional OpenID Connect nonce, echoed in the `id_token`.
      * @param pkce Pre-generated PKCE pair; a fresh one is generated per attempt by default.
@@ -110,8 +131,16 @@ class OAuthResource internal constructor(
         state: String = PkcePair.randomState(),
     ): AuthorizationRequest {
         val app = requireConfig()
-        val requested = (scopes ?: app.scopes).filter { it.isNotBlank() }
-        if (requested.isEmpty()) throw ValidationException("At least one OAuth scope is required")
+        val requested = scopes ?: app.scopes
+        if (requested.isEmpty() || requested.any { !SCOPE_TOKEN.matches(it) }) {
+            throw ValidationException("At least one valid OAuth scope is required")
+        }
+        requireId(state, "OAuth state")
+        nonce?.let { requireId(it, "OpenID nonce") }
+        PkcePair.validateVerifier(pkce.codeVerifier)
+        if (pkce.codeChallengeMethod != "S256" || pkce.codeChallenge != PkcePair.challenge(pkce.codeVerifier)) {
+            throw ValidationException("PKCE challenge must be the S256 challenge of the verifier")
+        }
         val query = queryString(
             "response_type" to "code",
             "client_id" to app.clientId,
@@ -143,6 +172,11 @@ class OAuthResource internal constructor(
      * The returned code is single-use and expires **60 seconds** after approval, so exchange it
      * immediately.
      *
+     * Local operation; no HTTP request or response. Input is the complete registered HTTPS
+     * redirect with query fields `code`, `state`, `iss`, or `error`, `error_description`, `state`, `iss`.
+     * Returns the single-use code; no token is exchanged. Duplicate parameters, a different
+     * registered address, fragments and malformed URIs raise ValidationException.
+     *
      * @param callbackUri Full redirect URI as received, including its query string.
      * @param request The attempt returned by [authorizationRequest].
      * @return The authorization code to pass to [exchangeCode].
@@ -156,6 +190,11 @@ class OAuthResource internal constructor(
      * Overload taking the stored `state` directly, for applications that persist it across process
      * death rather than holding the whole [AuthorizationRequest].
      *
+     * Local operation; no HTTP request or response. Input is the complete registered HTTPS
+     * redirect with query fields `code`, `state`, `iss`, or `error`, `error_description`, `state`, `iss`.
+     * Returns the single-use code; no token is exchanged. Duplicate parameters, a different
+     * registered address, fragments and malformed URIs raise ValidationException.
+     *
      * @param callbackUri Full redirect URI as received.
      * @param expectedState The `state` generated for this attempt.
      * @return The authorization code to pass to [exchangeCode].
@@ -163,6 +202,8 @@ class OAuthResource internal constructor(
      * @throws ValidationException when `state` or `iss` does not match, or no code is present.
      */
     fun parseCallback(callbackUri: String, expectedState: String): String {
+        requireId(expectedState, "Expected OAuth state")
+        val app = requireConfig()
         val params = parseQuery(callbackUri)
         val returnedState = params["state"]
         if (returnedState != expectedState) {
@@ -172,7 +213,7 @@ class OAuthResource internal constructor(
             )
         }
         val issuer = params["iss"]
-        val expectedIssuer = requireConfig().authorizationServerUrl.trimEnd('/')
+        val expectedIssuer = app.authorizationServerUrl.trimEnd('/')
         if (issuer?.trimEnd('/') != expectedIssuer) {
             throw ValidationException("OAuth callback issuer does not match the authorization server")
         }
@@ -202,6 +243,19 @@ class OAuthResource internal constructor(
      * only when `openid` was granted. Read [OAuthTokens.scope] rather than assuming the requested
      * set was approved.
      *
+     * Complete form fields for `POST /oauth/token` (shown as JSON for readability; sent as form encoding):
+     * ```json
+     * {
+     *   "grant_type": "authorization_code",
+     *   "code": "<single-use-code>",
+     *   "redirect_uri": "https://example.com/callback",
+     *   "client_id": "public-client-id",
+     *   "code_verifier": "<43-to-128-unreserved-characters>",
+     *   "resource": "https://api.assinafy.com.br"
+     * }
+     * ```
+     * Malformed or incomplete successful token responses raise `OAuthException.INVALID_RESPONSE`.
+     *
      * @param code Single-use code from [parseCallback]; it expires 60 seconds after approval.
      * @param codeVerifier The verifier generated for this same attempt.
      * @param redirectUri Redirect URI override; defaults to [OAuthConfig.redirectUri] and must match
@@ -214,12 +268,15 @@ class OAuthResource internal constructor(
      */
     suspend fun exchangeCode(code: String, codeVerifier: String, redirectUri: String? = null): OAuthTokens {
         val app = requireConfig()
+        PkcePair.validateVerifier(codeVerifier)
+        val redirect = redirectUri ?: app.redirectUri
+        requireHttpsUri(redirect, "OAuth redirect URI")
         val body = mapOf(
             "grant_type" to "authorization_code",
             "code" to requireId(code, "Authorization code"),
-            "redirect_uri" to (redirectUri ?: app.redirectUri),
+            "redirect_uri" to redirect,
             "client_id" to app.clientId,
-            "code_verifier" to requireId(codeVerifier, "Code verifier"),
+            "code_verifier" to codeVerifier,
             "resource" to resourceIndicator(),
         )
         logger.info("Exchanging OAuth authorization code")
@@ -254,6 +311,26 @@ class OAuthResource internal constructor(
      * **30 days**, and every refresh returns a new one with a fresh 30 days: a connection only
      * expires after 30 days without a refresh.
      *
+     * Complete form fields for `POST /oauth/token` (shown as JSON; sent as form encoding):
+     * ```json
+     * {
+     *   "grant_type": "refresh_token",
+     *   "refresh_token": "<latest-refresh-token>",
+     *   "client_id": "public-client-id"
+     * }
+     * ```
+     * Complete flat response body:
+     * ```json
+     * {
+     *   "access_token": "<access-token>",
+     *   "token_type": "Bearer",
+     *   "expires_in": 3600,
+     *   "scope": "documents:read account:read openid",
+     *   "refresh_token": "<rotated-refresh-token>",
+     *   "id_token": "<id-token>"
+     * }
+     * ```
+     *
      * @param refreshToken The most recently stored refresh token for this connection.
      * @return A new access token and a new refresh token to store in its place.
      * @throws OAuthException `invalid_grant` when the token was already used, has expired, or the
@@ -274,7 +351,7 @@ class OAuthResource internal constructor(
         // The server may already have retired `sent`; without a distinct replacement the caller would
         // keep a dead token, and replaying it ends the connection.
         if (tokens.refreshToken.isNullOrBlank() || tokens.refreshToken == sent) {
-            throw OAuthException("invalid_response", "Refresh response carried no new refresh token")
+            throw OAuthException(OAuthException.INVALID_RESPONSE, "Refresh response carried no new refresh token")
         }
         return tokens
     }
@@ -290,6 +367,16 @@ class OAuthResource internal constructor(
      * malformed — so the endpoint cannot be used to probe whether a token exists. Only failed client
      * authentication answers `401`.
      *
+     * Complete form fields for `POST /oauth/revoke` (shown as JSON; sent as form encoding):
+     * ```json
+     * {
+     *   "token": "<latest-token>",
+     *   "token_type_hint": "refresh_token",
+     *   "client_id": "public-client-id"
+     * }
+     * ```
+     * Response: HTTP 200 with no body. The hint is optional and accepts only `access_token` or `refresh_token`.
+     *
      * @param token The access or refresh token to revoke.
      * @param tokenTypeHint Optional `access_token` or `refresh_token` hint.
      * @throws OAuthException `invalid_client` when client authentication fails.
@@ -297,6 +384,9 @@ class OAuthResource internal constructor(
      */
     suspend fun revoke(token: String, tokenTypeHint: String? = null) {
         val app = requireConfig()
+        if (tokenTypeHint != null && tokenTypeHint !in setOf("access_token", "refresh_token")) {
+            throw ValidationException("OAuth token hint must be access_token or refresh_token")
+        }
         val body = buildMap<String, String> {
             put("token", requireId(token, "Token"))
             tokenTypeHint?.let { put("token_type_hint", it) }
@@ -313,7 +403,18 @@ class OAuthResource internal constructor(
      *
      * Requires the `openid` scope; `name` additionally requires `profile` and `email` requires
      * `email`. Per OIDC Core §5.3.2 the response is a flat claims object, not this API's envelope:
-     * `{"sub":"d6zqpbyog2v3xvxerwn8la94","name":"Maria Silva","email":"maria@example.com","email_verified":true}`.
+     * `{"sub":"user-placeholder","name":"Maria Silva","email":"maria@example.com","email_verified":true}`.
+     *
+     * Request: `GET /oauth/userinfo`, bearer authentication, no request body.
+     * Complete flat response body (name/email claims depend on granted scopes):
+     * ```json
+     * {
+     *   "sub": "user-placeholder",
+     *   "name": "Example User",
+     *   "email": "person@example.com",
+     *   "email_verified": true
+     * }
+     * ```
      *
      * @return The claims the granted scopes allow; [UserInfo.sub] is always present.
      * @throws OAuthException when the token is missing, expired, or lacks the `openid` scope.
@@ -321,8 +422,7 @@ class OAuthResource internal constructor(
     suspend fun userInfo(): UserInfo {
         val response = request("Failed to fetch OAuth userinfo") { http.get(USERINFO_PATH) }
         if (response.statusCode !in 200..299) throw response.toOAuthException()
-        return GSON.fromJson(response.body, UserInfo::class.java)
-            ?: throw OAuthException("invalid_response", "Userinfo response was empty", response.statusCode)
+        return parseResponse(response, UserInfo::class.java, listOf("sub"))
     }
 
     /**
@@ -335,6 +435,31 @@ class OAuthResource internal constructor(
      * This is the entry point of discovery: take [ProtectedResourceMetadata.authorizationServer]
      * and read that host's own metadata with [authorizationServerMetadata]. The document is
      * unauthenticated and needs no [OAuthConfig].
+     *
+     * Request: `GET {apiOrigin}/.well-known/oauth-protected-resource`; no credentials or body.
+     * Complete flat response body:
+     * ```json
+     * {
+     *   "resource": "https://api.assinafy.com.br",
+     *   "authorization_servers": [
+     *     "https://auth.assinafy.com.br"
+     *   ],
+     *   "scopes_supported": [
+     *     "documents:read",
+     *     "documents:write",
+     *     "templates:read",
+     *     "templates:write",
+     *     "account:read",
+     *     "webhooks:write",
+     *     "openid",
+     *     "profile",
+     *     "email"
+     *   ],
+     *   "bearer_methods_supported": [
+     *     "header"
+     *   ]
+     * }
+     * ```
      *
      * @return The metadata describing this API as a protected resource.
      * @throws OAuthException when the document cannot be retrieved.
@@ -350,6 +475,52 @@ class OAuthResource internal constructor(
      * libraries need nothing but the issuer and read the endpoints, supported scopes, PKCE methods
      * and client-authentication methods from here.
      *
+     * Request: `GET {issuer}/.well-known/oauth-authorization-server`; no credentials or body.
+     * Complete flat response body:
+     * ```json
+     * {
+     *   "issuer": "https://auth.assinafy.com.br",
+     *   "authorization_endpoint": "https://auth.assinafy.com.br/oauth/authorize",
+     *   "token_endpoint": "https://api.assinafy.com.br/v1/oauth/token",
+     *   "revocation_endpoint": "https://api.assinafy.com.br/v1/oauth/revoke",
+     *   "userinfo_endpoint": "https://api.assinafy.com.br/v1/oauth/userinfo",
+     *   "introspection_endpoint": "https://api.assinafy.com.br/v1/oauth/introspect",
+     *   "introspection_endpoint_auth_methods_supported": [
+     *     "client_secret_post"
+     *   ],
+     *   "jwks_uri": "https://auth.assinafy.com.br/.well-known/jwks.json",
+     *   "scopes_supported": [
+     *     "documents:read",
+     *     "documents:write",
+     *     "templates:read",
+     *     "templates:write",
+     *     "account:read",
+     *     "webhooks:write",
+     *     "openid",
+     *     "profile",
+     *     "email",
+     *     "offline_access"
+     *   ],
+     *   "response_types_supported": [
+     *     "code"
+     *   ],
+     *   "grant_types_supported": [
+     *     "authorization_code",
+     *     "refresh_token",
+     *     "urn:ietf:params:oauth:grant-type:token-exchange"
+     *   ],
+     *   "code_challenge_methods_supported": [
+     *     "S256"
+     *   ],
+     *   "token_endpoint_auth_methods_supported": [
+     *     "client_secret_post",
+     *     "none"
+     *   ],
+     *   "authorization_response_iss_parameter_supported": true,
+     *   "client_id_metadata_document_supported": true
+     * }
+     * ```
+     *
      * @param issuer Authorization-server origin; defaults to [OAuthConfig.authorizationServerUrl],
      *   or to the Assinafy issuer when no application is configured.
      * @return Endpoint URLs and capabilities advertised by the issuer.
@@ -363,15 +534,43 @@ class OAuthResource internal constructor(
     private suspend fun token(body: Map<String, String>): OAuthTokens {
         val response = request("OAuth token request failed") { publicHttp.postForm(TOKEN_PATH, body) }
         if (response.statusCode !in 200..299) throw response.toOAuthException()
-        return GSON.fromJson(response.body, OAuthTokens::class.java)
-            ?: throw OAuthException("invalid_response", "Token response was empty", response.statusCode)
+        return parseResponse(response, OAuthTokens::class.java, listOf("access_token", "token_type")).also {
+            if (!it.tokenType.equals("Bearer", ignoreCase = true) || it.expiresIn <= 0) {
+                throw OAuthException(OAuthException.INVALID_RESPONSE, "Invalid token type or lifetime", response.statusCode)
+            }
+        }
     }
 
     private suspend fun <T> discover(url: String, type: Class<T>): T {
         val response = request("Failed to fetch $url") { publicHttp.getAbsolute(url) }
         if (response.statusCode !in 200..299) throw response.toOAuthException()
-        return GSON.fromJson(response.body, type)
-            ?: throw OAuthException("invalid_response", "Discovery document at $url was empty", response.statusCode)
+        val required = if (type == ProtectedResourceMetadata::class.java) {
+            listOf("resource")
+        } else {
+            listOf("issuer", "authorization_endpoint", "token_endpoint")
+        }
+        return parseResponse(response, type, required)
+    }
+
+    private fun <T> parseResponse(response: HttpRawResponse, type: Class<T>, required: List<String>): T {
+        try {
+            val json = GSON.fromJson(response.body ?: "", JsonObject::class.java)
+                ?: throw OAuthException(OAuthException.INVALID_RESPONSE, "Empty OAuth response", response.statusCode)
+            if (required.any { name ->
+                    val value = json.get(name)
+                    value == null || !value.isJsonPrimitive || !value.asJsonPrimitive.isString || value.asString.isBlank()
+                }
+            ) {
+                throw OAuthException(OAuthException.INVALID_RESPONSE, "OAuth response is missing required fields", response.statusCode)
+            }
+            return GSON.fromJson(json, type)
+        } catch (_: JsonParseException) {
+            throw OAuthException(OAuthException.INVALID_RESPONSE, "Malformed OAuth response", response.statusCode)
+        } catch (_: IllegalStateException) {
+            throw OAuthException(OAuthException.INVALID_RESPONSE, "Malformed OAuth response", response.statusCode)
+        } catch (_: NumberFormatException) {
+            throw OAuthException(OAuthException.INVALID_RESPONSE, "Malformed OAuth response", response.statusCode)
+        }
     }
 
     /**
@@ -429,6 +628,10 @@ class OAuthResource internal constructor(
                     "user connect again.",
             )
         }
+        requireId(app.clientId, "OAuth client ID")
+        requireHttpsUri(app.redirectUri, "OAuth redirect URI")
+        requireHttpsUri(app.authorizationServerUrl, "OAuth authorization server", allowQuery = false)
+        app.resource?.let { requireHttpsUri(it, "OAuth resource indicator") }
         return app
     }
 
@@ -443,21 +646,52 @@ class OAuthResource internal constructor(
     }
 
     private fun parseQuery(callbackUri: String): Map<String, String> {
-        val query = URI(callbackUri.trim()).rawQuery ?: return emptyMap()
-        return query.split('&')
-            .filter { it.isNotBlank() }
-            .associate { pair ->
-                val name = pair.substringBefore('=')
-                val value = pair.substringAfter('=', "")
-                decode(name) to decode(value)
+        val uri = requireHttpsUri(callbackUri, "OAuth callback URI", allowQuery = true)
+        val registered = URI(requireConfig().redirectUri)
+        if (uri.scheme != registered.scheme || uri.rawAuthority != registered.rawAuthority || uri.rawPath != registered.rawPath) {
+            throw ValidationException("OAuth callback does not match the registered redirect URI")
+        }
+        val query = uri.rawQuery ?: return emptyMap()
+        val params = mutableMapOf<String, String>()
+        query.split('&').filter { it.isNotBlank() }.forEach { pair ->
+            val name = pair.substringBefore('=')
+            val value = pair.substringAfter('=', "")
+            val decodedName = decode(name)
+            if (params.put(decodedName, decode(value)) != null) {
+                throw ValidationException("OAuth callback contains duplicate parameters")
             }
+        }
+        registered.rawQuery?.split('&')?.forEach { pair ->
+            if (params[decode(pair.substringBefore('='))] != decode(pair.substringAfter('=', ""))) {
+                throw ValidationException("OAuth callback does not match the registered redirect query")
+            }
+        }
+        return params
+    }
+
+    private fun requireHttpsUri(value: String, name: String, allowQuery: Boolean = true): URI {
+        val uri = try {
+            URI(value)
+        } catch (_: java.net.URISyntaxException) {
+            throw ValidationException("$name must be a valid HTTPS URI")
+        }
+        if (uri.scheme != "https" ||
+            uri.host.isNullOrBlank() ||
+            uri.rawUserInfo != null ||
+            uri.rawFragment != null ||
+            (!allowQuery && uri.rawQuery != null)
+        ) {
+            throw ValidationException("$name must be an absolute HTTPS URI without user info or a fragment")
+        }
+        return uri
     }
 
     private fun decode(value: String): String =
         java.net.URLDecoder.decode(value, Charsets.UTF_8.name())
 
     private companion object {
-        val GSON: Gson = Gson()
+        val GSON: Gson = GsonBuilder().setStrictness(Strictness.STRICT).create()
+        val SCOPE_TOKEN = Regex("[\\x21\\x23-\\x5B\\x5D-\\x7E]+")
         const val AUTHORIZE_PATH = "/oauth/authorize"
         const val TOKEN_PATH = "/oauth/token"
         const val REVOKE_PATH = "/oauth/revoke"

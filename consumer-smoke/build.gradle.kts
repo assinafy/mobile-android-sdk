@@ -2,7 +2,8 @@ plugins {
     id("com.android.application")
 }
 
-val sdkVersion = providers.gradleProperty("version").orElse("2.0.3")
+evaluationDependsOn(":sdk")
+val sdkVersion = project(":sdk").version.toString()
 
 android {
     namespace = "com.assinafy.smoke"
@@ -38,7 +39,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:${sdkVersion.get()}")
+    implementation("com.assinafy:assinafy-android-sdk:$sdkVersion")
 }
 
 tasks.matching { it.name == "preReleaseBuild" }.configureEach {

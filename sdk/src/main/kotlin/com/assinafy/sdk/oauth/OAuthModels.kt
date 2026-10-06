@@ -90,9 +90,18 @@ data class PkcePair(
             val verifier = buildString(verifierLength) {
                 repeat(verifierLength) { append(UNRESERVED[RANDOM.nextInt(UNRESERVED.length)]) }
             }
-            val digest = MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII))
-            return PkcePair(codeVerifier = verifier, codeChallenge = base64UrlNoPadding(digest))
+            return PkcePair(codeVerifier = verifier, codeChallenge = challenge(verifier))
         }
+
+        internal fun validateVerifier(verifier: String) {
+            if (verifier.length !in 43..128 || verifier.any { it !in UNRESERVED }) {
+                throw ValidationException("PKCE verifier must contain 43-128 RFC 7636 unreserved characters")
+            }
+        }
+
+        internal fun challenge(verifier: String): String = base64UrlNoPadding(
+            MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
+        )
 
         /** Generates an opaque random value suitable for the `state` parameter. */
         internal fun randomState(): String = buildString(32) {
@@ -269,7 +278,7 @@ data class ProtectedResourceMetadata(
  * RFC 8414 authorization-server metadata served by the issuer, not by this API.
  *
  * Only `issuer`, `authorization_endpoint` and `token_endpoint` are required by RFC 8414, so the
- * remaining members are nullable; Assinafy populates all of them.
+ * remaining members are nullable. Additional discovery extensions are ignored.
  *
  * @property issuer Canonical issuer identifier; must equal the `iss` returned on the redirect.
  * @property authorizationEndpoint Browser-facing approval page.
@@ -279,7 +288,8 @@ data class ProtectedResourceMetadata(
  * @property jwksUri Signing keys used to validate an `id_token`.
  * @property scopesSupported Scopes the issuer can grant.
  * @property responseTypesSupported Supported authorization response types; Assinafy issues `code`.
- * @property grantTypesSupported Supported grants: `authorization_code` and `refresh_token`.
+ * @property grantTypesSupported Advertised grants. Public Android clients use `authorization_code`
+ *   and `refresh_token`; service-only grants advertised by the issuer are not implemented here.
  * @property codeChallengeMethodsSupported PKCE methods; Assinafy accepts `S256` only.
  * @property tokenEndpointAuthMethodsSupported `client_secret_post` for confidential clients and
  *   `none` for public ones.
@@ -332,7 +342,7 @@ data class OAuthChallenge(
          * @return The parsed challenge, or `null` when [header] is absent or is not a Bearer challenge.
          */
         fun parse(header: String?): OAuthChallenge? {
-            if (header.isNullOrBlank() || !header.trimStart().startsWith("Bearer", ignoreCase = true)) return null
+            if (header.isNullOrBlank() || !Regex("^Bearer(?:\\s|$)", RegexOption.IGNORE_CASE).containsMatchIn(header.trimStart())) return null
             val values = PARAMETER.findAll(header).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
             return OAuthChallenge(
                 error = values["error"],

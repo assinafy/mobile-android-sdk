@@ -4,6 +4,7 @@ import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.exceptions.AssinafyException
+import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
 import com.assinafy.sdk.models.PaginatedResult
@@ -25,7 +26,10 @@ abstract class BaseResource(
 
     protected fun requireId(value: String?, name: String): String = ApiValidator.requireNonBlank(value, name)
 
-    protected fun pathSegment(value: String): String = UrlEncoding.pathSegment(value)
+    protected fun pathSegment(value: String): String {
+        if (value == "." || value == "..") throw ValidationException("Path identifiers cannot be dot segments")
+        return UrlEncoding.pathSegment(value)
+    }
 
     protected fun queryString(vararg params: Pair<String, Any?>): String = UrlEncoding.queryString(*params)
 

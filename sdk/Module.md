@@ -8,3 +8,8 @@ Every public declaration has KDoc. Exact HTTP methods, routes, authentication, r
 response fields, and errors are centralized in the repository's
 [API reference](https://github.com/assinafy/mobile-android-sdk/blob/main/docs/API_REFERENCE.md) and
 [operation index](https://github.com/assinafy/mobile-android-sdk/blob/main/docs/API_COVERAGE.md).
+
+For delegated workspace access, register a Public OAuth app and use PKCE. The client validates the
+registered callback, parses flat token responses, refreshes rotating grants and revokes connections.
+Production and sandbox use separate app registrations and credentials. Kotlin 2.4.20 builds Java17
+consumer bytecode; runtime support starts at Android API21.

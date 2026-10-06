@@ -17,6 +17,41 @@ import java.util.concurrent.TimeUnit
 
 class OkHttpApiClientTest {
 
+    @Test
+    fun `mutations never follow redirect timeout or service retry responses`() {
+        listOf(302, 307, 408, 503).forEach { status ->
+            MockWebServer().use { server ->
+                server.start()
+                val reply = MockResponse(code = status, headers = headersOf("Location", server.url("/other").toString(), "Retry-After", "0"))
+                repeat(4) { server.enqueue(reply) }
+                val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
+                runBlocking {
+                    assertThat(client.post("/post", "{}").statusCode).isEqualTo(status)
+                    assertThat(client.put("/put", "{}").statusCode).isEqualTo(status)
+                    assertThat(client.patch("/patch", "{}").statusCode).isEqualTo(status)
+                    assertThat(client.delete("/delete").statusCode).isEqualTo(status)
+                }
+                assertThat(server.requestCount).isEqualTo(4)
+            }
+        }
+    }
+
+    @Test
+    fun `form requests never follow redirects including redirects that change POST to GET`() {
+        listOf(301, 302, 303, 307, 308).forEach { status ->
+            MockWebServer().use { server ->
+                server.start()
+                server.enqueue(MockResponse(code = status, headers = headersOf("Location", server.url("/target").toString())))
+                server.enqueue(envelope())
+                val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
+                val response = runBlocking { client.postForm("/oauth/token", mapOf("refresh_token" to "test-token")) }
+                assertThat(response.statusCode).isEqualTo(status)
+                assertThat(server.requestCount).isEqualTo(1)
+                assertThat(server.takeRequest().method).isEqualTo("POST")
+            }
+        }
+    }
+
     private fun envelope(data: String = "{}") = MockResponse(body = """{"status":200,"data":$data}""")
 
     @Test

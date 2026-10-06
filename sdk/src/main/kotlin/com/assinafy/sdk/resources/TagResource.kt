@@ -22,12 +22,23 @@ class TagResource internal constructor(
      * Lists workspace tags with `GET /accounts/{accountId}/tags`, ordered alphabetically.
      *
      * Request body: none. Optional query: `search`. Response `data`:
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/tags`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
-     * [{
-     *   "resource": "tag", "id": "fa8c09f3e709a8a1c82d69b1454", "name": "Contracts",
-     *   "color": "ff8800", "created_at": "2026-05-14T12:00:00Z",
-     *   "updated_at": "2026-05-14T12:00:00Z"
-     * }]
+     * [
+     *   {
+     *     "resource": "tag",
+     *     "id": "id-placeholder",
+     *     "name": "Example",
+     *     "color": null,
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
      * ```
      *
      * @param search Optional case-insensitive partial name filter.
@@ -48,11 +59,26 @@ class TagResource internal constructor(
      *
      * Request body: `{"name":"Contracts","color":"ff8800"}`; `color` is omitted when not supplied.
      * Response `data` is the complete created tag:
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/tags`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "resource": "tag", "id": "fa8c09f3e709a8a1c82d69b1454", "name": "Contracts",
-     *   "color": "ff8800", "created_at": "2026-05-14T12:00:00Z",
-     *   "updated_at": "2026-05-14T12:00:00Z"
+     *   "name": "Example",
+     *   "color": null
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "tag",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "color": null,
+     *   "created_at": "2026-01-01T00:00:00Z",
+     *   "updated_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *
@@ -81,11 +107,26 @@ class TagResource internal constructor(
      *
      * Request body carries only the supplied fields, e.g. `{"name":"Signed Contracts","color":"00aa55"}`;
      * clearing sends an explicit `{"color":null}`. Response `data` is the complete updated tag:
+     *
+     * Wire operation: `PUT /v1/accounts/{accountId}/tags/{tagId}`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "resource": "tag", "id": "fa8c09f3e709a8a1c82d69b1454", "name": "Signed Contracts",
-     *   "color": "00aa55", "created_at": "2026-05-14T12:00:00Z",
-     *   "updated_at": "2026-05-20T09:15:00Z"
+     *   "name": "Example",
+     *   "color": null
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "tag",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "color": null,
+     *   "created_at": "2026-01-01T00:00:00Z",
+     *   "updated_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *
@@ -133,6 +174,17 @@ class TagResource internal constructor(
      *
      * Request body: none; [force] is sent as the `?force=true` query. Response `data`:
      * `{"deleted":true}`.
+     *
+     * Wire operation: `DELETE /v1/accounts/{accountId}/tags/{tagId}`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "deleted": true
+     * }
+     * ```
      *
      * @param tagId Stable tag identifier.
      * @param force Whether the server should detach all uses before deletion.

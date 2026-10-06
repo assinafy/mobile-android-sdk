@@ -451,6 +451,10 @@ class SignerDocumentResourceTest {
             .isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { runBlocking { resource.signMultiple(emptyList(), "code") } }
             .isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { resource.decline("doc", "assignment", "code", "x".repeat(2_001)) } }
+            .isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { resource.declineMultiple(listOf("doc"), "x".repeat(2_001), "code") } }
+            .isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { runBlocking { resource.uploadSignature("code", ByteArray(0)) } }
             .isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { runBlocking { resource.download("signer", "doc", "unknown") } }

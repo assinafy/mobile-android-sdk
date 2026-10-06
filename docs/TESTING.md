@@ -3,7 +3,7 @@
 ## Supported build environment
 
 - Gradle Wrapper 9.5; use `./gradlew`, not a machine-wide Gradle installation.
-- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.2 with built-in Kotlin support.
+- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.2 with built-in Kotlin support and Kotlin compiler 2.4.20.
 - Java 17 toolchain and bytecode for the published library.
 - Android SDK platform 37.0 and Build Tools 36.0.0.
 - Android API 21 minimum at runtime. The consuming application owns `targetSdk`.
@@ -63,18 +63,18 @@ compilation, tests, Android lint, and packaging tasks selected by Gradle's `buil
 ## Opt-in live integration tests
 
 Live tests are skipped by JUnit assumptions unless their environment is supplied. Keep every value
-in a local secret manager or protected CI variable; never put values in Gradle files, shell history,
+in a local secret manager or a temporary owner-readable environment file; never put values in Gradle files, shell history,
 test source, commits, reports, or issue comments.
 
 | Environment variable | Purpose |
 |---|---|
 | `ASSINAFY_API_KEY` | API credential |
 | `ASSINAFY_ACCOUNT_ID` | Existing account used by the checks |
-| `ASSINAFY_BASE_URL` | v1 endpoint override; defaults to production |
+| `ASSINAFY_BASE_URL` | v1 endpoint override; defaults to `https://sandbox.assinafy.com.br/v1` |
 | `ASSINAFY_TEST_EMAIL` | First test recipient for flows that require one |
 | `ASSINAFY_TEST_EMAIL_2` | Second test recipient for multi-signer flows |
 | `ASSINAFY_SIGNER_ACCESS_CODE` | Optional disposable signer-flow code |
-| `ASSINAFY_REQUIRE_LIVE` | Fail instead of skip when base live credentials are absent; set by protected CI |
+| `ASSINAFY_REQUIRE_LIVE` | Fail instead of skip when base live credentials are absent; set locally |
 | `ASSINAFY_LIVE_WRITES` | Explicit opt-in gate for tests that create, update, or delete real data |
 
 After setting the needed variables outside the repository, run the read-only suite:
@@ -92,12 +92,10 @@ The read-only smoke test exercises document statuses/search, account details/the
 listing, fields, templates, users, webhook history/event types, and tags. It does not send messages
 or modify account state.
 
-One live check needs no credential at all: the OAuth discovery test reads the RFC 9728
-protected-resource document from the API host and the RFC 8414 document from the authorization
-server it names, and asserts that the advertised token endpoint, grant types, PKCE methods, client
-authentication methods, and scopes still match what `client.oauth` sends. It runs whenever the live
-suite runs, including without `ASSINAFY_API_KEY`, and performs no authenticated request. Operations present in the current OpenAPI but not yet deployed to a given
-live are reported as named JUnit skips instead of hiding the remaining live checks.
+The discovery check sends no credential, but shares the suite's API-key/account opt-in gate so
+ordinary unit runs remain offline. It reads the resource metadata and the issuer it advertises.
+An optional endpoint that returns 404 is reported as a named JUnit skip. Fixture-dependent tests
+also report a skip when the account has no suitable document, signer, or template.
 
 Write tests require the additional `ASSINAFY_LIVE_WRITES` opt-in. They exercise reversible
 preference, field, signer, document, assignment, notification, tag, and compatible-template flows.
@@ -109,6 +107,74 @@ Never use live automation to rotate/revoke API keys, change passwords, delete an
 overwrite an existing webhook, or submit a real signature. Password, social-login, OTP, signer-code,
 and notification success paths require purpose-created disposable state; unit contract tests cover
 their exact requests when such state is unavailable.
+
+## Browser-assisted Public OAuth lifecycle
+
+`LiveOAuthTest` uses production auth and a Public OAuth app; it requires no API key. The requested
+scopes are `documents:read`, `account:read`, `openid` and `offline_access`. It reads the selected
+workspace and documents, checks the missing-scope challenge, refreshes once, reads with the rotated
+access token, revokes the latest tokens in `finally`, and checks that the revoked grant is refused.
+It never replays the old refresh token while the connection is active.
+
+| Variable | Purpose |
+|---|---|
+| `ASSINAFY_OAUTH_CLIENT_ID` | Public app identifier; never a client secret |
+| `ASSINAFY_OAUTH_REDIRECT_URI` | Registered HTTPS callback ending in `/callback` |
+| `ASSINAFY_OAUTH_CALLBACK_DIR` | Directory visible to the test JVM, containing callback/URL files |
+
+Prepare an empty directory outside the checkout with permissions `0700`. A local callback server
+must write the incoming `/callback?...` request target to `callback.txt` atomically and with
+permissions `0600`, without logging the URL or authorization code. For example:
+
+```python
+import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+callback_dir = Path(os.environ["ASSINAFY_OAUTH_CALLBACK_DIR"])
+
+class Callback(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path.startswith("/callback?"):
+            temporary = callback_dir / "callback.tmp"
+            with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as output:
+                output.write(self.path)
+            temporary.replace(callback_dir / "callback.txt")
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OAuth callback received. You may close this tab.")
+
+    def log_message(self, *args):
+        pass
+
+HTTPServer(("127.0.0.1", 18763), Callback).serve_forever()
+```
+
+Run this listener, then `cloudflared tunnel --url http://127.0.0.1:18763`. Register the tunnel's
+HTTPS `/callback` URL in a temporary Public app at `app.assinafy.com.br`, with the four scopes above.
+Set the client ID and redirect URI outside the checkout, then start:
+
+```shell
+docker compose run --rm \
+  -v "$ASSINAFY_OAUTH_CALLBACK_DIR:/oauth-test" \
+  -e ASSINAFY_OAUTH_CLIENT_ID \
+  -e ASSINAFY_OAUTH_REDIRECT_URI \
+  -e ASSINAFY_OAUTH_CALLBACK_DIR=/oauth-test \
+  build ./gradlew :sdk:testDebugUnitTest \
+  --tests 'com.assinafy.sdk.live.LiveOAuthTest' --no-daemon
+```
+
+The SDK writes `authorization-url.txt` to the mounted directory. Open that URL in the system
+browser, sign in to production auth and approve the temporary app for a test workspace. The test
+waits up to ten minutes, exchanges the returned code immediately, and keeps the verifier and tokens
+in memory. Stop the callback server and tunnel and remove the temporary directory after the run.
+A failed token exchange may require a new browser authorization; do not reuse a code or refresh token.
+
+Email and WhatsApp OTP success paths require controlled disposable recipients. Assinafy handles
+A1/A3 certificate signing through its web signing flow; certificate completion is outside the SDK
+test scope. SDK tests cover certificate-signing request serialization, channel validation and the
+same webhook handling used by other signature methods. A passing offline suite does not establish
+successful live OTP delivery. No existing account, credential, or subscription is deleted by this test.
 
 ## CI and the GitLab-to-GitHub mirror
 

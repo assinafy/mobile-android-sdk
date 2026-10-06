@@ -2,7 +2,24 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
-## [Unreleased]
+## [2.5.2] - 2026-10-05
+
+### Fixed
+
+- Mutation requests disable all redirects and automatic connection retries.
+- OAuth callbacks require the registered redirect address and reject duplicate parameters.
+- Public OAuth registration, scope tokens and PKCE values are validated before requests.
+- Malformed or incomplete OAuth responses raise `OAuthException.INVALID_RESPONSE`.
+- Signer updates require a supplied field and reject blank names; decline reasons are limited to 2000 characters.
+- Collect field placements require finite coordinates and dimensions; copy receiver IDs must be nonblank.
+- Dot-segment path identifiers are rejected before sending requests.
+- The minified consumer resolves the SDK version configured for the current build.
+
+### Changed
+
+- Build compiler: Kotlin 2.4.20, with Java 17 consumer bytecode and JDK 25 LTS runtime.
+- API-key live tests default to sandbox; browser-assisted Public OAuth tests cover the connection lifecycle.
+- Method reference and KDoc include expanded request and response payloads.
 
 ## [2.5.1] - 2026-09-25
 
@@ -84,12 +101,7 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 
 ### Fixed
 
-- Require at least one signer on every assignment body, not just `virtual` ones, and always send
-  the `signers` key. The published contract marks `signers` as required only for `virtual`, but the
-  API prices per signer in both modes and answers a signer-less body with
-  `400 "Pelo menos um signatários precisa ser informado."` `normalise` omitted the key entirely
-  when the list was empty, so a `collect` estimate could never be priced. The check is now
-  unconditional, which also closes the same hole on `create`.
+- Assignment creation and cost estimates require at least one signer for both `virtual` and `collect`, and send the `signers` key.
 
 ## [2.1.0] - 2026-09-20
 
@@ -131,10 +143,7 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 ## [2.0.2] - 2026-08-27
 
 ### Fixed
-- `documents.sendToken` sends the `recipient` and `channel` pair the service requires. The published
-  schema shows an optional `{"email": ...}` body, which the service rejects, so a call that supplied
-  an address needed a second request and a call without one could not succeed. `channel` defaults to
-  `email`.
+- `documents.sendToken` sends the required `recipient` and `channel` pair in one request; `channel` defaults to `email`.
 - `assignments.create` and `assignments.estimateCost` accept exactly one notification method per
   signer, applying the same verification/notification coupling rules already enforced for documents
   created from a template.
@@ -151,14 +160,13 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 ### Fixed
 - Virtual assignments can now submit the contract-required empty signing item array after signer
   data confirmation.
-- Assignment and template requests validate verification/notification coupling and digital
-  certificate step isolation before sending.
+- Assignment and template requests validate verification/notification coupling; assignments also validate digital-certificate step isolation.
 - Custom API prefixes reject user information, query, and fragment components and resolve relative
   paths without string-concatenation ambiguity.
 - The complete webhook event catalog is available through `WebhookEvent` constants.
 
 ### Changed
-- Android Gradle Plugin 9.3.2, Temurin 25.0.4, and `setup-java` 6 are used by the verified build path.
+- Android Gradle Plugin 9.3.2, Temurin 25.0.4, and `setup-java` 6 are used by the build.
 
 ## [2.0.0] - 2026-08-21
 
@@ -199,26 +207,14 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 ## [1.1.0] - 2026-06-05
 
 ### Fixed
-- **Consumer ProGuard/R8 rules now ship in the AAR.** The Gson keep rules were only wired via
-  `proguardFiles` (the library's own, effectively no-op minification) and never reached consuming
-  apps, so any app with `minifyEnabled = true` would strip the reflectively-populated model fields in
-  release builds. They are now declared with `consumerProguardFiles` and hardened
-  (`@SerializedName` members, Gson `TypeToken`, broader `-keepattributes`).
-- **Binary error messages were swallowed.** `getBinary` passed a raw `String` error body to
-  `ApiException.fromResponse`, which only understood a `Map`, so every download/thumbnail/page/signature
-  failure reported the generic "API request failed". `fromResponse` now parses a JSON or plain-string
-  body, and an empty successful binary response surfaces a clear error.
-- **Gson null-safety.** Genuinely-optional model fields (`DocumentPage` dimensions/`download_url`,
-  `Signer.fullName`, document timestamps) are now nullable so Gson cannot inject `null` into a
-  non-null Kotlin field and NPE later. `ResponseHandler.handle` now throws a clear error on an empty
-  body instead of returning `null as T`.
-- **`findByEmail` pages through all results** instead of only the first 100, so the idempotent
-  `signers.create` dedup is reliable for large signer sets.
-- Pagination header parsing is now case-insensitive; `ApiException` no longer coerces a null
-  `responseData` into an empty string in its context map.
+- Consumer ProGuard/R8 rules ship in the AAR and preserve Gson model fields, `TypeToken` and reflection attributes.
+- Binary response failures retain JSON or plain-text API error messages; empty binary responses raise an error.
+- Optional model fields support null values, and empty response bodies raise an error.
+- `findByEmail` searches every result page.
+- Pagination headers are case-insensitive, and exception context preserves nullable response data.
 
 ### Added
-- **Full request/response payload reference in the README** (real sandbox payloads) plus KDoc across
+- **Full request/response payload reference in the README** (placeholder payloads) plus KDoc across
   the public API.
 - Constants for stringly-typed values: `DocumentArtifact.CERTIFICATE_PAGE`/`BUNDLE`, `SignatureType`,
   and `WebhookEvent`; `RegisterWebhookRequest.DEFAULT_EVENTS` and `Logger.NONE` are now public.
@@ -227,7 +223,7 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 - Typed `ConfirmSignerDataRequest` overload for `DocumentResource.confirmSignerData`.
 - **Opt-in `LiveIntegrationTest`** that exercises the real API when `ASSINAFY_API_KEY` /
   `ASSINAFY_ACCOUNT_ID` are set (skipped by default). Unit-test coverage expanded to 140 tests,
-  including the OkHttp transport, `TemplateResource`, `waitUntilReady`, and webhook 404 handling.
+  including the OkHttp transport, `TemplateResource`, `waitUntilReady`, and webhook error handling.
 
 ### Changed
 - The `AssinafyClient` primary constructor is now `internal`; construct via `AssinafyClient.create(...)`.
@@ -244,16 +240,15 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 
 ### Fixed
 - **Duplicate-signer recovery.** `SignerResource.create` now treats the live duplicate-email error
-  (HTTP **400**, previously only 409 was handled) as a signal to return the existing signer, keeping
+  (HTTP **400**) as a signal to return the existing signer, keeping
   the call idempotent even under a create race.
 - **`DocumentResource.isFullySigned`** no longer reports `true` for documents that are merely
   `metadata_ready` / `pending_signature`. It now requires the `certificated` status (or a complete
   assignment summary).
 - **`AssignmentResource.resetExpiration`** accepts `null` to clear the expiration. The body is
-  serialized with an explicit `{"expires_at": null}` (the default serializer dropped the key, so the
-  clear never reached the API).
+  serialized with an explicit `{"expires_at": null}`.
 - **Signature upload** now matches the documented contract: the image is sent as a raw binary body
-  with `Content-Type: image/png` or `image/jpeg` (was multipart form data). `uploadSignature` gained
+  with `Content-Type: image/png` or `image/jpeg`. `uploadSignature` gained
   a `contentType` parameter (defaults to `image/png`).
 
 ### Added
@@ -273,21 +268,19 @@ All notable changes to the Assinafy Android SDK will be documented in this file.
 
 ### Tooling
 - Added a project `.editorconfig` pinning ktlint to the IntelliJ IDEA code style so formatting is
-  deterministic across ktlint versions (the CI `ktlintCheck` gate previously had no config and was
-  non-deterministic). Version constant and Gradle `version` aligned to `1.0.2`. Removed the unused
+  deterministic across ktlint versions. Version constant and Gradle `version` aligned to `1.0.2`. Removed the unused
   `targetSdk` from the library module (consumers own their own `targetSdkVersion`).
 
 ## [1.0.1] - 2026-05-11
 
 ### Fixed
-- **Pagination silently ignored.** `ListParams.perPage` now serialises as the documented `per-page` query key (was `per_page`, which the API discards).
-- **`Assignment.signing_urls`** modelled as a `List<SigningUrl>` (was an incorrect `Map<String, String>`); `Assignment.copy_receivers` modelled as `List<Signer>` on responses (matches the documented signer-object shape).
-- **`DocumentActivity`**: `created_at` is an ISO 8601 string (was `Long`), `origin` is an object (was `String`), and `payload` is now exposed.
-- **`WebhookDispatch`**: `created_at` / `updated_at` are ISO 8601 strings (were `Long`).
-- **`WebhookSubscription`**: `url` / `email` are nullable (live API returns null for empty subscriptions); spurious `id` field removed (not present in the response).
-- **`Workspace` / `WorkspaceListItem`**: surface `primary_color` and `secondary_color`.
-- **`WebhookPayload`**: surface the `subject`, `object`, `origin`, and `created_at` envelope fields so consumers can read the actual event subject/object (the documented `payload` field is `null` for most events).
-- **`TemplateSigner.id`** is optional — required only for `create-from-template`, not for `estimate-cost-from-template`.
+- `ListParams.perPage` serializes as the `per-page` query key.
+- Assignment responses expose `signing_urls` as `List<SigningUrl>` and `copy_receivers` as `List<Signer>`.
+- `DocumentActivity` exposes ISO 8601 timestamps, an object-valued origin and its payload.
+- Webhook dispatch timestamps use ISO 8601 strings; subscription URL and email are nullable.
+- Workspace models expose `primary_color` and `secondary_color`.
+- Webhook payloads expose `subject`, `object`, `origin` and `created_at`.
+- `TemplateSigner.id` is required for document creation and optional for pricing.
 
 ### Removed
 - `AssignmentResource.cancel()` (the endpoint `/accounts/{account_id}/signature-requests/{document_id}/cancel` returns 404 against the live API and is not in the public docs).

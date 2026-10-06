@@ -32,18 +32,28 @@ class WebhookResource internal constructor(
      * null, [RegisterWebhookRequest.DEFAULT_EVENTS] is used; an explicit empty list is preserved.
      *
      * Request body:
+     * Response `data` is the complete stored subscription:
+     *
+     * Wire operation: `PUT /v1/accounts/{accountId}/webhooks/subscriptions`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "events": ["document_ready", "document_prepared"], "is_active": true,
-     *   "url": "https://example.com/hooks/assinafy", "email": "ops@example.com"
+     *   "events": ["example"],
+     *   "is_active": true,
+     *   "url": "https://example.com/resource",
+     *   "email": "person@example.com"
      * }
      * ```
-     * Response `data` is the complete stored subscription:
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "events": ["document_ready", "document_prepared"], "is_active": true,
-     *   "url": "https://example.com/hooks/assinafy", "email": "ops@example.com",
-     *   "updated_at": "2026-05-10T14:58:24Z"
+     *   "events": ["example"],
+     *   "is_active": true,
+     *   "url": null,
+     *   "email": null,
+     *   "updated_at": null
      * }
      * ```
      *
@@ -73,11 +83,19 @@ class WebhookResource internal constructor(
      * (`GET /accounts/{accountId}/webhooks/subscriptions`).
      *
      * Request body: none. Response `data`:
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/webhooks/subscriptions`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "events": ["document_ready", "document_prepared"], "is_active": true,
-     *   "url": "https://example.com/hooks/assinafy", "email": "ops@example.com",
-     *   "updated_at": "2026-05-10T14:58:24Z"
+     *   "events": ["example"],
+     *   "is_active": true,
+     *   "url": null,
+     *   "email": null,
+     *   "updated_at": null
      * }
      * ```
      *
@@ -100,6 +118,21 @@ class WebhookResource internal constructor(
      * Request body: none. Response `data` is the complete subscription with `is_active` now false,
      * in the shape documented by [get].
      *
+     * Wire operation: `PUT /v1/accounts/{accountId}/webhooks/inactivate`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "events": ["example"],
+     *   "is_active": true,
+     *   "url": null,
+     *   "email": null,
+     *   "updated_at": null
+     * }
+     * ```
+     *
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Complete inactive subscription.
      */
@@ -115,14 +148,22 @@ class WebhookResource internal constructor(
      * Lists webhook event types (`GET /webhooks/event-types`).
      *
      * Request body/query: none. Response `data`:
-     * ```json
-     * [{
-     *   "id": "document_ready",
-     *   "description": "Triggered when the last Signer of the assignment signs the Document."
-     * }]
-     * ```
      * Reading this catalog lets an integration accept new server events without an SDK update;
      * [com.assinafy.sdk.WebhookEvent] holds the identifiers known at release time.
+     *
+     * Wire operation: `GET /v1/webhooks/event-types`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "id": "id-placeholder",
+     *     "description": "example"
+     *   }
+     * ]
+     * ```
      *
      * @return Wire event IDs and human-readable descriptions.
      */
@@ -141,6 +182,30 @@ class WebhookResource internal constructor(
      *
      * Request body: none. Response `data` is an array of dispatch records in the shape documented
      * by [retryDispatch].
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/webhooks`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "resource": "activity_dispatching_history",
+     *     "id": "id-placeholder",
+     *     "event": "example",
+     *     "activity_id": 1,
+     *     "endpoint": null,
+     *     "payload": {},
+     *     "delivered": true,
+     *     "http_status": 1,
+     *     "response_body": null,
+     *     "error": null,
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
      *
      * @param params Pagination values; all other [ListParams] fields are ignored.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -166,6 +231,30 @@ class WebhookResource internal constructor(
      * `data` is an array of dispatch records in the shape documented by [retryDispatch], and
      * `X-Pagination-*` headers are exposed through [PaginatedResult.meta].
      *
+     * Wire operation: `GET /v1/accounts/{accountId}/webhooks`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "resource": "activity_dispatching_history",
+     *     "id": "id-placeholder",
+     *     "event": "example",
+     *     "activity_id": 1,
+     *     "endpoint": null,
+     *     "payload": {},
+     *     "delivered": true,
+     *     "http_status": 1,
+     *     "response_body": null,
+     *     "error": null,
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
+     *
      * @param params Event, delivery-state, timestamp-range, and pagination filters.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Matching dispatch attempts and optional pagination-header metadata.
@@ -186,14 +275,26 @@ class WebhookResource internal constructor(
      * (`POST /accounts/{accountId}/webhooks/{historyId}/retry`).
      *
      * Request body: none. Response `data` is the updated delivery record:
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
      *   "resource": "activity_dispatching_history",
-     *   "id": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6", "event": "document_ready",
-     *   "activity_id": 456, "endpoint": "https://example.com/hooks/assinafy",
-     *   "payload": {}, "delivered": true, "http_status": 200, "response_body": "OK",
-     *   "error": null, "created_at": "2026-01-15T10:30:00Z",
-     *   "updated_at": "2026-01-15T10:30:00Z"
+     *   "id": "id-placeholder",
+     *   "event": "example",
+     *   "activity_id": 1,
+     *   "endpoint": null,
+     *   "payload": {},
+     *   "delivered": true,
+     *   "http_status": 1,
+     *   "response_body": null,
+     *   "error": null,
+     *   "created_at": "2026-01-01T00:00:00Z",
+     *   "updated_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *

@@ -29,12 +29,33 @@ class FieldResource internal constructor(
      *
      * Request body:
      * `{"name":"Employee CPF","type":"cpf","regex":null,"is_required":true}`.
-     * Response `data`:
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/fields`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "resource":"field", "id":"field-1", "name":"Employee CPF", "type":"cpf",
-     *   "regex":null, "is_pre_defined":false, "is_active":true, "is_required":true,
-     *   "is_standard":false, "is_read_only":false, "is_visible":true
+     *   "name": "Example",
+     *   "type": "text",
+     *   "regex": null,
+     *   "is_required": true
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "field",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "type": "text",
+     *   "regex": null,
+     *   "is_pre_defined": true,
+     *   "is_active": true,
+     *   "is_required": true,
+     *   "is_standard": true,
+     *   "is_read_only": true,
+     *   "is_visible": true
      * }
      * ```
      *
@@ -59,12 +80,28 @@ class FieldResource internal constructor(
      *
      * Query shape: optional `include_inactive` and `include_standard` booleans; request body: none.
      * Response `data` is an unpaginated array of complete [FieldDefinition] objects:
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/fields`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
-     * [{
-     *   "resource":"field", "id":"field-1", "name":"CPF", "type":"cpf", "regex":null,
-     *   "is_pre_defined":true, "is_active":true, "is_required":false,
-     *   "is_standard":false, "is_read_only":false, "is_visible":true
-     * }]
+     * [
+     *   {
+     *     "resource": "field",
+     *     "id": "id-placeholder",
+     *     "name": "Example",
+     *     "type": "text",
+     *     "regex": null,
+     *     "is_pre_defined": true,
+     *     "is_active": true,
+     *     "is_required": true,
+     *     "is_standard": true,
+     *     "is_read_only": true,
+     *     "is_visible": true
+     *   }
+     * ]
      * ```
      *
      * @param includeInactive Whether inactive definitions should be included.
@@ -93,6 +130,27 @@ class FieldResource internal constructor(
      * Request body/query: none. Response `data` contains `resource`, `id`, `name`, `type`, nullable `regex`,
      * `is_pre_defined`, `is_active`, `is_required`, `is_standard`, `is_read_only`, and `is_visible`.
      *
+     * Wire operation: `GET /v1/accounts/{accountId}/fields/{fieldId}`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "field",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "type": "text",
+     *   "regex": null,
+     *   "is_pre_defined": true,
+     *   "is_active": true,
+     *   "is_required": true,
+     *   "is_standard": true,
+     *   "is_read_only": true,
+     *   "is_visible": true
+     * }
+     * ```
+     *
      * @param fieldId Field definition identifier.
      * @param accountId Account override; otherwise the resource default is used.
      * @return Complete field definition.
@@ -111,6 +169,34 @@ class FieldResource internal constructor(
      *
      * Request body is a non-empty subset of `{"name":"New name","regex":null,"is_active":false}`.
      * Response `data` is the complete updated [FieldDefinition] shape documented by [create].
+     *
+     * Wire operation: `PUT /v1/accounts/{accountId}/fields/{fieldId}`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "name": "Example",
+     *   "regex": null,
+     *   "is_active": true
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "field",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "type": "text",
+     *   "regex": null,
+     *   "is_pre_defined": true,
+     *   "is_active": true,
+     *   "is_required": true,
+     *   "is_standard": true,
+     *   "is_read_only": true,
+     *   "is_visible": true
+     * }
+     * ```
      *
      * @param fieldId Field definition identifier.
      * @param request Name, regex, explicit regex removal, and/or active-state changes.
@@ -152,6 +238,15 @@ class FieldResource internal constructor(
      * Request body/query: none. Response is the standard success envelope without a typed `data` payload.
      * Definitions already used by assignments may need to be deactivated with [update] instead.
      *
+     * Wire operation: `DELETE /v1/accounts/{accountId}/fields/{fieldId}`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * []
+     * ```
+     *
      * @param fieldId Field definition identifier.
      * @param accountId Account override; otherwise the resource default is used.
      * @throws ValidationException when the account or field identifier is blank.
@@ -169,6 +264,24 @@ class FieldResource internal constructor(
      *
      * Request body: `{"value":"400.676.228-36"}`; request query: none.
      * Response `data`: `{"type":"cpf","success":true,"error_message":""}`.
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/fields/{fieldId}/validate`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "value": null
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "type": "text",
+     *   "success": true,
+     *   "error_message": "example"
+     * }
+     * ```
      *
      * @param fieldId Field definition whose type/regex validates the value.
      * @param value JSON-compatible input value; the `value` key is retained when this is `null`.
@@ -195,8 +308,31 @@ class FieldResource internal constructor(
      * Validates values in one request with `POST /accounts/{accountId}/fields/validate-multiple`.
      *
      * Request body: `[{"field_id":"field-1","value":"123"}]`; request query: none.
-     * Response `data`:
      * `[{"field_id":"field-1","type":"cpf","success":false,"error_message":"Invalid CPF."}]`.
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/fields/validate-multiple`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * [
+     *   {
+     *     "field_id": "field-id-placeholder",
+     *     "value": null
+     *   }
+     * ]
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "field_id": "field-id-placeholder",
+     *     "type": "text",
+     *     "success": true,
+     *     "error_message": "example"
+     *   }
+     * ]
+     * ```
      *
      * @param entries Non-empty field identifier/value array sent directly as the JSON body.
      * @param accountId Account override; otherwise the resource default is used.
@@ -222,6 +358,20 @@ class FieldResource internal constructor(
      * Lists supported types with `GET /field-types`.
      *
      * Request body/query: none. Response `data`: `[{"type":"cpf","name":"CPF"}]`.
+     *
+     * Wire operation: `GET /v1/field-types`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "type": "text",
+     *     "name": "Example"
+     *   }
+     * ]
+     * ```
      *
      * @return Machine-readable type codes and human-readable names.
      */

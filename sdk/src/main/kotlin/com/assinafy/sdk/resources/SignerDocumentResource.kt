@@ -12,6 +12,7 @@ import com.assinafy.sdk.request.ConfirmSignerDataRequest
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.SignAssignmentItemRequest
 import com.assinafy.sdk.request.VerifySignerEmailRequest
+import com.assinafy.sdk.util.ApiValidator
 import com.assinafy.sdk.util.requireValidEmail
 
 private val SIGNER_ARTIFACT_NAMES = setOf(
@@ -41,15 +42,26 @@ class SignerDocumentResource internal constructor(
      *
      * Wire request: `GET /signers/self?signer-access-code={code}`, with no body or credential
      * header. The typed [SignerSelf] response represents:
+     * Signature-state flags remain nullable because older responses can omit them.
+     *
+     * Wire operation: `GET /v1/signers/self`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "resource": "signer", "id": "signer_123", "full_name": "Example Signer",
-     *   "email": "signer@example.com", "whatsapp_phone_number": null,
-     *   "has_accepted_terms": false, "has_signature": true, "has_initial": false,
+     *   "resource": "signer",
+     *   "id": "id-placeholder",
+     *   "full_name": "Example",
+     *   "email": null,
+     *   "whatsapp_phone_number": null,
+     *   "has_accepted_terms": true,
+     *   "has_signature": true,
+     *   "has_initial": true,
      *   "is_signature_reusable": true
      * }
      * ```
-     * Signature-state flags remain nullable because older responses can omit them.
      *
      * @param signerAccessCode One-time code from the signer's signing link.
      * @return The signer's identity and stored-signature state.
@@ -64,16 +76,30 @@ class SignerDocumentResource internal constructor(
      *
      * Wire request: `GET /signers/{signerId}/document?signer-access-code={code}`, with both path
      * and query values URL-encoded. The [DocumentDetails] response has the full document shape:
+     *
+     * Wire operation: `GET /v1/signers/{signerId}/document`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "resource": "document", "id": "doc_123", "account_id": "account_123",
-     *   "template_id": null, "name": "Agreement.pdf", "status": "pending_signature",
-     *   "assignment": { "id": "assignment_123", "method": "collect", "signers": [],
-     *     "copy_receivers": [], "items": [], "summary": null, "signing_urls": [] },
-     *   "artifacts": { "original": "https://example.com/original.pdf" },
-     *   "signing_url": "https://example.com/sign", "tags": [], "pages": [],
-     *   "created_at": "2026-08-21T12:00:00Z", "updated_at": "2026-08-21T12:01:00Z",
-     *   "is_closed": false, "decline_reason": null, "declined_by": null
+     *   "resource": "document",
+     *   "id": "id-placeholder",
+     *   "account_id": "account-id-placeholder",
+     *   "template_id": null,
+     *   "name": "Example",
+     *   "status": "example",
+     *   "artifacts": {},
+     *   "is_closed": true,
+     *   "signing_url": "https://example.com/resource",
+     *   "decline_reason": null,
+     *   "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+     *   "tags": [{"id": "id-placeholder","name": "Example"}],
+     *   "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+     *   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *   "created_at": "2026-01-01T00:00:00Z",
+     *   "updated_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *
@@ -95,20 +121,34 @@ class SignerDocumentResource internal constructor(
      * query is omitted when [hasAcceptedTerms] is null and preserves an explicit false. A `409`
      * means document preparation is still in progress. The [DocumentDetails] response contains the
      * same complete document shape as [getCurrent], with signer-facing assignment content such as:
-     * ```json
-     * {
-     *   "id": "doc_123", "account_id": "account_123", "name": "Agreement.pdf",
-     *   "status": "pending_signature", "artifacts": {}, "tags": [], "pages": [],
-     *   "assignment": { "id": "assignment_123", "method": "collect",
-     *     "signers": [{ "id": "signer_123", "verification_method": "Email" }],
-     *     "items": [{ "id": "item_123", "completed": false }],
-     *     "summary": { "signer_count": 1, "completed_count": 0 }, "signing_urls": [] },
-     *   "created_at": "2026-08-21T12:00:00Z", "updated_at": "2026-08-21T12:01:00Z",
-     *   "is_closed": false
-     * }
-     * ```
      * A `DigitalCertificate` signer must call [confirmData] and [acceptTerms] before this request;
      * accepting terms only through this request's query is too late for that verification method.
+     *
+     * Wire operation: `GET /v1/sign`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "document",
+     *   "id": "id-placeholder",
+     *   "account_id": "account-id-placeholder",
+     *   "template_id": null,
+     *   "name": "Example",
+     *   "status": "example",
+     *   "artifacts": {},
+     *   "is_closed": true,
+     *   "signing_url": "https://example.com/resource",
+     *   "decline_reason": null,
+     *   "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+     *   "tags": [{"id": "id-placeholder","name": "Example"}],
+     *   "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+     *   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *   "created_at": "2026-01-01T00:00:00Z",
+     *   "updated_at": "2026-01-01T00:00:00Z"
+     * }
+     * ```
      *
      * @param signerAccessCode One-time signer code sent as a query parameter.
      * @param hasAcceptedTerms Optional terms-acceptance value sent as `has_accepted_terms`.
@@ -136,11 +176,29 @@ class SignerDocumentResource internal constructor(
      * Digital-certificate signers cannot use this operation; the service references separate
      * certificate routes that are not defined by the current v1 OpenAPI. Every collect
      * [SignAssignmentItemRequest] is emitted in the exact API shape:
-     * ```json
-     * [{"itemId":"item_123","fieldId":"field_123","pageId":"page_123","value":"Approved"}]
-     * ```
      * The typed result preserves the operation-defined response object, for example
      * `{"signed": true}`, as a `Map<String, Any>` without inventing undocumented keys.
+     *
+     * Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * [
+     *   {
+     *     "itemId": "itemId-placeholder",
+     *     "fieldId": "fieldId-placeholder",
+     *     "pageId": "pageId-placeholder",
+     *     "value": "example"
+     *   }
+     * ]
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *
+     * }
+     * ```
      *
      * @param documentId Document ID placed in the URL path.
      * @param assignmentId Assignment ID placed in the URL path.
@@ -180,6 +238,20 @@ class SignerDocumentResource internal constructor(
      * with the complete JSON body `{"decline_reason":"Reason shown to the sender"}`. The API's
      * successful envelope is `{"status":200,"data":[]}` and is intentionally returned as [Unit].
      *
+     * Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "decline_reason": "example"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * []
+     * ```
+     *
      * @param documentId Document ID placed in the URL path.
      * @param assignmentId Assignment ID placed in the URL path.
      * @param signerAccessCode One-time signer code sent only in the query.
@@ -193,7 +265,7 @@ class SignerDocumentResource internal constructor(
     ) {
         val did = requireId(documentId, "Document ID")
         val aid = requireId(assignmentId, "Assignment ID")
-        val reason = requireId(declineReason, "Decline reason")
+        val reason = ApiValidator.requireDeclineReason(declineReason)
         callVoid("Failed to decline assignment") {
             http.put(
                 withSignerCode(
@@ -211,6 +283,20 @@ class SignerDocumentResource internal constructor(
      * Wire request: `PUT /signers/documents/sign-multiple?signer-access-code={code}` with the
      * complete body `{"document_ids":["doc_1","doc_2"]}`. The documented success payload is an
      * empty data array, `{"status":200,"data":[]}`, so this function returns [Unit].
+     *
+     * Wire operation: `PUT /v1/signers/documents/sign-multiple`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "document_ids": ["example"]
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * []
+     * ```
      *
      * @param documentIds Non-empty document-ID list serialized as `document_ids`.
      * @param signerAccessCode One-time signer code sent only in the query.
@@ -233,6 +319,21 @@ class SignerDocumentResource internal constructor(
      * `{"document_ids":["doc_1","doc_2"],"decline_reason":"Unfavorable terms"}`. The documented
      * `{"status":200,"data":[]}` success response is returned as [Unit].
      *
+     * Wire operation: `PUT /v1/signers/documents/decline-multiple`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "document_ids": ["example"],
+     *   "decline_reason": "example"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * []
+     * ```
+     *
      * @param documentIds Non-empty document-ID list serialized as `document_ids`.
      * @param declineReason Required reason serialized as `decline_reason`.
      * @param signerAccessCode One-time signer code sent only in the query.
@@ -243,7 +344,7 @@ class SignerDocumentResource internal constructor(
         signerAccessCode: String,
     ) {
         val ids = requireDocumentIds(documentIds)
-        val reason = requireId(declineReason, "Decline reason")
+        val reason = ApiValidator.requireDeclineReason(declineReason)
         callVoid("Failed to decline multiple documents") {
             http.put(
                 withSignerCode("/signers/documents/decline-multiple", signerAccessCode),
@@ -258,6 +359,23 @@ class SignerDocumentResource internal constructor(
      * Wire request: `POST /verify?signer-access-code={code}`. [request] is the entire JSON body,
      * `{"verification-code":"123456"}`; the body never contains `signer-access-code`. The API's
      * bare success envelope is validated and returned as [Unit].
+     *
+     * Wire operation: `POST /v1/verify`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "verification-code": "example"
+     * }
+     * ```
+     *
+     * Response 200 body; optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "status": 200,
+     *   "message": "example"
+     * }
+     * ```
      *
      * @param signerAccessCode Signing-link access code sent only in the query.
      * @param request OTP body whose exact wire key is `verification-code`.
@@ -278,13 +396,32 @@ class SignerDocumentResource internal constructor(
      * Wire request:
      * `PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}`. Null fields are
      * omitted from the complete request body. Terms acceptance uses [acceptTerms]. A full request is:
-     * ```json
-     * {"full_name":"Example Signer","email":"signer@example.com",
-     *  "government_id":"12345678900"}
-     * ```
      * The [Signer] response represents `{"id":"signer_123","full_name":"Example Signer",
      * "email":"signer@example.com","whatsapp_phone_number":null,
      * "has_accepted_terms":true}`.
+     *
+     * Wire operation: `PUT /v1/documents/{documentId}/signers/confirm-data`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "full_name": "Example",
+     *   "email": "person@example.com",
+     *   "government_id": "government-id-placeholder"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "signer",
+     *   "id": "id-placeholder",
+     *   "full_name": "Example",
+     *   "email": null,
+     *   "whatsapp_phone_number": null,
+     *   "has_accepted_terms": true
+     * }
+     * ```
      *
      * @param documentId Document whose signer data is being confirmed.
      * @param signerAccessCode One-time signer code sent only in the query.
@@ -322,6 +459,18 @@ class SignerDocumentResource internal constructor(
      * and returned as [Unit]. Putting the access code in a body would leave this request
      * unauthenticated, so this function always sends it in the query.
      *
+     * Wire operation: `PUT /v1/signers/accept-terms`.
+     *
+     * Request body: none.
+     *
+     * Response 200 body; optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "status": 200,
+     *   "message": "example"
+     * }
+     * ```
+     *
      * @param signerAccessCode One-time signer code sent only as `signer-access-code`.
      */
     suspend fun acceptTerms(signerAccessCode: String) {
@@ -337,6 +486,21 @@ class SignerDocumentResource internal constructor(
      * `Content-Type: image/png` and [imageData] as the complete raw body (not JSON or multipart).
      * `type` defaults to `signature`; `reuse` is omitted when null. The bare success envelope is
      * validated and returned as [Unit].
+     *
+     * Wire operation: `POST /v1/signature`.
+     *
+     * Request body (`image/png`; optional members may be omitted):
+     * ```json
+     * "<binary bytes>"
+     * ```
+     *
+     * Response 200 body; optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "status": 200,
+     *   "message": "example"
+     * }
+     * ```
      *
      * @param signerAccessCode One-time signer code sent only in the query.
      * @param imageData Non-empty PNG file bytes sent without multipart framing.
@@ -372,6 +536,12 @@ class SignerDocumentResource internal constructor(
      * and access code are URL-encoded. The response is returned unchanged as PNG [ByteArray]
      * content; a missing stored image surfaces as the API's `404` exception.
      *
+     * Wire operation: `GET /v1/signature/{signatureType}`.
+     *
+     * Request body: none.
+     *
+     * Response 200: raw binary bytes (`image` media types), without a JSON envelope.
+     *
      * @param signerAccessCode One-time signer code sent only in the query.
      * @param type Stored image kind, normally [SignatureType.SIGNATURE] or [SignatureType.INITIAL].
      * @return Raw signature/initial image bytes.
@@ -401,6 +571,34 @@ class SignerDocumentResource internal constructor(
      * "status":"pending_signature","artifacts":{},"tags":[],"pages":[],
      * "is_closed":false}]}`. `X-Pagination-*` headers become [PaginatedResult.meta], such as
      * `{currentPage=1, perPage=25, total=1, lastPage=1}`.
+     *
+     * Wire operation: `GET /v1/signers/{signerId}/documents`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "resource": "document",
+     *     "id": "id-placeholder",
+     *     "account_id": "account-id-placeholder",
+     *     "template_id": null,
+     *     "name": "Example",
+     *     "status": "example",
+     *     "artifacts": {},
+     *     "is_closed": true,
+     *     "signing_url": "https://example.com/resource",
+     *     "decline_reason": null,
+     *     "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+     *     "tags": [{"id": "id-placeholder","name": "Example"}],
+     *     "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+     *     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
      *
      * @param signerId Signer ID placed in the URL path.
      * @param signerAccessCode One-time signer code sent only in the query.
@@ -436,6 +634,34 @@ class SignerDocumentResource internal constructor(
      * "status":"pending_signature","artifacts":{},"tags":[],"pages":[],
      * "is_closed":false}]}`, plus pagination metadata when the server returns pagination headers.
      *
+     * Wire operation: `GET /v1/signers/{signerId}/documents/search`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "resource": "document",
+     *     "id": "id-placeholder",
+     *     "account_id": "account-id-placeholder",
+     *     "template_id": null,
+     *     "name": "Example",
+     *     "status": "example",
+     *     "artifacts": {},
+     *     "is_closed": true,
+     *     "signing_url": "https://example.com/resource",
+     *     "decline_reason": null,
+     *     "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+     *     "tags": [{"id": "id-placeholder","name": "Example"}],
+     *     "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+     *     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
+     *
      * @param signerId Signer ID placed in the URL path.
      * @param signerAccessCode One-time signer code sent only in the query.
      * @param search Optional free-text document-name query.
@@ -468,6 +694,12 @@ class SignerDocumentResource internal constructor(
      * token, query parameters, or body. [artifactName] accepts `original`, `certificated`,
      * `certificate-page`, `pades`, or `bundle`. The response is raw PDF bytes, except `bundle`,
      * which is a ZIP archive.
+     *
+     * Wire operation: `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}`.
+     *
+     * Request body: none.
+     *
+     * Response 200: raw binary bytes (`application/pdf`), without a JSON envelope.
      *
      * @param signerId Signer ID placed in the public URL path.
      * @param documentId Document ID placed in the public URL path.

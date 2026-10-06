@@ -32,7 +32,7 @@ import kotlin.coroutines.resumeWithException
  * Authentication headers are attached only to requests that match the configured base URL's
  * scheme, host, and port, so redirects to another origin cannot receive credentials. HTTP 429 is
  * retried at most twice for read-only methods, honoring bounded server delay headers; mutation
- * requests are never replayed after a 429, and [postForm] requests are never retransmitted at all.
+ * requests disable redirects and automatic retries and are never retransmitted.
  * HTTPS negotiates TLS 1.2 or 1.3 only.
  *
  */
@@ -42,6 +42,11 @@ class OkHttpApiClient private constructor(
 ) : ApiHttpClient {
 
     private val baseUrl = parseBaseUrl(baseUrl)
+    private val mutationClient = client.newBuilder()
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .retryOnConnectionFailure(false)
+        .build()
 
     /**
      * Creates the default transport.
@@ -77,15 +82,7 @@ class OkHttpApiClient private constructor(
 
     override suspend fun postForm(path: String, fields: Map<String, String>): HttpRawResponse {
         val form = FormBody.Builder().apply { fields.forEach { (name, value) -> add(name, value) } }.build()
-        // OkHttp retransmits bodies after a dropped connection, a 408 or 503, or a redirect unless
-        // they are one-shot; a replayed refresh grant would reuse an already rotated refresh token.
-        val oneShot = object : RequestBody() {
-            override fun contentType() = form.contentType()
-            override fun contentLength() = form.contentLength()
-            override fun isOneShot() = true
-            override fun writeTo(sink: BufferedSink) = form.writeTo(sink)
-        }
-        return execute(Request.Builder().url(url(path)).post(oneShot).build())
+        return execute(Request.Builder().url(url(path)).post(form).build())
     }
 
     override suspend fun postMultipart(
@@ -185,7 +182,22 @@ class OkHttpApiClient private constructor(
     }
 
     private suspend fun executeOnce(request: Request): RawHttpResponse = suspendCancellableCoroutine { continuation ->
-        val call = client.newCall(request)
+        val transport = if (request.method in RETRYABLE_METHODS) client else mutationClient
+        val outgoing = if (request.method in RETRYABLE_METHODS || request.body?.isOneShot() == true) {
+            request
+        } else {
+            val body = request.body ?: EMPTY_BODY
+            request.newBuilder().method(
+                request.method,
+                object : RequestBody() {
+                    override fun contentType() = body.contentType()
+                    override fun contentLength() = body.contentLength()
+                    override fun isOneShot() = true
+                    override fun writeTo(sink: BufferedSink) = body.writeTo(sink)
+                },
+            ).build()
+        }
+        val call = transport.newCall(outgoing)
         call.enqueue(object : okhttp3.Callback {
             override fun onFailure(call: okhttp3.Call, e: IOException) {
                 continuation.resumeWithException(e)
@@ -194,7 +206,7 @@ class OkHttpApiClient private constructor(
             override fun onResponse(call: okhttp3.Call, response: Response) {
                 try {
                     response.use { r ->
-                        val result = RawHttpResponse(r.code, r.body?.bytes(), extractHeaders(r))
+                        val result = RawHttpResponse(r.code, r.body.bytes(), extractHeaders(r))
                         continuation.resume(result)
                     }
                 } catch (e: IOException) {

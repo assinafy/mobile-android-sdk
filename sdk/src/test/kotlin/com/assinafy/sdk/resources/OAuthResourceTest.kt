@@ -22,6 +22,52 @@ import kotlin.coroutines.Continuation
 
 class OAuthResourceTest {
 
+    @Test
+    fun `callback rejects foreign paths duplicate fields fragments and malformed URIs`() {
+        val oauth = resource()
+        val attempt = oauth.authorizationRequest()
+        val query = "?code=c&state=${attempt.state}$iss"
+        listOf(
+            "https://foreign.example/callback$query",
+            "https://myapp.example/other$query",
+            "https://myapp.example/oauth/callback$query&code=other",
+            "https://myapp.example/oauth/callback$query#fragment",
+            "https://myapp.example/oauth/callback$query&bad=%ZZ",
+        ).forEach { callback ->
+            assertThatThrownBy { oauth.parseCallback(callback, attempt) }.isInstanceOf(ValidationException::class.java)
+        }
+    }
+
+    @Test
+    fun `authorization validates public registration scope state and PKCE before network`() {
+        val mock = MockApiHttpClient()
+        listOf(config.copy(clientId = " "), config.copy(redirectUri = "http://myapp.example/callback"), config.copy(redirectUri = "https://myapp.example/callback#x")).forEach {
+            assertThatThrownBy { resource(mock, it).authorizationRequest() }.isInstanceOf(ValidationException::class.java)
+        }
+        val oauth = resource(mock)
+        assertThatThrownBy { oauth.authorizationRequest(state = " ") }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { oauth.authorizationRequest(scopes = listOf("documents:read account:read")) }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { oauth.authorizationRequest(pkce = PkcePair.generate().copy(codeChallenge = "wrong")) }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { oauth.exchangeCode("code", "short") } }.isInstanceOf(ValidationException::class.java)
+        assertThat(mock.calls).isEmpty()
+    }
+
+    @Test
+    fun `malformed and incomplete successful OAuth payloads stay in exception hierarchy`() {
+        listOf("", "null", "[]", "{", "{}", "{\"access_token\":null}", "{\"access_token\":\"token\",\"token_type\":\"Bearer\",\"expires_in\":0}").forEach { body ->
+            val mock = MockApiHttpClient().apply { enqueue(HttpRawResponse(200, body, emptyMap())) }
+            val thrown = runCatching { runBlocking { resource(mock).exchangeCode("code", verifier) } }.exceptionOrNull()
+            assertThat(thrown).isInstanceOf(OAuthException::class.java)
+            assertThat((thrown as OAuthException).error).isEqualTo(OAuthException.INVALID_RESPONSE)
+        }
+        val mock = MockApiHttpClient().apply { enqueue(HttpRawResponse(200, "{}", emptyMap())) }
+        assertThatThrownBy { runBlocking { resource(mock).userInfo() } }.isInstanceOf(OAuthException::class.java)
+        mock.enqueue(HttpRawResponse(200, "{}", emptyMap()))
+        assertThatThrownBy { runBlocking { resource(mock).protectedResourceMetadata() } }.isInstanceOf(OAuthException::class.java)
+    }
+
+    private val verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+
     private val iss = "&iss=https%3A%2F%2Fauth.assinafy.com.br"
 
     private val config = OAuthConfig(
@@ -228,7 +274,7 @@ class OAuthResourceTest {
         val mock = MockApiHttpClient()
         mock.enqueue(tokenResponse)
 
-        val tokens = resource(mock).exchangeCode("the-code", "the-verifier")
+        val tokens = resource(mock).exchangeCode("the-code", verifier)
 
         val call = mock.lastCall()
         // POST_FORM: form-encoded and never replayed by the transport.
@@ -237,7 +283,7 @@ class OAuthResourceTest {
         val sent = call.form
         assertThat(sent["grant_type"]).isEqualTo("authorization_code")
         assertThat(sent["code"]).isEqualTo("the-code")
-        assertThat(sent["code_verifier"]).isEqualTo("the-verifier")
+        assertThat(sent["code_verifier"]).isEqualTo(verifier)
         assertThat(sent["client_id"]).isEqualTo("client-123")
         assertThat(sent["redirect_uri"]).isEqualTo("https://myapp.example/oauth/callback")
         assertThat(sent["resource"]).isEqualTo("https://api.assinafy.com.br")
@@ -259,7 +305,7 @@ class OAuthResourceTest {
 
         assertThatThrownBy { withSecret.authorizationRequest() }.isInstanceOf(ValidationException::class.java)
             .hasMessageContaining("create a new Public application").hasMessageNotContaining("sh-1")
-        assertThatThrownBy { runBlocking { withSecret.exchangeCode("c", "v") } }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { withSecret.exchangeCode("c", verifier) } }.isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { runBlocking { withSecret.refresh("rt") } }.isInstanceOf(ValidationException::class.java)
         assertThatThrownBy { runBlocking { withSecret.revoke("t") } }.isInstanceOf(ValidationException::class.java)
         assertThat(mock.calls).isEmpty()
@@ -270,7 +316,7 @@ class OAuthResourceTest {
         val mock = MockApiHttpClient()
         mock.enqueue(tokenResponse)
 
-        val rendered = resource(mock).exchangeCode("c", "v").toString()
+        val rendered = resource(mock).exchangeCode("c", verifier).toString()
 
         assertThat(rendered).contains("accessToken=***").contains("refreshToken=***").contains("idToken=***")
         assertThat(rendered).doesNotContain("at-1").doesNotContain("rt-1").doesNotContain("id-1")
@@ -337,7 +383,7 @@ class OAuthResourceTest {
             ),
         )
 
-        val thrown = runCatching { resource(mock).exchangeCode("stale", "v") }.exceptionOrNull()
+        val thrown = runCatching { resource(mock).exchangeCode("stale", verifier) }.exceptionOrNull()
 
         assertThat(thrown).isInstanceOf(OAuthException::class.java)
         val oauth = thrown as OAuthException
@@ -441,6 +487,7 @@ class OAuthResourceTest {
         assertThat(challenge.resourceMetadata).isEqualTo("https://api.assinafy.com.br/.well-known/x")
 
         assertThat(OAuthChallenge.parse(null)).isNull()
+        assertThat(OAuthChallenge.parse("BearerNotAChallenge error=\"invalid_token\"")).isNull()
         assertThat(OAuthChallenge.parse("Basic realm=\"x\"")).isNull()
     }
 
@@ -513,7 +560,7 @@ class OAuthResourceTest {
         mock.transportError = java.io.IOException("connection reset")
 
         // Every OAuth entry point must normalize into the SDK's exception hierarchy.
-        assertThatThrownBy { runBlocking { resource(mock).exchangeCode("c", "v") } }
+        assertThatThrownBy { runBlocking { resource(mock).exchangeCode("c", verifier) } }
             .isInstanceOf(NetworkException::class.java)
         assertThatThrownBy { runBlocking { resource(mock).refresh("rt") } }
             .isInstanceOf(NetworkException::class.java)

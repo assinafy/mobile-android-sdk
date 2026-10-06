@@ -36,6 +36,29 @@ class AssignmentResource internal constructor(
      * Response `data` is an array of complete [Assignment] values and `X-Pagination-*` headers are
      * exposed through [PaginatedResult.meta].
      *
+     * Wire operation: `GET /v1/assignments`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": null,
+     *     "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+     *     "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
+     *     "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+     *     "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+     *     "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+     *   }
+     * ]
+     * ```
+     *
      * @param params Optional one-based page and records-per-page values.
      * @param accountId Optional compatibility scoping query; the client's default account is not sent.
      * @return Assignment page and optional pagination metadata.
@@ -59,51 +82,39 @@ class AssignmentResource internal constructor(
      * per-signer `signing_urls` and a `summary`.
      *
      * Request body — null values are omitted, and `entries` is required only for `collect`:
-     * ```json
-     * {
-     *   "method": "virtual",
-     *   "signers": [{
-     *     "id": "62d6ee35c7741ca4006b9e11", "verification_method": "Email",
-     *     "notification_methods": ["Email"], "step": 1
-     *   }],
-     *   "message": "Please review and sign",
-     *   "expires_at": "2026-12-31T23:59:59Z",
-     *   "copy_receivers": ["62d6ee35c7741ca4006b9e12"],
-     *   "entries": [{
-     *     "page_id": "615601faf166d6d1d8e7dc30",
-     *     "fields": [{
-     *       "signer_id": "62d6ee35c7741ca4006b9e11", "field_id": "6152120297080d55bdd13197",
-     *       "display_settings": {
-     *         "left": 72, "top": 640, "width": 180, "height": 40, "fontSize": 12
-     *       }
-     *     }]
-     *   }]
-     * }
-     * ```
-     * Response `data`:
-     * ```json
-     * {
-     *   "resource": "assignment", "id": "615606ef81d199996981dbce",
-     *   "sender_email": "sender@example.com", "method": "virtual", "expires_at": null,
-     *   "message": "Please review and sign",
-     *   "signers": [{
-     *     "resource": "signer", "id": "62d6ee35c7741ca4006b9e11", "full_name": "John Signer",
-     *     "email": "john@example.com", "whatsapp_phone_number": "+5548999990000",
-     *     "has_accepted_terms": false, "verification_method": "Email",
-     *     "notification_methods": ["Email"], "step": 1, "notified": true, "completed": false,
-     *     "notification_history": []
-     *   }],
-     *   "copy_receivers": [],
-     *   "items": [],
-     *   "summary": { "signer_count": 1, "completed_count": 0, "signers": [] },
-     *   "signing_urls": [{
-     *     "signer_id": "62d6ee35c7741ca4006b9e11",
-     *     "url": "https://api.assinafy.com.br/v1/sign/doc1?email=john@example.com"
-     *   }]
-     * }
-     * ```
      * Each `signing_urls` entry ends in the signer's one-time access code. Treat it as a
      * credential: deliver it through the intended channel and never log or persist it.
+     *
+     * Wire operation: `POST /v1/documents/{documentId}/assignments`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "method": "collect",
+     *   "signers": [{"id": "id-placeholder","verification_method": "Email","notification_methods": ["Email"],"step": 1}],
+     *   "entries": [{"page_id": "page-id-placeholder","fields": [{"signer_id": "signer-id-placeholder","field_id": "field-id-placeholder","display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"}}]}],
+     *   "message": "example",
+     *   "expires_at": "2026-01-01T00:00:00Z",
+     *   "copy_receivers": ["example"]
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "assignment",
+     *   "id": "id-placeholder",
+     *   "sender_email": "person@example.com",
+     *   "method": "virtual",
+     *   "expires_at": null,
+     *   "message": null,
+     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
+     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+     *   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+     * }
+     * ```
      *
      * @param documentId Stable document identifier placed in the path.
      * @param request Assignment method, signers, optional field placements, and delivery settings.
@@ -126,23 +137,37 @@ class AssignmentResource internal constructor(
      *
      * Request body carries only what affects pricing — signer IDs, steps, messages, expiration and
      * copy receivers are deliberately omitted:
-     * ```json
-     * {
-     *   "method": "virtual",
-     *   "signers": [{ "verification_method": "Whatsapp", "notification_methods": ["Whatsapp"] }]
-     * }
-     * ```
-     * Response `data`:
-     * ```json
-     * {
-     *   "total_credits": 0.45, "document_balance": 12, "credit_balance": 30.5,
-     *   "has_sufficient_resources": true, "blocking_reason": null, "message": "",
-     *   "breakdown": [{ "code": "NotificationWhatsapp", "quantity": 1, "credits": 0.45 }]
-     * }
-     * ```
      * `blocking_reason` is one of `PendingPayment`, `InsufficientDocuments`, or
      * `InsufficientCredits`. A digital-certificate signer adds a `SignatureDigitalCertificate`
      * breakdown line worth two credits on top of its notification.
+     *
+     * Wire operation: `POST /v1/documents/{documentId}/assignments/estimate-cost`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "method": "collect",
+     *   "signers": [{"verification_method": "Email","notification_methods": ["Email"]}],
+     *   "entries": [{"page_id":"page-placeholder","fields":[{"signer_id":"signer-placeholder","field_id":"field-placeholder","display_settings":{"left":72,"top":640,"width":180,"height":40,"fontSize":12}}]}]
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "documents": 1,
+     *   "credits": 1,
+     *   "needs_extra_document": true,
+     *   "extra_document_cost": 1,
+     *   "total_credits": 1,
+     *   "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
+     *   "document_balance": 1,
+     *   "credit_balance": 1,
+     *   "has_sufficient_resources": true,
+     *   "blocking_reason": "PendingPayment",
+     *   "message": null
+     * }
+     * ```
      *
      * @param documentId Stable document identifier placed in the path.
      * @param request Proposed method, signer channels, and optional collect placements.
@@ -170,6 +195,32 @@ class AssignmentResource internal constructor(
      * exactly `{"expires_at":"..."}`. The compatibility clear request is
      * `{"expires_at":null}`. The response `data` is the complete updated [Assignment].
      *
+     * Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "expires_at": "2026-01-01T00:00:00Z"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "assignment",
+     *   "id": "id-placeholder",
+     *   "sender_email": "person@example.com",
+     *   "method": "virtual",
+     *   "expires_at": null,
+     *   "message": null,
+     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
+     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+     *   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+     * }
+     * ```
+     *
      * @param documentId Stable document identifier.
      * @param assignmentId Stable assignment identifier.
      * @param expiresAt Replacement ISO-8601 expiration, or explicit compatibility `null`/blank to clear it.
@@ -194,6 +245,20 @@ class AssignmentResource internal constructor(
      * `signer-access-code` in the query, and `{"decline_reason":"..."}` as the complete JSON body.
      * A successful empty-data envelope is returned as [Unit].
      *
+     * Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "decline_reason": "example"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * []
+     * ```
+     *
      * @param documentId Stable document identifier.
      * @param assignmentId Stable assignment identifier.
      * @param signerAccessCode One-time signer code sent only in the query.
@@ -210,6 +275,24 @@ class AssignmentResource internal constructor(
      * Wire request: `GET /documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications`
      * with no query or body. Response `data` is an array containing render text, destination,
      * signer, send time, and buttons for each [WhatsappNotification].
+     *
+     * Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "sent_at": 1,
+     *     "header": "example",
+     *     "body": "example",
+     *     "buttons": [{"text": "example"}],
+     *     "phone_number": "+15555550100",
+     *     "signer_id": "signer-id-placeholder"
+     *   }
+     * ]
+     * ```
      *
      * @param documentId Stable document identifier.
      * @param assignmentId Stable assignment identifier.
@@ -233,6 +316,19 @@ class AssignmentResource internal constructor(
      * OpenAPI request has no body; [channel] opts into the deployed compatibility body
      * `{"channel":"email"}` or `{"channel":"whatsapp"}`. Response `data` is
      * [ResendEmailResponse]: delivery acceptance plus document and signer IDs.
+     *
+     * Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "is_sent": true,
+     *   "document_id": "document-id-placeholder",
+     *   "signer_id": "signer-id-placeholder"
+     * }
+     * ```
      *
      * @param documentId Stable document identifier.
      * @param assignmentId Stable assignment identifier.
@@ -269,6 +365,27 @@ class AssignmentResource internal constructor(
      * `/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost`.
      * Response `data` is the complete [CostEstimate] payload.
      *
+     * Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "documents": 1,
+     *   "credits": 1,
+     *   "needs_extra_document": true,
+     *   "extra_document_cost": 1,
+     *   "total_credits": 1,
+     *   "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
+     *   "document_balance": 1,
+     *   "credit_balance": 1,
+     *   "has_sufficient_resources": true,
+     *   "blocking_reason": "PendingPayment",
+     *   "message": null
+     * }
+     * ```
+     *
      * @param documentId Stable document identifier.
      * @param assignmentId Stable assignment identifier.
      * @param signerId Stable signer identifier.
@@ -298,7 +415,7 @@ class AssignmentResource internal constructor(
             if (!estimate) {
                 request.message?.let { put("message", it) }
                 request.expiresAt?.let { put("expires_at", it.trim()) }
-                request.copyReceivers?.let { put("copy_receivers", it.map(String::trim)) }
+                request.copyReceivers?.let { put("copy_receivers", it.map { id -> requireId(id, "Copy receiver signer ID") }) }
             }
         }
     }
@@ -340,7 +457,8 @@ class AssignmentResource internal constructor(
                     requireId(field.signerId, "Assignment field signer ID")
                     requireId(field.fieldId, "Assignment field ID")
                     field.displaySettings?.let { settings ->
-                        if (settings.left < 0 ||
+                        if (listOf(settings.left, settings.top, settings.width, settings.height, settings.fontSize).any { !it.isFinite() } ||
+                            settings.left < 0 ||
                             settings.top < 0 ||
                             settings.width <= 0 ||
                             settings.height <= 0 ||

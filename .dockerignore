@@ -6,6 +6,8 @@
 **/build
 .idea
 .claude
+AGENTS.md
+CLAUDE.md
 local.properties
 *.iml
 .DS_Store

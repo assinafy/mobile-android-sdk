@@ -35,7 +35,7 @@ kotlinx-coroutines — nada além disso.
 | Compilado contra | Android 17 estável / API 37.0 |
 | Bytecode do consumidor | Java 17 |
 | JDK de build | JDK 25 LTS, com toolchain Java 17 para compilação |
-| Linguagem | Kotlin com coroutines |
+| Linguagem | Kotlin 2.4.20 com coroutines |
 | TLS | 1.2 ou superior; o cliente padrão recusa TLS 1.0 e 1.1 |
 
 A aplicação consumidora é dona do `targetSdk`. O AAR declara a permissão Android `INTERNET` e carrega
@@ -59,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.1")
+    implementation("com.assinafy:assinafy-android-sdk:2.5.2")
 }
 ```
 
@@ -68,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.5.1-local-SNAPSHOT \
+  -Pversion=2.5.2-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -858,7 +858,7 @@ do {
 ```
 
 HTTP 429 é repetido no máximo duas vezes, só em leituras seguras, respeitando `Retry-After` e
-`X-Rate-Limit-Reset` até um teto de 30 segundos. Mutações nunca são repetidas.
+`X-Rate-Limit-Reset` até um teto de 30 segundos. Mutações são enviadas uma vez, sem redirecionamento ou retry automático de conexão.
 
 Cinco tipos de exceção cobrem toda falha. Capture-os na fronteira da aplicação:
 
@@ -895,7 +895,7 @@ repetir.
 
 ```kotlin
 viewModelScope.launch {
-    val details = runCatching { client.documents.details(documentId) }
+    val details = client.documents.details(documentId)
     // Sair deste escopo cancela a requisição.
 }
 ```
@@ -908,8 +908,12 @@ tem orçamento próprio e independente.
 | | |
 | --- | --- |
 | Produção | `SdkConstants.DEFAULT_BASE_URL` — `https://api.assinafy.com.br/v1` |
+| Sandbox | `https://sandbox.assinafy.com.br/v1` · painel `https://app-sandbox.assinafy.com.br` |
 
-Produção é o único ambiente suportado; informe outro `baseUrl` para apontar para outra implantação.
+Informe `baseUrl` ao criar o cliente de sandbox. Use credenciais próprias de cada ambiente.
+O fluxo OAuth descrito acima usa o aplicativo registrado no painel de produção e o emissor
+`https://auth.assinafy.com.br`; descubra o emissor antes de configurar outra implantação.
+O emissor OAuth de sandbox é `https://auth-sandbox.assinafy.com.br`; registre um aplicativo Public próprio no painel de sandbox para usá-lo. Os testes de integração com API key usam sandbox por padrão.
 
 ## Build e testes
 

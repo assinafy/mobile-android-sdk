@@ -3,8 +3,6 @@
 This SDK covers every operation in the Assinafy v1 OpenAPI document published at
 [`https://api.assinafy.com.br/v1/docs/openapi.json`](https://api.assinafy.com.br/v1/docs/openapi.json).
 
-- OpenAPI SHA-256: `6b55ce24462cd0f9393061a075f2c296fbe742fae493c9ba81c7def402618456`
-- Fetched 2026-09-20
 - Paths: 71
 - Operations: **93 covered / 93 documented**
 - API base URL: `https://api.assinafy.com.br/v1`
@@ -204,16 +202,11 @@ deliberately not mapped: they drive the Web PKI browser-extension handshake for 
 signing, which a native client cannot complete. A digital-certificate signer is sent to the web
 signing page instead.
 
-## Where the deployed service differs from the schema
+## Public token delivery
 
-One operation's published request schema does not match the deployed service, verified against
-production on 2026-08-27:
-
-| Operation | Schema | Deployed service |
-|---|---|---|
-| `PUT /v1/public/documents/{documentId}/send-token` | Optional `{"email":string}` | `{"recipient":string,"channel":"email"\|"whatsapp"}`; both keys required — the schema body answers `400 O atributo "channel" é obrigatório.` |
-
-`documents.sendToken` sends the deployed contract, defaulting `channel` to `email`.
+`documents.sendToken` sends `PUT /v1/public/documents/{documentId}/send-token` with
+`{"recipient":"person@example.com","channel":"email"}`. Both members are required;
+`channel` accepts `email` or `whatsapp` and defaults to `email` in the SDK.
 
 ## Retained compatibility behavior
 
@@ -228,8 +221,7 @@ the default request path:
   null or blank to clear an expiration on deployments that support that extension;
 - notification resend adds the deployed API's `channel` JSON body only when the caller explicitly
   passes that compatibility parameter;
-- document tag mutations pass the supplied strings unchanged. The schema documents tag IDs; the
-  deployed service also accepts a tag name and creates the tag if it does not exist yet;
+- document tag mutations pass the supplied strings unchanged. IDs attach existing tags; a supplied tag name creates the tag if it does not exist yet;
 - account create/update may send the deprecated six-digit `primary_color` and `secondary_color`
   fields when callers explicitly use them;
 - `signers.create` may send the deprecated `cpf` and `metadata` fields when callers explicitly use

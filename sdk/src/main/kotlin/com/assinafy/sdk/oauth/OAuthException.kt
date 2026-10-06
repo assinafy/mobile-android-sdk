@@ -58,5 +58,8 @@ class OAuthException(
 
         /** A scope the application is not registered for, or an empty scope. */
         const val INVALID_SCOPE = "invalid_scope"
+
+        /** A successful HTTP response contained a malformed or incomplete OAuth payload. */
+        const val INVALID_RESPONSE = "invalid_response"
     }
 }

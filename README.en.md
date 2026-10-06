@@ -8,13 +8,13 @@ signers, signature assignments, the signer-facing signing flow, password and OAu
 authentication, field definitions, tags, templates, users, and webhooks.
 
 This document reads front to back: set up a client, walk one document through its full signature
-lifecycle, then handle the surrounding concerns — errors, pagination, testing, and releases. Two
+lifecycle, then handle the surrounding concerns — errors, pagination, testing, and releases. Three
 companion documents go deeper:
 
 - [API reference](docs/API_REFERENCE.md) — every SDK function with its exact route, query, request
   body, response model, and error semantics.
 - [Operation index](docs/API_COVERAGE.md) — every published v1 operation mapped to SDK methods,
-  plus the places where the deployed service and the published schema differ.
+  plus supported compatibility parameters.
 - [Building and testing](docs/TESTING.md) — the supported build environment and the live test
   boundary.
 
@@ -65,7 +65,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.5.1-local-SNAPSHOT \
+  -Pversion=2.5.2-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -81,7 +81,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.1-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.5.2-local-SNAPSHOT")
 }
 ```
 
@@ -96,7 +96,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.1")
+    implementation("com.assinafy:assinafy-android-sdk:2.5.2")
 }
 ```
 
@@ -881,7 +881,7 @@ do {
 ```
 
 HTTP 429 is retried at most twice, only for safe reads, honoring `Retry-After` and
-`X-Rate-Limit-Reset` up to a 30-second cap. Mutations are never replayed.
+`X-Rate-Limit-Reset` up to a 30-second cap. Mutation requests are sent once, without redirects or automatic connection retries.
 
 Five exception types cover every failure. Catch them at the application boundary:
 
@@ -917,13 +917,25 @@ cancels the in-flight HTTP call — treat cancellation as cancellation, never as
 
 ```kotlin
 viewModelScope.launch {
-    val details = runCatching { client.documents.details(documentId) }
+    val details = client.documents.details(documentId)
     // Leaving this scope cancels the request.
 }
 ```
 
 Timeouts are per request and configured on the client. `waitUntilReady` spans several requests and
 has its own independent budget.
+
+## Environments
+
+| Environment | Address |
+|---|---|
+| Production | `SdkConstants.DEFAULT_BASE_URL` — `https://api.assinafy.com.br/v1` |
+| Sandbox | `https://sandbox.assinafy.com.br/v1` · dashboard `https://app-sandbox.assinafy.com.br` |
+
+Set `baseUrl` when creating a sandbox client and use credentials issued for that environment.
+The OAuth flow above uses a Public app registered in production and issuer
+`https://auth.assinafy.com.br`; discover the issuer before configuring another deployment.
+Sandbox OAuth discovery advertises `https://auth-sandbox.assinafy.com.br`; register a separate Public app in the sandbox dashboard when using that issuer. API-key integration tests default to sandbox. The build uses Kotlin 2.4.20 and JDK 25 LTS.
 
 ## Building and testing
 

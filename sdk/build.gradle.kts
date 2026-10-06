@@ -11,7 +11,7 @@ plugins {
 
 group = "com.assinafy"
 // Honor a release-automation -Pversion override and otherwise use the released version.
-version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.5.1"
+version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.5.2"
 
 val okHttpVersion = "5.5.0"
 val gsonVersion = "2.14.0"
@@ -201,6 +201,9 @@ tasks.withType<Test>().configureEach {
         "ASSINAFY_TEST_EMAIL",
         "ASSINAFY_TEST_EMAIL_2",
         "ASSINAFY_SIGNER_ACCESS_CODE",
+        "ASSINAFY_OAUTH_CLIENT_ID",
+        "ASSINAFY_OAUTH_REDIRECT_URI",
+        "ASSINAFY_OAUTH_CALLBACK_DIR",
     )
         .forEach { key -> System.getenv(key)?.let { environment(key, it) } }
 }

@@ -12,7 +12,18 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
+@Suppress("DEPRECATION")
 class SignerResourceTest {
+
+    @Test
+    fun `empty signer updates and blank supplied names fail before network`() {
+        val mock = MockApiHttpClient()
+        listOf(UpdateSignerRequest(), UpdateSignerRequest(fullName = " ")).forEach { request ->
+            assertThatThrownBy { runBlocking { SignerResource(mock, "account").update("signer", request) } }
+                .isInstanceOf(ValidationException::class.java)
+        }
+        assertThat(mock.calls).isEmpty()
+    }
 
     private val emptyListJson = """{"status":200,"data":[]}"""
     private val signerJson = """{"id":"s1","full_name":"John Doe","email":"john@example.com"}"""

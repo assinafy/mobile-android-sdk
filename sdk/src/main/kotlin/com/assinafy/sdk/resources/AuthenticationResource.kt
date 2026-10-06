@@ -38,20 +38,23 @@ class AuthenticationResource internal constructor(
      * Authenticates with `POST /login`.
      *
      * Request body: `{"email":"user@example.com","password":"secret"}`.
-     * Response `data`:
+     *
+     * Wire operation: `POST /v1/login`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "access_token": "jwt-token",
-     *   "user": {
-     *     "id": "user-1", "name": "Example User", "email": "user@example.com",
-     *     "telephone": null, "government_id": null, "is_email_verified": true,
-     *     "has_accepted_terms": true, "created_at": "2026-01-01T00:00:00Z",
-     *     "to_be_deleted_at": null
-     *   },
-     *   "accounts": [{
-     *     "id": "account-1", "name": "Example", "roles": ["Owner"],
-     *     "is_delete_allowed": true, "created_at": "2026-01-01T00:00:00Z"
-     *   }]
+     *   "email": "person@example.com",
+     *   "password": "<redacted-value>"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "access_token": "<redacted-value>",
+     *   "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
+     *   "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
      * }
      * ```
      *
@@ -73,6 +76,22 @@ class AuthenticationResource internal constructor(
      * Request body: `{"email":"user@example.com"}`.
      * Response `data`: `{"email":"user@example.com"}`.
      *
+     * Wire operation: `PUT /v1/authentication/request-password-reset`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "email": "person@example.com"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "email": "person@example.com"
+     * }
+     * ```
+     *
      * @param request Email address that receives the reset message.
      * @return The email address accepted by the API.
      * @throws ValidationException when the email is invalid.
@@ -90,6 +109,24 @@ class AuthenticationResource internal constructor(
      * Request body:
      * `{"email":"user@example.com","new_password":"new-secret","token":"emailed-token"}`.
      * The current schema permits omitting `token`. Response `data`: `{"email":"user@example.com"}`.
+     *
+     * Wire operation: `PUT /v1/authentication/reset-password`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "email": "person@example.com",
+     *   "token": "<redacted-value>",
+     *   "new_password": "<redacted-value>"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "email": "person@example.com"
+     * }
+     * ```
      *
      * @param request Email, new password, and optional emailed reset token.
      * @return The email address whose password was reset.
@@ -111,6 +148,24 @@ class AuthenticationResource internal constructor(
      * `{"email":"user@example.com","password":"old-secret","new_password":"new-secret"}`.
      * Response `data`: `{"email":"user@example.com"}`.
      *
+     * Wire operation: `PUT /v1/authentication/change-password`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "email": "person@example.com",
+     *   "password": "<redacted-value>",
+     *   "new_password": "<redacted-value>"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "email": "person@example.com"
+     * }
+     * ```
+     *
      * @param request Email, current password, and replacement password.
      * @return The email address whose password was changed.
      * @throws ValidationException when the email is invalid or either password is blank.
@@ -131,6 +186,26 @@ class AuthenticationResource internal constructor(
      * `{"provider":"google","token":"provider-token","has_accepted_terms":true}`.
      * Response `data` has the same complete `access_token`, `user`, and `accounts` shape documented by [login].
      *
+     * Wire operation: `POST /v1/authentication/social-login`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "provider": "google",
+     *   "token": "<redacted-value>",
+     *   "has_accepted_terms": true
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "access_token": "<redacted-value>",
+     *   "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
+     *   "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+     * }
+     * ```
+     *
      * @param request Google provider token and terms acceptance.
      * @return JWT, authenticated user, and accessible accounts.
      * @throws ValidationException when the provider token is blank.
@@ -148,6 +223,24 @@ class AuthenticationResource internal constructor(
      * Request body: `{"provider":"google","token":"provider-token"}`.
      * Response body is the standard success envelope with no `data` payload.
      *
+     * Wire operation: `POST /v1/auth/link-social-login`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "provider": "google",
+     *   "token": "<redacted-value>"
+     * }
+     * ```
+     *
+     * Response 200 body; optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "status": 200,
+     *   "message": "example"
+     * }
+     * ```
+     *
      * @param request Google provider and provider-issued token to link.
      * @throws ValidationException when the provider token is blank.
      */
@@ -164,6 +257,17 @@ class AuthenticationResource internal constructor(
      * Request body: none. Response `data`: `{"api_key":"********suffix"}` or `{"api_key":null}`.
      * A legacy top-level `data: null` response is normalized to `null`.
      *
+     * Wire operation: `GET /v1/users/api-keys`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "api_key": null
+     * }
+     * ```
+     *
      * @return Masked key payload, or `null` when the API returns no key payload.
      */
     suspend fun getApiKey(): ApiKeyResponse? {
@@ -176,6 +280,22 @@ class AuthenticationResource internal constructor(
      *
      * Request body: `{"password":"secret"}`. Response `data`: `{"api_key":"full-key-shown-once"}`.
      * Generating a new key invalidates the previous key.
+     *
+     * Wire operation: `POST /v1/users/api-keys`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "password": "<redacted-value>"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "api_key": null
+     * }
+     * ```
      *
      * @param request Current password used to authorize key generation.
      * @return Newly generated full API key; [ApiKeyResponse.apiKey] may be `null` only if the server returns it so.
@@ -192,6 +312,15 @@ class AuthenticationResource internal constructor(
      * Revokes the personal key with `DELETE /users/api-keys`.
      *
      * Request body: none. Response `data` is an empty JSON array.
+     * Wire operation: `DELETE /v1/users/api-keys`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * []
+     * ```
+     *
      */
     suspend fun deleteApiKey() {
         callVoid("Failed to delete API key") { http.delete("/users/api-keys") }

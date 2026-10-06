@@ -24,19 +24,31 @@ class TemplateResource internal constructor(
      *
      * Request body: none. Optional query: `search`, `page`, `per-page`. Response `data` is an array
      * of templates; a list entry omits the page/role detail a single template carries:
-     * ```json
-     * [{
-     *   "resource": "template", "id": "fa88b732db84d01427d4cdd1092", "name": "template.pdf",
-     *   "document_name": "Service agreement", "message": "Please review and sign",
-     *   "status": "ready",
-     *   "roles": [{ "id": "role-1", "name": "Editor", "assignment_type": "Editor",
-     *               "created_at": "2026-05-14T12:00:00Z", "updated_at": "2026-05-14T12:00:00Z" }],
-     *   "tags": [{ "id": "tag-1", "name": "Contracts" }],
-     *   "default_document_tags": [{ "id": "tag-1", "name": "Contracts" }],
-     *   "created_at": "2026-05-14T12:00:00Z", "updated_at": "2026-05-14T12:00:00Z"
-     * }]
-     * ```
      * `X-Pagination-*` headers are exposed through [PaginatedResult.meta].
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/templates`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "resource": "template",
+     *     "id": "id-placeholder",
+     *     "name": "Example",
+     *     "document_name": null,
+     *     "message": null,
+     *     "status": "example",
+     *     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource","fields": [{"id": "id-placeholder","field_id": "field-id-placeholder","role_id": "role-id-placeholder","label": "example","display_settings": null,"created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}]}],
+     *     "roles": [{"id": "id-placeholder","name": "Example","assignment_type": "example","created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}],
+     *     "tags": [{"id": "id-placeholder","name": "Example"}],
+     *     "default_document_tags": [{"id": "id-placeholder","name": "Example"}],
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
      *
      * @param params Search and pagination values; unsupported common filters are ignored.
      * @param accountId Account override; otherwise the client's default account is used.

@@ -31,12 +31,29 @@ class WorkspaceResource internal constructor(
      *
      * Request body: `{"name":"Acme Inc.","notification_sender_type":"Account"}`; null fields are
      * omitted. Response `data`:
+     *
+     * Wire operation: `POST /v1/accounts`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "resource": "account", "id": "6401df46d6a6b0c692d9ec49", "name": "Acme Inc.",
-     *   "primary_color": "aabbcc", "secondary_color": "112233",
-     *   "notification_sender_type": "User", "roles": ["owner"],
-     *   "is_delete_allowed": true, "created_at": "2026-06-03T03:54:16Z"
+     *   "name": "Example",
+     *   "notification_sender_type": "User"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "account",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "primary_color": null,
+     *   "secondary_color": null,
+     *   "notification_sender_type": "User",
+     *   "roles": ["example"],
+     *   "is_delete_allowed": true,
+     *   "created_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *
@@ -73,6 +90,27 @@ class WorkspaceResource internal constructor(
      * [get]. With an OAuth token it holds exactly the one workspace the user approved, so
      * `list().data.first().id` is how an OAuth integration finds its workspace id.
      *
+     * Wire operation: `GET /v1/accounts`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "resource": "account",
+     *     "id": "id-placeholder",
+     *     "name": "Example",
+     *     "primary_color": null,
+     *     "secondary_color": null,
+     *     "notification_sender_type": "User",
+     *     "roles": ["example"],
+     *     "is_delete_allowed": true,
+     *     "created_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
+     *
      * @return Accounts and optional pagination-header metadata.
      */
     suspend fun list(): PaginatedResult<WorkspaceListItem> = callList("Failed to list workspaces", WorkspaceListItem::class.java) {
@@ -83,12 +121,23 @@ class WorkspaceResource internal constructor(
      * Fetches a workspace by ID (`GET /accounts/{accountId}`).
      *
      * Request body: none. Response `data`:
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "resource": "account", "id": "6401df46d6a6b0c692d9ec49", "name": "Acme Inc.",
-     *   "primary_color": "aabbcc", "secondary_color": "112233",
-     *   "notification_sender_type": "User", "roles": ["owner"],
-     *   "is_delete_allowed": true, "created_at": "2026-06-03T03:54:16Z"
+     *   "resource": "account",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "primary_color": null,
+     *   "secondary_color": null,
+     *   "notification_sender_type": "User",
+     *   "roles": ["example"],
+     *   "is_delete_allowed": true,
+     *   "created_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *
@@ -108,6 +157,31 @@ class WorkspaceResource internal constructor(
      * Request body carries only the supplied fields, e.g.
      * `{"name":"Acme Inc.","notification_sender_type":"Account"}`. Response `data` is the complete
      * updated account documented by [get].
+     *
+     * Wire operation: `PUT /v1/accounts/{accountId}`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "name": "Example",
+     *   "notification_sender_type": "User"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "resource": "account",
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "primary_color": null,
+     *   "secondary_color": null,
+     *   "notification_sender_type": "User",
+     *   "roles": ["example"],
+     *   "is_delete_allowed": true,
+     *   "created_at": "2026-01-01T00:00:00Z"
+     * }
+     * ```
      *
      * @param accountId Stable account identifier.
      * @param request Non-empty set of account fields to replace.
@@ -144,6 +218,20 @@ class WorkspaceResource internal constructor(
      * Request body: `{"force":false}`, sent only when [force] is supplied. Response `data` is an
      * empty JSON array.
      *
+     * Wire operation: `DELETE /v1/accounts/{accountId}`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "force": true
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * []
+     * ```
+     *
      * @param accountId Stable account identifier.
      * @param force Optional server-side force flag; omit it to use normal deletion safeguards.
      */
@@ -158,10 +246,18 @@ class WorkspaceResource internal constructor(
      * Fetches the account's branding theme (`GET /accounts/{accountId}/theme`).
      *
      * Request body: none. Response `data`:
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/theme`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "account_name": "Acme Inc.", "primary_color": "aabbcc", "secondary_color": "112233",
-     *   "logo": "https://api.assinafy.com.br/v1/accounts/6401df46d6a6b0c692d9ec49/logo"
+     *   "account_name": "example",
+     *   "primary_color": "2072b9",
+     *   "secondary_color": null,
+     *   "logo": "https://example.com/resource"
      * }
      * ```
      *
@@ -182,6 +278,12 @@ class WorkspaceResource internal constructor(
      * Request body: none. The response is the raw image, not the JSON envelope, and its bytes are
      * returned unchanged.
      *
+     * Wire operation: `GET /v1/accounts/{accountId}/logo`.
+     *
+     * Request body: none.
+     *
+     * Response 200: raw binary bytes (`image` media types), without a JSON envelope.
+     *
      * @param accountId Stable account identifier.
      * @return Unmodified image bytes, or `null` for HTTP 404.
      */
@@ -199,6 +301,23 @@ class WorkspaceResource internal constructor(
      * Request body: `multipart/form-data` with one `file` part carrying the image bytes and
      * [contentType]. Response is the success envelope with no `data` payload:
      * `{"status":200,"message":""}`.
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/logo`.
+     *
+     * Request body (`multipart/form-data`; optional members may be omitted):
+     * ```json
+     * {
+     *   "file": "<binary bytes>"
+     * }
+     * ```
+     *
+     * Response 200 body; optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "status": 200,
+     *   "message": "example"
+     * }
+     * ```
      *
      * @param accountId Stable account identifier.
      * @param fileData Non-empty image bytes.
@@ -227,6 +346,18 @@ class WorkspaceResource internal constructor(
      * Request body: none. Response is the success envelope with no `data` payload:
      * `{"status":200,"message":""}`.
      *
+     * Wire operation: `DELETE /v1/accounts/{accountId}/logo`.
+     *
+     * Request body: none.
+     *
+     * Response 200 body; optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "status": 200,
+     *   "message": "example"
+     * }
+     * ```
+     *
      * @param accountId Stable account identifier.
      */
     suspend fun deleteLogo(accountId: String) {
@@ -237,24 +368,35 @@ class WorkspaceResource internal constructor(
     /**
      * Returns account document and signature KPIs.
      *
+     * Wire operation: `GET /v1/accounts/{accountId}/stats`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * [
+     *   {
+     *     "period": "example",
+     *     "documents_uploaded": 1,
+     *     "documents_sent": 1,
+     *     "signature_requests": 1,
+     *     "signature_requests_notification_email": 1,
+     *     "signature_requests_notification_whatsapp": 1,
+     *     "signature_requests_notification_bypass": 1,
+     *     "signature_requests_verification_email": 1,
+     *     "signature_requests_verification_whatsapp": 1,
+     *     "signature_requests_verification_bypass": 1,
+     *     "signature_requests_verification_digital_certificate": 1,
+     *     "signature_requests_viewed": 1,
+     *     "signature_requests_completed": 1,
+     *     "documents_certified": 1
+     *   }
+     * ]
+     * ```
+     *
      * @param accountId Stable account identifier.
      * @param granularity `monthly`, `daily`, or `null` for the API default.
      * Request body: none. Query: optional `granularity=monthly|daily` and `month=YYYY-MM`.
-     * Response `data`:
-     * ```json
-     * [{
-     *   "period": "2026-06", "documents_uploaded": 42, "documents_sent": 37,
-     *   "signature_requests": 61, "signature_requests_notification_email": 55,
-     *   "signature_requests_notification_whatsapp": 18,
-     *   "signature_requests_notification_bypass": 3,
-     *   "signature_requests_verification_email": 48,
-     *   "signature_requests_verification_whatsapp": 6,
-     *   "signature_requests_verification_bypass": 3,
-     *   "signature_requests_verification_digital_certificate": 4,
-     *   "signature_requests_viewed": 44, "signature_requests_completed": 52,
-     *   "documents_certified": 30
-     * }]
-     * ```
      *
      * @param month Required `YYYY-MM` target when [granularity] is `daily`.
      * @return Zero-filled KPI periods, newest-first. Monthly queries default to 12 rows;

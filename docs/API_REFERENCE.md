@@ -10,13 +10,13 @@ See [Supported Assinafy v1 operations](API_COVERAGE.md) for the operation index.
 
 ## Transport, authentication, and errors
 
-Production is `https://api.assinafy.com.br/v1`.
+Production is `https://api.assinafy.com.br/v1`; sandbox is `https://sandbox.assinafy.com.br/v1`. Use credentials issued for the selected environment.
 
 ```kotlin
 val client = AssinafyClient.create(
     AssinafyClientConfig(
-        apiKey = BuildConfig.ASSINAFY_API_KEY,
-        accountId = BuildConfig.ASSINAFY_ACCOUNT_ID,
+        token = securelyStoredOAuthAccessToken,
+        accountId = selectedWorkspaceId,
         baseUrl = "https://api.assinafy.com.br/v1",
     )
 )
@@ -53,7 +53,7 @@ Error responses use the same structure; `data` may contain field-specific detail
 ```
 
 The SDK retries HTTP 429 responses up to twice for GET, HEAD, and OPTIONS, honoring
-`Retry-After`/`X-Rate-Limit-Reset` with a 30-second cap. Mutation requests are not replayed. It then
+`Retry-After`/`X-Rate-Limit-Reset` with a 30-second cap. Mutation requests disable redirects and automatic connection retries and are sent at most once. It then
 validates both the HTTP status and the envelope `status`, preserves the complete error envelope in
 `ApiException.responseData`, and unwraps `data`. Successes without a data model return `Unit`. A list endpoint
 returns `PaginatedResult<T>` when pagination applies; metadata comes from `X-Pagination-Current-Page`,
@@ -728,3 +728,2271 @@ channel. The verification counters partition `signature_requests` and therefore 
   `user_rejected_document`, `document_processing_failed`, `template_created`,
   `template_processed`, and `template_processing_failed`. Use `webhooks.listEventTypes()` to accept
   future server events without an SDK update.
+
+## Complete method payloads
+
+Examples use placeholder identities. Optional properties may be omitted by the service or the caller;
+arrays show one illustrative item. A JSON example for multipart or raw image input describes its
+parts; send binary bytes with the stated content type, rather than serializing that example.
+Event-dependent opaque objects have no fixed member schema.
+
+### `workspaces.get`
+
+`GET /v1/accounts/{accountId}`
+
+Parameters: `accountId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "account",
+  "id": "id-placeholder",
+  "name": "Example",
+  "primary_color": null,
+  "secondary_color": null,
+  "notification_sender_type": "User",
+  "roles": ["example"],
+  "is_delete_allowed": true,
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `workspaces.update`
+
+`PUT /v1/accounts/{accountId}`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "notification_sender_type": "User"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "account",
+  "id": "id-placeholder",
+  "name": "Example",
+  "primary_color": null,
+  "secondary_color": null,
+  "notification_sender_type": "User",
+  "roles": ["example"],
+  "is_delete_allowed": true,
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `workspaces.delete`
+
+`DELETE /v1/accounts/{accountId}`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "force": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `workspaces.getTheme`
+
+`GET /v1/accounts/{accountId}/theme`
+
+Parameters: `accountId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "account_name": "example",
+  "primary_color": "2072b9",
+  "secondary_color": null,
+  "logo": "https://example.com/resource"
+}
+```
+
+### `workspaces.getLogo`
+
+`GET /v1/accounts/{accountId}/logo`
+
+Parameters: `accountId` (path, required).
+
+Request body: none.
+
+Response 200: raw binary bytes (`image/*`), without a JSON envelope.
+
+### `workspaces.uploadLogo`
+
+`POST /v1/accounts/{accountId}/logo`
+
+Parameters: `accountId` (path, required).
+
+Request body (`multipart/form-data`; optional members may be omitted):
+```json
+{
+  "file": "<binary bytes>"
+}
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+### `workspaces.deleteLogo`
+
+`DELETE /v1/accounts/{accountId}/logo`
+
+Parameters: `accountId` (path, required).
+
+Request body: none.
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+### `workspaces.list`
+
+`GET /v1/accounts`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "account",
+    "id": "id-placeholder",
+    "name": "Example",
+    "primary_color": null,
+    "secondary_color": null,
+    "notification_sender_type": "User",
+    "roles": ["example"],
+    "is_delete_allowed": true,
+    "created_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `workspaces.create`
+
+`POST /v1/accounts`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "notification_sender_type": "User"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "account",
+  "id": "id-placeholder",
+  "name": "Example",
+  "primary_color": null,
+  "secondary_color": null,
+  "notification_sender_type": "User",
+  "roles": ["example"],
+  "is_delete_allowed": true,
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `workspaces.getStats`
+
+`GET /v1/accounts/{accountId}/stats`
+
+Parameters: `accountId` (path, required), `granularity` (query, optional), `month` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "period": "example",
+    "documents_uploaded": 1,
+    "documents_sent": 1,
+    "signature_requests": 1,
+    "signature_requests_notification_email": 1,
+    "signature_requests_notification_whatsapp": 1,
+    "signature_requests_notification_bypass": 1,
+    "signature_requests_verification_email": 1,
+    "signature_requests_verification_whatsapp": 1,
+    "signature_requests_verification_bypass": 1,
+    "signature_requests_verification_digital_certificate": 1,
+    "signature_requests_viewed": 1,
+    "signature_requests_completed": 1,
+    "documents_certified": 1
+  }
+]
+```
+
+### `assignments.list`
+
+`GET /v1/assignments`
+
+Parameters: `page` (query, optional), `per-page` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": null,
+    "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+    "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
+    "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+    "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+    "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+  }
+]
+```
+
+### `assignments.create`
+
+`POST /v1/documents/{documentId}/assignments`
+
+Parameters: `documentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "method": "collect",
+  "signers": [{"id": "id-placeholder","verification_method": "Email","notification_methods": ["Email"],"step": 1}],
+  "entries": [{"page_id": "page-id-placeholder","fields": [{"signer_id": "signer-id-placeholder","field_id": "field-id-placeholder","display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"}}]}],
+  "message": "example",
+  "expires_at": "2026-01-01T00:00:00Z",
+  "copy_receivers": ["example"]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "assignment",
+  "id": "id-placeholder",
+  "sender_email": "person@example.com",
+  "method": "virtual",
+  "expires_at": null,
+  "message": null,
+  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
+  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+  "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+}
+```
+
+### `assignments.estimateCost`
+
+`POST /v1/documents/{documentId}/assignments/estimate-cost`
+
+Parameters: `documentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "method": "collect",
+  "signers": [{"verification_method": "Email","notification_methods": ["Email"]}],
+  "entries": [{"page_id":"page-placeholder","fields":[{"signer_id":"signer-placeholder","field_id":"field-placeholder","display_settings":{"left":72,"top":640,"width":180,"height":40,"fontSize":12}}]}]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "documents": 1,
+  "credits": 1,
+  "needs_extra_document": true,
+  "extra_document_cost": 1,
+  "total_credits": 1,
+  "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
+  "document_balance": 1,
+  "credit_balance": 1,
+  "has_sufficient_resources": true,
+  "blocking_reason": "PendingPayment",
+  "message": null
+}
+```
+
+### `assignments.resendNotification`
+
+`PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend`
+
+Parameters: `documentId` (path, required), `assignmentId` (path, required), `signerId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "is_sent": true,
+  "document_id": "document-id-placeholder",
+  "signer_id": "signer-id-placeholder"
+}
+```
+
+### `assignments.estimateResendCost`
+
+`POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost`
+
+Parameters: `documentId` (path, required), `assignmentId` (path, required), `signerId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "documents": 1,
+  "credits": 1,
+  "needs_extra_document": true,
+  "extra_document_cost": 1,
+  "total_credits": 1,
+  "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
+  "document_balance": 1,
+  "credit_balance": 1,
+  "has_sufficient_resources": true,
+  "blocking_reason": "PendingPayment",
+  "message": null
+}
+```
+
+### `assignments.resetExpiration`
+
+`PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration`
+
+Parameters: `documentId` (path, required), `assignmentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "expires_at": "2026-01-01T00:00:00Z"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "assignment",
+  "id": "id-placeholder",
+  "sender_email": "person@example.com",
+  "method": "virtual",
+  "expires_at": null,
+  "message": null,
+  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
+  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+  "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+}
+```
+
+### `assignments.listWhatsappNotifications`
+
+`GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications`
+
+Parameters: `documentId` (path, required), `assignmentId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "sent_at": 1,
+    "header": "example",
+    "body": "example",
+    "buttons": [{"text": "example"}],
+    "phone_number": "+15555550100",
+    "signer_id": "signer-id-placeholder"
+  }
+]
+```
+
+### `authentication.login`
+
+`POST /v1/login`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "email": "person@example.com",
+  "password": "<redacted-value>"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "access_token": "<redacted-value>",
+  "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
+  "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+}
+```
+
+### `authentication.requestPasswordReset`
+
+`PUT /v1/authentication/request-password-reset`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "email": "person@example.com"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "email": "person@example.com"
+}
+```
+
+### `authentication.resetPassword`
+
+`PUT /v1/authentication/reset-password`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "email": "person@example.com",
+  "token": "<redacted-value>",
+  "new_password": "<redacted-value>"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "email": "person@example.com"
+}
+```
+
+### `authentication.changePassword`
+
+`PUT /v1/authentication/change-password`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "email": "person@example.com",
+  "password": "<redacted-value>",
+  "new_password": "<redacted-value>"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "email": "person@example.com"
+}
+```
+
+### `authentication.socialLogin`
+
+`POST /v1/authentication/social-login`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "provider": "google",
+  "token": "<redacted-value>",
+  "has_accepted_terms": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "access_token": "<redacted-value>",
+  "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
+  "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+}
+```
+
+### `authentication.linkSocialLogin`
+
+`POST /v1/auth/link-social-login`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "provider": "google",
+  "token": "<redacted-value>"
+}
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+### `authentication.getApiKey`
+
+`GET /v1/users/api-keys`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "api_key": null
+}
+```
+
+### `authentication.createApiKey`
+
+`POST /v1/users/api-keys`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "password": "<redacted-value>"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "api_key": null
+}
+```
+
+### `authentication.deleteApiKey`
+
+`DELETE /v1/users/api-keys`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `documents.activities`
+
+`GET /v1/documents/{documentId}/activities`
+
+Parameters: `documentId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "id": 1,
+    "event": "example",
+    "message": "example",
+    "payload": {},
+    "origin": {"ip": "example","user-agent": "example"},
+    "created_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `documents.list`
+
+`GET /v1/accounts/{accountId}/documents`
+
+Parameters: `accountId` (path, required), `status` (query, optional), `method` (query, optional), `search` (query, optional), `tags` (query, optional), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "account-id-placeholder",
+    "template_id": null,
+    "name": "Example",
+    "status": "example",
+    "artifacts": {},
+    "is_closed": true,
+    "signing_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder","name": "Example"}],
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `documents.upload`
+
+`POST /v1/accounts/{accountId}/documents`
+
+Parameters: `accountId` (path, required).
+
+Request body (`multipart/form-data`; optional members may be omitted):
+```json
+{
+  "file": "<binary bytes>"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "example",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder","name": "Example"}],
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `documents.search`
+
+`GET /v1/accounts/{accountId}/documents/search`
+
+Parameters: `accountId` (path, required), `search` (query, optional), `status` (query, optional), `page` (query, optional), `per-page` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "account-id-placeholder",
+    "template_id": null,
+    "name": "Example",
+    "status": "example",
+    "artifacts": {},
+    "is_closed": true,
+    "signing_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder","name": "Example"}],
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `documents.getStatuses`
+
+`GET /v1/documents/statuses`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "code": "example",
+    "deletable": true
+  }
+]
+```
+
+### `documents.details`
+
+`GET /v1/documents/{documentId}`
+
+Parameters: `documentId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "example",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder","name": "Example"}],
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `documents.delete`
+
+`DELETE /v1/documents/{documentId}`
+
+Parameters: `documentId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `documents.rename`
+
+`PATCH /v1/documents/{documentId}`
+
+Parameters: `documentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "example",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder","name": "Example"}],
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `documents.download`
+
+`GET /v1/documents/{documentId}/download/{artifactName}`
+
+Parameters: `documentId` (path, required), `artifactName` (path, required).
+
+Request body: none.
+
+Response 200: raw binary bytes (`application/pdf`), without a JSON envelope.
+
+### `documents.verify`
+
+`GET /v1/documents/{documentSignatureHash}/verify`
+
+Parameters: `documentSignatureHash` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "hash": "example",
+  "id": null,
+  "agreement_code": null,
+  "status": null,
+  "page_count": null,
+  "signer_count": null,
+  "completed_count": 1,
+  "completed_at": null,
+  "verified_at": "2026-01-01T00:00:00Z",
+  "is_valid": true,
+  "message": "example"
+}
+```
+
+### `documents.listTags`
+
+`GET /v1/accounts/{accountId}/documents/{documentId}/tags`
+
+Parameters: `accountId` (path, required), `documentId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "tag",
+    "id": "id-placeholder",
+    "name": "Example",
+    "color": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `documents.replaceTags`
+
+`PUT /v1/accounts/{accountId}/documents/{documentId}/tags`
+
+Parameters: `accountId` (path, required), `documentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "tags": ["example"]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "tag",
+    "id": "id-placeholder",
+    "name": "Example",
+    "color": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `documents.addTags`
+
+`POST /v1/accounts/{accountId}/documents/{documentId}/tags`
+
+Parameters: `accountId` (path, required), `documentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "tags": ["example"]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "tag",
+    "id": "id-placeholder",
+    "name": "Example",
+    "color": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `documents.detachTag`
+
+`DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}`
+
+Parameters: `accountId` (path, required), `documentId` (path, required), `tagId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "detached": true
+}
+```
+
+### `documents.thumbnail`
+
+`GET /v1/documents/{documentId}/thumbnail`
+
+Parameters: `documentId` (path, required).
+
+Request body: none.
+
+Response 200: raw binary bytes (`image/*`), without a JSON envelope.
+
+### `documents.downloadPage`
+
+`GET /v1/documents/{documentId}/pages/{pageId}/download`
+
+Parameters: `documentId` (path, required), `pageId` (path, required).
+
+Request body: none.
+
+Response 200: raw binary bytes (`image/*`), without a JSON envelope.
+
+### `documents.createFromTemplate`
+
+`POST /v1/accounts/{accountId}/templates/{templateId}/documents`
+
+Parameters: `accountId` (path, required), `templateId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "signers": [{"role_id": "role-id-placeholder","id": "id-placeholder","verification_method": "Email","notification_methods": ["Email"],"step": 1}],
+  "editor_fields": [{"field_id": "field-id-placeholder","value": "example"}],
+  "name": "Example",
+  "message": "example",
+  "expires_at": "2026-01-01T00:00:00Z",
+  "tags": ["example"]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "example",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder","name": "Example"}],
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `documents.estimateCostFromTemplate`
+
+`POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost`
+
+Parameters: `accountId` (path, required), `templateId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "signers": [{"role_id": "role-id-placeholder","verification_method": "Email","notification_methods": ["Email"]}]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "documents": 1,
+  "credits": 1,
+  "needs_extra_document": true,
+  "extra_document_cost": 1,
+  "total_credits": 1,
+  "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
+  "document_balance": 1,
+  "credit_balance": 1,
+  "has_sufficient_resources": true,
+  "blocking_reason": "PendingPayment",
+  "message": null
+}
+```
+
+### `fields.list`
+
+`GET /v1/accounts/{accountId}/fields`
+
+Parameters: `accountId` (path, required), `include_inactive` (query, optional), `include_standard` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "field",
+    "id": "id-placeholder",
+    "name": "Example",
+    "type": "text",
+    "regex": null,
+    "is_pre_defined": true,
+    "is_active": true,
+    "is_required": true,
+    "is_standard": true,
+    "is_read_only": true,
+    "is_visible": true
+  }
+]
+```
+
+### `fields.create`
+
+`POST /v1/accounts/{accountId}/fields`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "type": "text",
+  "regex": null,
+  "is_required": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "field",
+  "id": "id-placeholder",
+  "name": "Example",
+  "type": "text",
+  "regex": null,
+  "is_pre_defined": true,
+  "is_active": true,
+  "is_required": true,
+  "is_standard": true,
+  "is_read_only": true,
+  "is_visible": true
+}
+```
+
+### `fields.get`
+
+`GET /v1/accounts/{accountId}/fields/{fieldId}`
+
+Parameters: `accountId` (path, required), `fieldId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "field",
+  "id": "id-placeholder",
+  "name": "Example",
+  "type": "text",
+  "regex": null,
+  "is_pre_defined": true,
+  "is_active": true,
+  "is_required": true,
+  "is_standard": true,
+  "is_read_only": true,
+  "is_visible": true
+}
+```
+
+### `fields.update`
+
+`PUT /v1/accounts/{accountId}/fields/{fieldId}`
+
+Parameters: `accountId` (path, required), `fieldId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "regex": null,
+  "is_active": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "field",
+  "id": "id-placeholder",
+  "name": "Example",
+  "type": "text",
+  "regex": null,
+  "is_pre_defined": true,
+  "is_active": true,
+  "is_required": true,
+  "is_standard": true,
+  "is_read_only": true,
+  "is_visible": true
+}
+```
+
+### `fields.delete`
+
+`DELETE /v1/accounts/{accountId}/fields/{fieldId}`
+
+Parameters: `accountId` (path, required), `fieldId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `fields.validate`
+
+`POST /v1/accounts/{accountId}/fields/{fieldId}/validate`
+
+Parameters: `accountId` (path, required), `fieldId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "value": null
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "type": "text",
+  "success": true,
+  "error_message": "example"
+}
+```
+
+### `fields.validateMultiple`
+
+`POST /v1/accounts/{accountId}/fields/validate-multiple`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+[
+  {
+    "field_id": "field-id-placeholder",
+    "value": null
+  }
+]
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "field_id": "field-id-placeholder",
+    "type": "text",
+    "success": true,
+    "error_message": "example"
+  }
+]
+```
+
+### `fields.listTypes`
+
+`GET /v1/field-types`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "type": "text",
+    "name": "Example"
+  }
+]
+```
+
+### `signers.list`
+
+`GET /v1/accounts/{accountId}/signers`
+
+Parameters: `accountId` (path, required), `search` (query, optional), `page` (query, optional), `per-page` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example",
+    "email": null,
+    "whatsapp_phone_number": null,
+    "has_accepted_terms": true
+  }
+]
+```
+
+### `signers.create`
+
+`POST /v1/accounts/{accountId}/signers`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "full_name": "Example",
+  "email": "person@example.com",
+  "whatsapp_phone_number": "+15555550100"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "has_accepted_terms": true
+}
+```
+
+### `signers.get`
+
+`GET /v1/accounts/{accountId}/signers/{signerId}`
+
+Parameters: `accountId` (path, required), `signerId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "has_accepted_terms": true
+}
+```
+
+### `signers.update`
+
+`PUT /v1/accounts/{accountId}/signers/{signerId}`
+
+Parameters: `accountId` (path, required), `signerId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "full_name": "Example",
+  "email": "person@example.com",
+  "whatsapp_phone_number": "+15555550100",
+  "government_id": "government-id-placeholder"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "has_accepted_terms": true
+}
+```
+
+### `signers.delete`
+
+`DELETE /v1/accounts/{accountId}/signers/{signerId}`
+
+Parameters: `accountId` (path, required), `signerId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `signerDocuments.self`
+
+`GET /v1/signers/self`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "has_accepted_terms": true,
+  "has_signature": true,
+  "has_initial": true,
+  "is_signature_reusable": true
+}
+```
+
+### `signerDocuments.getCurrent`
+
+`GET /v1/signers/{signerId}/document`
+
+Parameters: `signerId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "example",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder","name": "Example"}],
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `signerDocuments.getAssignment`
+
+`GET /v1/sign`
+
+Parameters: `has_accepted_terms` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "example",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder","name": "Example"}],
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `signerDocuments.sign`
+
+`POST /v1/documents/{documentId}/assignments/{assignmentId}`
+
+Parameters: `documentId` (path, required), `assignmentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+[
+  {
+    "itemId": "itemId-placeholder",
+    "fieldId": "fieldId-placeholder",
+    "pageId": "pageId-placeholder",
+    "value": "example"
+  }
+]
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+
+}
+```
+
+### `signerDocuments.decline`
+
+`PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject`
+
+Parameters: `documentId` (path, required), `assignmentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "decline_reason": "example"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `signerDocuments.signMultiple`
+
+`PUT /v1/signers/documents/sign-multiple`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "document_ids": ["example"]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `signerDocuments.declineMultiple`
+
+`PUT /v1/signers/documents/decline-multiple`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "document_ids": ["example"],
+  "decline_reason": "example"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+### `signerDocuments.verifyEmail`
+
+`POST /v1/verify`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "verification-code": "example"
+}
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+### `signerDocuments.confirmData`
+
+`PUT /v1/documents/{documentId}/signers/confirm-data`
+
+Parameters: `documentId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "full_name": "Example",
+  "email": "person@example.com",
+  "government_id": "government-id-placeholder"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "has_accepted_terms": true
+}
+```
+
+### `signerDocuments.acceptTerms`
+
+`PUT /v1/signers/accept-terms`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+### `signerDocuments.uploadSignature`
+
+`POST /v1/signature`
+
+Parameters: `type` (query, optional), `reuse` (query, optional).
+
+Request body (`image/png`; optional members may be omitted):
+```json
+"<binary bytes>"
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+### `signerDocuments.downloadSignature`
+
+`GET /v1/signature/{signatureType}`
+
+Parameters: `signatureType` (path, required).
+
+Request body: none.
+
+Response 200: raw binary bytes (`image/*`), without a JSON envelope.
+
+### `signerDocuments.list`
+
+`GET /v1/signers/{signerId}/documents`
+
+Parameters: `signerId` (path, required), `page` (query, optional), `per-page` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "account-id-placeholder",
+    "template_id": null,
+    "name": "Example",
+    "status": "example",
+    "artifacts": {},
+    "is_closed": true,
+    "signing_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder","name": "Example"}],
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `signerDocuments.search`
+
+`GET /v1/signers/{signerId}/documents/search`
+
+Parameters: `signerId` (path, required), `search` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "account-id-placeholder",
+    "template_id": null,
+    "name": "Example",
+    "status": "example",
+    "artifacts": {},
+    "is_closed": true,
+    "signing_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder","name": "Example"}],
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `signerDocuments.download`
+
+`GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}`
+
+Parameters: `signerId` (path, required), `documentId` (path, required), `artifactName` (path, required).
+
+Request body: none.
+
+Response 200: raw binary bytes (`application/pdf`), without a JSON envelope.
+
+### `documents.getPublic`
+
+`GET /v1/public/documents/{documentId}`
+
+Parameters: `documentId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "example",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder","name": "Example"}],
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `documents.sendToken`
+
+`PUT /v1/public/documents/{documentId}/send-token`
+
+Parameters: `documentId` (path, required).
+
+Request body (`application/json`):
+```json
+{
+  "recipient": "person@example.com",
+  "channel": "email"
+}
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+### `tags.list`
+
+`GET /v1/accounts/{accountId}/tags`
+
+Parameters: `accountId` (path, required), `search` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "tag",
+    "id": "id-placeholder",
+    "name": "Example",
+    "color": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `tags.create`
+
+`POST /v1/accounts/{accountId}/tags`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "color": null
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "tag",
+  "id": "id-placeholder",
+  "name": "Example",
+  "color": null,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `tags.update`
+
+`PUT /v1/accounts/{accountId}/tags/{tagId}`
+
+Parameters: `accountId` (path, required), `tagId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "color": null
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "tag",
+  "id": "id-placeholder",
+  "name": "Example",
+  "color": null,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `tags.delete`
+
+`DELETE /v1/accounts/{accountId}/tags/{tagId}`
+
+Parameters: `accountId` (path, required), `tagId` (path, required), `force` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "deleted": true
+}
+```
+
+### `templates.list`
+
+`GET /v1/accounts/{accountId}/templates`
+
+Parameters: `accountId` (path, required), `search` (query, optional), `page` (query, optional), `per-page` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "template",
+    "id": "id-placeholder",
+    "name": "Example",
+    "document_name": null,
+    "message": null,
+    "status": "example",
+    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource","fields": [{"id": "id-placeholder","field_id": "field-id-placeholder","role_id": "role-id-placeholder","label": "example","display_settings": null,"created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}]}],
+    "roles": [{"id": "id-placeholder","name": "Example","assignment_type": "example","created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}],
+    "tags": [{"id": "id-placeholder","name": "Example"}],
+    "default_document_tags": [{"id": "id-placeholder","name": "Example"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `users.getCurrent`
+
+`GET /v1/users/self`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "id": "id-placeholder",
+  "name": "Example",
+  "email": "person@example.com",
+  "telephone": null,
+  "government_id": null,
+  "is_email_verified": true,
+  "has_accepted_terms": true,
+  "created_at": "2026-01-01T00:00:00Z",
+  "to_be_deleted_at": null
+}
+```
+
+### `users.getStats`
+
+`GET /v1/users/self/stats`
+
+Parameters: `granularity` (query, optional), `month` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "period": "example",
+    "documents_uploaded": 1,
+    "documents_sent": 1,
+    "signature_requests": 1,
+    "signature_requests_notification_email": 1,
+    "signature_requests_notification_whatsapp": 1,
+    "signature_requests_notification_bypass": 1,
+    "signature_requests_verification_email": 1,
+    "signature_requests_verification_whatsapp": 1,
+    "signature_requests_verification_bypass": 1,
+    "signature_requests_verification_digital_certificate": 1,
+    "signature_requests_viewed": 1,
+    "signature_requests_completed": 1,
+    "documents_certified": 1
+  }
+]
+```
+
+### `users.getNotificationPreferences`
+
+`GET /v1/users/self/notification-preferences`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "DocumentCompleted": true,
+  "SignerDeclined": true,
+  "DocumentCancelled": true,
+  "DocumentAboutToExpire": true,
+  "DocumentExpired": true,
+  "DocumentExpirationReset": true,
+  "DocumentProcessingFailed": true,
+  "TemplateProcessingFailed": true,
+  "SignerWhatsappFailed": true
+}
+```
+
+### `users.updateNotificationPreferences`
+
+`PUT /v1/users/self/notification-preferences`
+
+Parameters: none.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "DocumentCompleted": true,
+  "SignerDeclined": true,
+  "DocumentCancelled": true,
+  "DocumentAboutToExpire": true,
+  "DocumentExpired": true,
+  "DocumentExpirationReset": true,
+  "DocumentProcessingFailed": true,
+  "TemplateProcessingFailed": true,
+  "SignerWhatsappFailed": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "DocumentCompleted": true,
+  "SignerDeclined": true,
+  "DocumentCancelled": true,
+  "DocumentAboutToExpire": true,
+  "DocumentExpired": true,
+  "DocumentExpirationReset": true,
+  "DocumentProcessingFailed": true,
+  "TemplateProcessingFailed": true,
+  "SignerWhatsappFailed": true
+}
+```
+
+### `webhooks.get`
+
+`GET /v1/accounts/{accountId}/webhooks/subscriptions`
+
+Parameters: `accountId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "events": ["example"],
+  "is_active": true,
+  "url": null,
+  "email": null,
+  "updated_at": null
+}
+```
+
+### `webhooks.register`
+
+`PUT /v1/accounts/{accountId}/webhooks/subscriptions`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "events": ["example"],
+  "is_active": true,
+  "url": "https://example.com/resource",
+  "email": "person@example.com"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "events": ["example"],
+  "is_active": true,
+  "url": null,
+  "email": null,
+  "updated_at": null
+}
+```
+
+### `webhooks.inactivate`
+
+`PUT /v1/accounts/{accountId}/webhooks/inactivate`
+
+Parameters: `accountId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "events": ["example"],
+  "is_active": true,
+  "url": null,
+  "email": null,
+  "updated_at": null
+}
+```
+
+### `webhooks.listEventTypes`
+
+`GET /v1/webhooks/event-types`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "id": "id-placeholder",
+    "description": "example"
+  }
+]
+```
+
+### `webhooks.listDispatches`
+
+`GET /v1/accounts/{accountId}/webhooks`
+
+Parameters: `accountId` (path, required), `event` (query, optional), `delivered` (query, optional), `from` (query, optional), `to` (query, optional), `page` (query, optional), `per-page` (query, optional).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "activity_dispatching_history",
+    "id": "id-placeholder",
+    "event": "example",
+    "activity_id": 1,
+    "endpoint": null,
+    "payload": {},
+    "delivered": true,
+    "http_status": 1,
+    "response_body": null,
+    "error": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `webhooks.retryDispatch`
+
+`POST /v1/accounts/{accountId}/webhooks/{historyId}/retry`
+
+Parameters: `accountId` (path, required), `historyId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "activity_dispatching_history",
+  "id": "id-placeholder",
+  "event": "example",
+  "activity_id": 1,
+  "endpoint": null,
+  "payload": {},
+  "delivered": true,
+  "http_status": 1,
+  "response_body": null,
+  "error": null,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+
+## OAuth method payloads
+
+OAuth responses are flat objects; form-field JSON below illustrates members, not the encoding sent on the wire.
+
+### `oauth.authorizationRequest`
+
+Browser request: `GET https://auth.assinafy.com.br/oauth/authorize`; no request body.
+Complete query fields (no verifier or client secret is sent):
+```json
+{
+  "response_type": "code",
+  "client_id": "public-client-id",
+  "redirect_uri": "https://example.com/callback",
+  "scope": "documents:read account:read openid offline_access",
+  "state": "per-attempt-state",
+  "code_challenge": "S256-challenge",
+  "code_challenge_method": "S256",
+  "resource": "https://api.assinafy.com.br",
+  "nonce": "per-attempt-nonce"
+}
+```
+The response is the interactive approval page, followed by the registered redirect with
+`code`, `state` and `iss`, or `error`, `error_description`, `state` and `iss`.
+
+### `oauth.parseCallback`
+
+Local operation; no HTTP request or response. Input is the complete registered HTTPS
+redirect with query fields `code`, `state`, `iss`, or `error`, `error_description`, `state`, `iss`.
+Returns the single-use code; no token is exchanged. Duplicate parameters, a different
+registered address, fragments and malformed URIs raise ValidationException.
+
+### `oauth.exchangeCode`
+
+Complete form fields for `POST /oauth/token` (shown as JSON for readability; sent as form encoding):
+```json
+{
+  "grant_type": "authorization_code",
+  "code": "<single-use-code>",
+  "redirect_uri": "https://example.com/callback",
+  "client_id": "public-client-id",
+  "code_verifier": "<43-to-128-unreserved-characters>",
+  "resource": "https://api.assinafy.com.br"
+}
+```
+Malformed or incomplete successful token responses raise `OAuthException.INVALID_RESPONSE`.
+
+### `oauth.refresh`
+
+Complete form fields for `POST /oauth/token` (shown as JSON; sent as form encoding):
+```json
+{
+  "grant_type": "refresh_token",
+  "refresh_token": "<latest-refresh-token>",
+  "client_id": "public-client-id"
+}
+```
+Complete flat response body:
+```json
+{
+  "access_token": "<access-token>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "documents:read account:read openid",
+  "refresh_token": "<rotated-refresh-token>",
+  "id_token": "<id-token>"
+}
+```
+
+### `oauth.revoke`
+
+Complete form fields for `POST /oauth/revoke` (shown as JSON; sent as form encoding):
+```json
+{
+  "token": "<latest-token>",
+  "token_type_hint": "refresh_token",
+  "client_id": "public-client-id"
+}
+```
+Response: HTTP 200 with no body. The hint is optional and accepts only `access_token` or `refresh_token`.
+
+### `oauth.userInfo`
+
+Request: `GET /oauth/userinfo`, bearer authentication, no request body.
+Complete flat response body (name/email claims depend on granted scopes):
+```json
+{
+  "sub": "user-placeholder",
+  "name": "Example User",
+  "email": "person@example.com",
+  "email_verified": true
+}
+```
+
+### `oauth.protectedResourceMetadata`
+
+Request: `GET {apiOrigin}/.well-known/oauth-protected-resource`; no credentials or body.
+Complete flat response body:
+```json
+{
+  "resource": "https://api.assinafy.com.br",
+  "authorization_servers": [
+    "https://auth.assinafy.com.br"
+  ],
+  "scopes_supported": [
+    "documents:read",
+    "documents:write",
+    "templates:read",
+    "templates:write",
+    "account:read",
+    "webhooks:write",
+    "openid",
+    "profile",
+    "email"
+  ],
+  "bearer_methods_supported": [
+    "header"
+  ]
+}
+```
+
+### `oauth.authorizationServerMetadata`
+
+Request: `GET {issuer}/.well-known/oauth-authorization-server`; no credentials or body.
+Complete flat response body:
+```json
+{
+  "issuer": "https://auth.assinafy.com.br",
+  "authorization_endpoint": "https://auth.assinafy.com.br/oauth/authorize",
+  "token_endpoint": "https://api.assinafy.com.br/v1/oauth/token",
+  "revocation_endpoint": "https://api.assinafy.com.br/v1/oauth/revoke",
+  "userinfo_endpoint": "https://api.assinafy.com.br/v1/oauth/userinfo",
+  "introspection_endpoint": "https://api.assinafy.com.br/v1/oauth/introspect",
+  "introspection_endpoint_auth_methods_supported": [
+    "client_secret_post"
+  ],
+  "jwks_uri": "https://auth.assinafy.com.br/.well-known/jwks.json",
+  "scopes_supported": [
+    "documents:read",
+    "documents:write",
+    "templates:read",
+    "templates:write",
+    "account:read",
+    "webhooks:write",
+    "openid",
+    "profile",
+    "email",
+    "offline_access"
+  ],
+  "response_types_supported": [
+    "code"
+  ],
+  "grant_types_supported": [
+    "authorization_code",
+    "refresh_token",
+    "urn:ietf:params:oauth:grant-type:token-exchange"
+  ],
+  "code_challenge_methods_supported": [
+    "S256"
+  ],
+  "token_endpoint_auth_methods_supported": [
+    "client_secret_post",
+    "none"
+  ],
+  "authorization_response_iss_parameter_supported": true,
+  "client_id_metadata_document_supported": true
+}
+```
+The issuer also advertises token exchange and introspection for confidential services. Public Android applications use authorization codes with PKCE and refresh tokens; this SDK does not implement confidential-service operations.
+
+
+Authorization-code exchange response:
+
+```json
+{
+  "access_token": "<access-token>",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "documents:read account:read openid",
+  "refresh_token": "<rotated-refresh-token>",
+  "id_token": "<id-token>"
+}
+```

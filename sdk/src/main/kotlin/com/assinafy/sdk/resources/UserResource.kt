@@ -29,15 +29,26 @@ class UserResource internal constructor(
      * Retrieves the authenticated profile with `GET /users/self`.
      *
      * Request body/query: none. Response `data`:
+     * The older `{ "user": {...}, "accounts": [...] }` data variant is normalized to the same model.
+     *
+     * Wire operation: `GET /v1/users/self`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "id":"user-1", "name":"Example User", "email":"user@example.com",
-     *   "telephone":null, "government_id":null, "is_email_verified":true,
-     *   "has_accepted_terms":true, "created_at":"2026-01-01T00:00:00Z",
-     *   "to_be_deleted_at":null
+     *   "id": "id-placeholder",
+     *   "name": "Example",
+     *   "email": "person@example.com",
+     *   "telephone": null,
+     *   "government_id": null,
+     *   "is_email_verified": true,
+     *   "has_accepted_terms": true,
+     *   "created_at": "2026-01-01T00:00:00Z",
+     *   "to_be_deleted_at": null
      * }
      * ```
-     * The older `{ "user": {...}, "accounts": [...] }` data variant is normalized to the same model.
      *
      * @return Complete authenticated-user profile.
      */
@@ -61,18 +72,31 @@ class UserResource internal constructor(
      * Retrieves cross-account KPIs with `GET /users/self/stats`.
      *
      * Query shape: optional `granularity=monthly|daily` and `month=YYYY-MM`; request body: none.
-     * Response `data`:
+     *
+     * Wire operation: `GET /v1/users/self/stats`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
-     * [{
-     *   "period":"2026-06", "documents_uploaded":42, "documents_sent":37,
-     *   "signature_requests":61, "signature_requests_notification_email":55,
-     *   "signature_requests_notification_whatsapp":18, "signature_requests_notification_bypass":3,
-     *   "signature_requests_verification_email":48, "signature_requests_verification_whatsapp":6,
-     *   "signature_requests_verification_bypass":3,
-     *   "signature_requests_verification_digital_certificate":4,
-     *   "signature_requests_viewed":44, "signature_requests_completed":52,
-     *   "documents_certified":30
-     * }]
+     * [
+     *   {
+     *     "period": "example",
+     *     "documents_uploaded": 1,
+     *     "documents_sent": 1,
+     *     "signature_requests": 1,
+     *     "signature_requests_notification_email": 1,
+     *     "signature_requests_notification_whatsapp": 1,
+     *     "signature_requests_notification_bypass": 1,
+     *     "signature_requests_verification_email": 1,
+     *     "signature_requests_verification_whatsapp": 1,
+     *     "signature_requests_verification_bypass": 1,
+     *     "signature_requests_verification_digital_certificate": 1,
+     *     "signature_requests_viewed": 1,
+     *     "signature_requests_completed": 1,
+     *     "documents_certified": 1
+     *   }
+     * ]
      * ```
      *
      * @param query Monthly/daily granularity and optional target month.
@@ -99,12 +123,23 @@ class UserResource internal constructor(
      * Retrieves settings with `GET /users/self/notification-preferences`.
      *
      * Request body/query: none. Response `data` always contains all nine booleans:
+     *
+     * Wire operation: `GET /v1/users/self/notification-preferences`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "DocumentCompleted":true, "SignerDeclined":true, "DocumentCancelled":true,
-     *   "DocumentAboutToExpire":true, "DocumentExpired":true, "DocumentExpirationReset":true,
-     *   "DocumentProcessingFailed":true, "TemplateProcessingFailed":true,
-     *   "SignerWhatsappFailed":true
+     *   "DocumentCompleted": true,
+     *   "SignerDeclined": true,
+     *   "DocumentCancelled": true,
+     *   "DocumentAboutToExpire": true,
+     *   "DocumentExpired": true,
+     *   "DocumentExpirationReset": true,
+     *   "DocumentProcessingFailed": true,
+     *   "TemplateProcessingFailed": true,
+     *   "SignerWhatsappFailed": true
      * }
      * ```
      *
@@ -121,6 +156,38 @@ class UserResource internal constructor(
      * Request body is a non-empty subset such as `{"DocumentCompleted":false,"SignerDeclined":true}`.
      * Omitted keys retain their current value. Response `data` is the complete nine-boolean map documented by
      * [getNotificationPreferences].
+     *
+     * Wire operation: `PUT /v1/users/self/notification-preferences`.
+     *
+     * Request body (`application/json`; optional members may be omitted):
+     * ```json
+     * {
+     *   "DocumentCompleted": true,
+     *   "SignerDeclined": true,
+     *   "DocumentCancelled": true,
+     *   "DocumentAboutToExpire": true,
+     *   "DocumentExpired": true,
+     *   "DocumentExpirationReset": true,
+     *   "DocumentProcessingFailed": true,
+     *   "TemplateProcessingFailed": true,
+     *   "SignerWhatsappFailed": true
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * ```json
+     * {
+     *   "DocumentCompleted": true,
+     *   "SignerDeclined": true,
+     *   "DocumentCancelled": true,
+     *   "DocumentAboutToExpire": true,
+     *   "DocumentExpired": true,
+     *   "DocumentExpirationReset": true,
+     *   "DocumentProcessingFailed": true,
+     *   "TemplateProcessingFailed": true,
+     *   "SignerWhatsappFailed": true
+     * }
+     * ```
      *
      * @param request One or more owner-facing email preferences to merge.
      * @return Complete preferences after the merge.

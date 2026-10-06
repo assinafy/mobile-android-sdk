@@ -15,7 +15,23 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
+@Suppress("DEPRECATION")
 class AssignmentResourceTest {
+
+    @Test
+    fun `copy receiver identifiers and finite placement values are checked before network`() {
+        val mock = MockApiHttpClient()
+        val resource = AssignmentResource(mock, "account")
+        val signers = listOf(SignerReference.ofId("signer"))
+        assertThatThrownBy { runBlocking { resource.create("doc", CreateAssignmentRequest(signers = signers, copyReceivers = listOf(" "))) } }
+            .isInstanceOf(ValidationException::class.java)
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY).forEach { invalid ->
+            val entries = listOf(AssignmentEntry("page", listOf(AssignmentFieldPlacement("signer", "field", com.assinafy.sdk.request.DisplaySettings(invalid, 1f, 1f, 1f, 1f)))))
+            assertThatThrownBy { runBlocking { resource.create("doc", CreateAssignmentRequest(signers = signers, entries = entries)) } }
+                .isInstanceOf(ValidationException::class.java)
+        }
+        assertThat(mock.calls).isEmpty()
+    }
 
     private val gson = Gson()
     private val assignmentJson = """{"id":"asg-1","method":"virtual","signers":[]}"""
