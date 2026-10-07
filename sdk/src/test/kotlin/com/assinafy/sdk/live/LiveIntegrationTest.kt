@@ -5,6 +5,7 @@ import com.assinafy.sdk.AssinafyClientConfig
 import com.assinafy.sdk.DocumentArtifact
 import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.SdkConstants
+import com.assinafy.sdk.WebhookEvent
 import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.models.DocumentDetails
 import com.assinafy.sdk.oauth.OAuthScope
@@ -12,6 +13,7 @@ import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.CreateFieldRequest
 import com.assinafy.sdk.request.CreateSignerRequest
+import com.assinafy.sdk.request.CreateWebhookEndpointRequest
 import com.assinafy.sdk.request.FieldValidationEntry
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.SignerReference
@@ -19,6 +21,7 @@ import com.assinafy.sdk.request.TemplateSigner
 import com.assinafy.sdk.request.UpdateFieldRequest
 import com.assinafy.sdk.request.UpdateNotificationPreferencesRequest
 import com.assinafy.sdk.request.UpdateSignerRequest
+import com.assinafy.sdk.request.UpdateWebhookEndpointRequest
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest
 import com.assinafy.sdk.request.WebhookDispatchParams
 import kotlinx.coroutines.runBlocking
@@ -170,6 +173,61 @@ class LiveIntegrationTest {
     @Test
     fun `notification preferences are readable when deployed`() = runBlocking<Unit> {
         optionalEndpoint("Notification preferences") { client().users.getNotificationPreferences() }
+    }
+
+    @Test
+    fun `webhook endpoints are readable when deployed`() = runBlocking<Unit> {
+        val sdk = client()
+        val endpoints = optionalEndpoint("Webhook endpoints") { sdk.webhooks.listEndpoints() }
+        endpoints.forEach { assertThat(sdk.webhooks.getEndpoint(it.id)?.url).isEqualTo(it.url) }
+        endpoints.firstOrNull()?.let { endpoint ->
+            sdk.webhooks.listDispatches(WebhookDispatchParams(endpointId = endpoint.id, perPage = 5))
+        }
+    }
+
+    @Test
+    fun `two-factor status is readable when deployed`() = runBlocking<Unit> {
+        val status = optionalEndpoint("Two-factor methods") { client().authentication.listMfaMethods() }
+        assertThat(status.recoveryCodesRemaining).isGreaterThanOrEqualTo(0)
+    }
+
+    @Test
+    fun `disposable signed webhook endpoint lifecycle is reversible`() = runBlocking<Unit> {
+        requireWrites()
+        val sdk = client()
+        val url = "https://example.com/assinafy-sdk-live/${UUID.randomUUID()}"
+        var endpointId: String? = null
+
+        reversible(
+            block = {
+                val created = optionalEndpoint("Webhook endpoints") {
+                    sdk.webhooks.createEndpoint(
+                        CreateWebhookEndpointRequest(
+                            url = url,
+                            email = "ops@example.com",
+                            events = listOf(WebhookEvent.DOCUMENT_READY),
+                            name = "SDK live",
+                            isActive = false,
+                            signingEnabled = true,
+                        ),
+                    )
+                }
+                endpointId = created.id
+                assertThat(created.signingEnabled).isTrue()
+                val secret = sdk.webhooks.getEndpointSecret(created.id).secret
+                assertThat(secret).startsWith("whsec_")
+                val rotated = sdk.webhooks.rotateEndpointSecret(created.id).secret
+                assertThat(rotated).startsWith("whsec_").isNotEqualTo(secret)
+                val updated = sdk.webhooks.updateEndpoint(created.id, UpdateWebhookEndpointRequest(signingEnabled = false))
+                assertThat(updated.signingEnabled).isFalse()
+            },
+            cleanup = {
+                val ids = runCatching { sdk.webhooks.listEndpoints() }.getOrDefault(emptyList())
+                    .filter { it.id == endpointId || it.url == url }
+                    .map { it.id }
+                cleanUpAll(*ids.map { id -> suspend { sdk.webhooks.deleteEndpoint(id) } }.toTypedArray())
+            },
+        )
     }
 
     @Test
@@ -373,7 +431,7 @@ class LiveIntegrationTest {
 
         reversible(
             block = {
-                val created = sdk.signers.create(CreateSignerRequest(fullName = names.first()))
+                val created = sdk.signers.create(CreateSignerRequest(fullName = names.first(), governmentId = "390.533.447-05"))
                 signerId = created.id
                 assertThat(sdk.signers.get(created.id).id.isNotBlank()).isTrue()
                 val updated = sdk.signers.update(

@@ -3,8 +3,8 @@
 This SDK covers every operation in the Assinafy v1 OpenAPI document published at
 [`https://api.assinafy.com.br/v1/docs/openapi.json`](https://api.assinafy.com.br/v1/docs/openapi.json).
 
-- Paths: 71
-- Operations: **93 covered / 93 documented**
+- Paths: 81
+- Operations: **106 covered / 106 documented**
 - API base URL: `https://api.assinafy.com.br/v1`
 
 Authentication modes below are:
@@ -51,7 +51,7 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration` | `assignments.resetExpiration(...)` | Account | Covered |
 | `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications` | `assignments.listWhatsappNotifications(...)` | Account | Covered |
 
-## Authentication (9/9)
+## Authentication (15/15)
 
 | Operation | SDK method | Auth | Status |
 |---|---|---|---|
@@ -64,6 +64,16 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 | `GET /v1/users/api-keys` | `authentication.getApiKey()` | Account | Covered |
 | `POST /v1/users/api-keys` | `authentication.createApiKey(request)` | Account | Covered |
 | `DELETE /v1/users/api-keys` | `authentication.deleteApiKey()` | Account | Covered |
+| `POST /v1/authentication/mfa/verify` | `authentication.verifyMfa(request)` | Public | Covered |
+| `GET /v1/users/self/mfa` | `authentication.listMfaMethods()` | Account | Covered |
+| `POST /v1/users/self/mfa/totp` | `authentication.startTotpEnrollment(label)` | Account | Covered |
+| `PUT /v1/users/self/mfa/totp/confirm` | `authentication.confirmTotpEnrollment(request)` | Account | Covered |
+| `POST /v1/users/self/mfa/recovery-codes` | `authentication.regenerateRecoveryCodes(request)` | Account | Covered |
+| `DELETE /v1/users/self/mfa/{customId}` | `authentication.removeMfaMethod(methodId, request)` | Account | Covered |
+
+`authentication.login` and `authentication.socialLogin` throw `MfaRequiredException` when the user
+has two-factor authentication enabled; its `mfaToken` is the challenge `verifyMfa` exchanges for a
+session.
 
 ## Documents (18/18)
 
@@ -116,7 +126,7 @@ a request, so neither maps to an operation above.
 
 `oauth.authorizationServerMetadata(issuer)` reads the RFC 8414 document from the authorization
 server (`https://auth.assinafy.com.br/.well-known/oauth-authorization-server`). That document is
-served by the issuer, not by this API, so it is likewise not one of the 93 operations.
+served by the issuer, not by this API, so it is likewise not one of the 106 operations.
 
 These four endpoints are the only ones that do not use the `{status, message, data}` envelope: they
 answer with flat RFC 6749, OpenID Connect, and RFC 9728 objects, and the SDK raises `OAuthException`
@@ -178,7 +188,7 @@ carrying the standard `error` code rather than `ApiException`.
 | `GET /v1/users/self/notification-preferences` | `users.getNotificationPreferences()` | Account | Covered |
 | `PUT /v1/users/self/notification-preferences` | `users.updateNotificationPreferences(request)` | Account | Covered |
 
-## Webhooks (6/6)
+## Webhooks (13/13)
 
 | Operation | SDK method | Auth | Status |
 |---|---|---|---|
@@ -188,13 +198,27 @@ carrying the standard `error` code rather than `ApiException`.
 | `GET /v1/webhooks/event-types` | `webhooks.listEventTypes()` | Account | Covered |
 | `GET /v1/accounts/{accountId}/webhooks` | `webhooks.listDispatches(...)` | Account | Covered |
 | `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry` | `webhooks.retryDispatch(historyId, accountId)` | Account | Covered |
+| `GET /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.listEndpoints(accountId)` | Account | Covered |
+| `POST /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.createEndpoint(request, accountId)` | Account | Covered |
+| `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.getEndpoint(endpointId, accountId)` | Account | Covered |
+| `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.updateEndpoint(endpointId, request, accountId)` | Account | Covered |
+| `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.deleteEndpoint(endpointId, accountId)` | Account | Covered |
+| `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` | `webhooks.getEndpointSecret(endpointId, accountId)` | API key | Covered |
+| `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` | `webhooks.rotateEndpointSecret(endpointId, accountId)` | API key | Covered |
+
+An account has 1 webhook endpoint, or up to 3 on paid plans; `createEndpoint` past the limit answers
+`403`. The subscription operations (`get`, `register`, `inactivate`) act on the account's oldest
+endpoint. `listDispatches(WebhookDispatchParams(...))` sends the `endpoint_id`, `event`,
+`delivered`, `from`, `to`, `page` and `per-page` filters. The two secret operations are not
+available to OAuth applications, so they need an API key. Signed deliveries follow Standard
+Webhooks and are checked locally by `WebhookVerifier.verifySignature`, which performs no request.
 
 ## Retained compatibility route
 
 `templates.get(templateId, accountId)` calls
 `GET /v1/accounts/{accountId}/templates/{templateId}`. The route is absent from the OpenAPI document
 but answers `200` with the complete template — pages, roles, and tags — on the deployed service, so
-it is retained. It is not counted among the 93 OpenAPI operations. No other undocumented HTTP route
+it is retained. It is not counted among the 106 OpenAPI operations. No other undocumented HTTP route
 is added by the SDK.
 
 `POST /v1/signers/certificate/start` and `/complete` also answer on the deployed service and are
@@ -224,5 +248,5 @@ the default request path:
 - document tag mutations pass the supplied strings unchanged. IDs attach existing tags; a supplied tag name creates the tag if it does not exist yet;
 - account create/update may send the deprecated six-digit `primary_color` and `secondary_color`
   fields when callers explicitly use them;
-- `signers.create` may send the deprecated `cpf` and `metadata` fields when callers explicitly use
-  them; set an official identity document through `signers.update(governmentId = ...)` instead.
+- `signers.create` may send the deprecated `metadata` field when callers explicitly use it; the
+  deprecated `cpf` value is sent as `government_id` when `governmentId` is not set.

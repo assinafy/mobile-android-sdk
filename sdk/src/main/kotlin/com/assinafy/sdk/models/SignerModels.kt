@@ -6,7 +6,7 @@ import com.google.gson.annotations.SerializedName
  * One email or WhatsApp delivery attempt associated with an assignment signer.
  *
  * @property event Notification event identifier.
- * @property status Delivery state.
+ * @property status Delivery state; see [com.assinafy.sdk.NotificationDeliveryStatus].
  * @property errorCode Provider error code for a failed delivery.
  * @property errorMessage Provider error description for a failed delivery.
  * @property sentAt ISO-8601 successful-send time.

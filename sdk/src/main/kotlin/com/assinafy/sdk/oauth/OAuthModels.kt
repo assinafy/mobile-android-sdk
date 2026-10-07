@@ -1,6 +1,7 @@
 package com.assinafy.sdk.oauth
 
 import com.assinafy.sdk.exceptions.ValidationException
+import com.assinafy.sdk.util.Base64Codec
 import com.google.gson.annotations.SerializedName
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -30,7 +31,7 @@ object OAuthScope {
     /** Read the workspace's profile, theme and logo. */
     const val ACCOUNT_READ = "account:read"
 
-    /** Configure and deactivate the workspace webhook subscription. */
+    /** Create, change and delete webhook endpoints. Signing secrets need an API key. */
     const val WEBHOOKS_WRITE = "webhooks:write"
 
     /** Identify the authenticated user and enable `GET /oauth/userinfo`. */
@@ -99,7 +100,7 @@ data class PkcePair(
             }
         }
 
-        internal fun challenge(verifier: String): String = base64UrlNoPadding(
+        internal fun challenge(verifier: String): String = Base64Codec.encodeUrlNoPadding(
             MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
         )
 
@@ -108,28 +109,6 @@ data class PkcePair(
             repeat(32) { append(UNRESERVED[RANDOM.nextInt(UNRESERVED.length)]) }
         }
     }
-}
-
-private const val BASE64_URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-
-/**
- * RFC 4648 §5 base64url without padding. Hand-rolled because `java.util.Base64` needs API 26 while
- * this SDK supports API 21, and `android.util.Base64` is unavailable to JVM unit tests.
- */
-internal fun base64UrlNoPadding(bytes: ByteArray): String {
-    val out = StringBuilder((bytes.size + 2) / 3 * 4)
-    var index = 0
-    while (index < bytes.size) {
-        val b0 = bytes[index].toInt() and 0xFF
-        val b1 = if (index + 1 < bytes.size) bytes[index + 1].toInt() and 0xFF else -1
-        val b2 = if (index + 2 < bytes.size) bytes[index + 2].toInt() and 0xFF else -1
-        out.append(BASE64_URL_ALPHABET[b0 ushr 2])
-        out.append(BASE64_URL_ALPHABET[((b0 and 0x03) shl 4) or (if (b1 >= 0) b1 ushr 4 else 0)])
-        if (b1 >= 0) out.append(BASE64_URL_ALPHABET[((b1 and 0x0F) shl 2) or (if (b2 >= 0) b2 ushr 6 else 0)])
-        if (b2 >= 0) out.append(BASE64_URL_ALPHABET[b2 and 0x3F])
-        index += 3
-    }
-    return out.toString()
 }
 
 /**
@@ -210,6 +189,7 @@ data class AuthorizationRequest(
  *   requested set was approved. `offline_access` never appears here.
  * @property idToken Signed OpenID Connect identity token (RS256), present only when `openid` was
  *   granted.
+ * @property issuedTokenType RFC 8693 type of the issued token, when the server reports one.
  */
 data class OAuthTokens(
     @SerializedName("access_token") val accessToken: String,
@@ -218,6 +198,7 @@ data class OAuthTokens(
     @SerializedName("refresh_token") val refreshToken: String? = null,
     @SerializedName("scope") val scope: String? = null,
     @SerializedName("id_token") val idToken: String? = null,
+    @SerializedName("issued_token_type") val issuedTokenType: String? = null,
 ) {
     /** Granted permissions split from [scope], or an empty list when the server returned none. */
     val scopes: List<String> get() = scope?.split(' ')?.filter { it.isNotBlank() } ?: emptyList()
@@ -229,7 +210,7 @@ data class OAuthTokens(
     override fun toString(): String =
         "OAuthTokens(accessToken=***, tokenType=$tokenType, expiresIn=$expiresIn, " +
             "refreshToken=${if (refreshToken == null) "null" else "***"}, scope=$scope, " +
-            "idToken=${if (idToken == null) "null" else "***"})"
+            "idToken=${if (idToken == null) "null" else "***"}, issuedTokenType=$issuedTokenType)"
 }
 
 /**

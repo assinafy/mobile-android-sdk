@@ -337,6 +337,7 @@ class SignerResource internal constructor(
             fullName = it.fullName,
             email = it.email,
             whatsappPhoneNumber = it.whatsappPhoneNumber,
+            governmentId = it.governmentId,
             hasAcceptedTerms = it.hasAcceptedTerms,
             hasSignature = it.hasSignature,
             hasInitial = it.hasInitial,
@@ -501,7 +502,7 @@ class SignerResource internal constructor(
         request.email?.trim()?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
         request.whatsappPhoneNumber?.trim()?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
         @Suppress("DEPRECATION")
-        request.cpf?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("cpf", it) }
+        (request.governmentId ?: request.cpf)?.trim()?.takeIf { it.isNotEmpty() }?.let { put("government_id", it) }
         @Suppress("DEPRECATION")
         request.metadata?.let { put("metadata", it) }
     }
@@ -510,7 +511,7 @@ class SignerResource internal constructor(
         request.fullName?.trim()?.takeIf { it.isNotEmpty() }?.let { put("full_name", it) }
         request.email?.trim()?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
         request.whatsappPhoneNumber?.trim()?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
-        request.governmentId?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("government_id", it) }
+        request.governmentId?.trim()?.takeIf { it.isNotEmpty() }?.let { put("government_id", it) }
         @Suppress("DEPRECATION")
         request.cpf?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("cpf", it) }
     }

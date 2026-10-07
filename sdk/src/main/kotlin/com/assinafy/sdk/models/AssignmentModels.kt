@@ -32,7 +32,7 @@ data class CostEstimateBreakdownItem(
  * @property documentBalance Account document-unit balance before the operation.
  * @property creditBalance Account credit balance before the operation.
  * @property hasSufficientResources Whether the account can perform the operation.
- * @property blockingReason Machine-readable reason the operation cannot proceed.
+ * @property blockingReason Machine-readable reason the operation cannot proceed; see [com.assinafy.sdk.CostBlockingReason].
  * @property message Human-readable pricing or resource message.
  * @property legacyTotal Total returned by older resend-cost responses.
  * @property legacyHasSufficientCredits Sufficiency flag returned by older resend-cost responses.

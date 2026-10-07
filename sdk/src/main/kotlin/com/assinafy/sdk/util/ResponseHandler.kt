@@ -28,6 +28,9 @@ internal object ResponseHandler {
      */
     fun toJsonAllowNulls(value: Any): String = GSON_WITH_NULLS.toJson(value)
 
+    /** Maps an already-unwrapped `data` element onto [type]. */
+    fun <T> fromJson(element: JsonElement, type: Class<T>): T = GSON.fromJson(element, type)
+
     fun <T> handle(response: HttpRawResponse, type: Class<T>): T {
         validateSuccess(response)
         return parseEnvelope(response.body, type)

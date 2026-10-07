@@ -137,14 +137,27 @@ class SignerResourceTest {
 
         val result = SignerResource(mock, "acc").update(
             "s1",
-            UpdateSignerRequest(fullName = "John Doe", governmentId = "123.456"),
+            UpdateSignerRequest(fullName = "John Doe", governmentId = " 12.ABC.345/01DE-35 "),
         )
 
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("PUT")
         assertThat(call.path).isEqualTo("/accounts/acc/signers/s1")
-        assertThat(call.body).contains("\"government_id\":\"123456\"")
+        assertThat(call.body).contains("\"government_id\":\"12.ABC.345/01DE-35\"")
         assertThat(result.id).isEqualTo("s1")
+    }
+
+    @Test
+    fun `create sends government_id and maps the legacy cpf onto it`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
+        val resource = SignerResource(mock, "acc")
+
+        resource.create(CreateSignerRequest(fullName = "John Doe", governmentId = "390.533.447-05"))
+        assertThat(mock.calls.last { it.method == "POST" }.body).contains("\"government_id\":\"390.533.447-05\"").doesNotContain("cpf")
+
+        @Suppress("DEPRECATION")
+        resource.create(CreateSignerRequest(fullName = "John Doe", cpf = "39053344705"))
+        assertThat(mock.calls.last { it.method == "POST" }.body).contains("\"government_id\":\"39053344705\"")
     }
 
     @Test

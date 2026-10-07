@@ -13,6 +13,7 @@ import com.google.gson.annotations.SerializedName
  * @property fullName Signer's full name from `full_name`.
  * @property email Signer's email address, or null when the account uses another contact channel.
  * @property whatsappPhoneNumber Normalized E.164 WhatsApp number from `whatsapp_phone_number`.
+ * @property governmentId CPF or CNPJ on record, or `null`.
  * @property hasAcceptedTerms Whether this signer has accepted Assinafy's terms.
  * @property hasSignature Whether a stored signature PNG exists.
  * @property hasInitial Whether a stored initials PNG exists.
@@ -29,4 +30,5 @@ data class SignerSelf(
     @SerializedName("has_signature") val hasSignature: Boolean? = null,
     @SerializedName("has_initial") val hasInitial: Boolean? = null,
     @SerializedName("is_signature_reusable") val isSignatureReusable: Boolean? = null,
+    @SerializedName("government_id") val governmentId: String? = null,
 )

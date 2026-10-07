@@ -59,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.2")
+    implementation("com.assinafy:assinafy-android-sdk:2.6.0")
 }
 ```
 
@@ -68,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.5.2-local-SNAPSHOT \
+  -Pversion=2.6.0-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -97,7 +97,7 @@ val client = AssinafyClient.create(
         token = null,             // ou um token bearer; os dois são mutuamente exclusivos
         accountId = accountId,    // conta padrão para chamadas com escopo de conta
         baseUrl = "https://api.assinafy.com.br/v1",
-        webhookSecret = null,     // só verificação HMAC local; nunca enviado à Assinafy
+        webhookSecret = null,     // segredo whsec_ do endpoint, só para verificar entregas; nunca enviado
         timeoutMs = 30_000L,      // conexão, leitura e escrita
         logger = null,            // Logger.NONE por padrão; segredos nunca vão para o log
         oauth = null,             // aplicação OAuth registrada; veja OAuth 2.1
@@ -144,6 +144,26 @@ val signerClient = AssinafyClient.create(
 
 O último segmento de uma URL de assinatura (`/sign/{accessCode}`) **é** esse código: trate-o como
 credencial, não registre em log, não persista, não mande para analytics.
+
+### Login com dois fatores
+
+Quando o usuário ativou a autenticação em dois fatores, `login` e `socialLogin` lançam
+`MfaRequiredException` em vez de devolver a sessão. Conclua em até cinco minutos com o código do app
+autenticador ou um código de recuperação:
+
+```kotlin
+val session = try {
+    client.authentication.login(LoginRequest(email, password))
+} catch (e: MfaRequiredException) {
+    client.authentication.verifyMfa(MfaVerifyRequest(e.mfaToken, codigoDigitado))
+}
+```
+
+Para gerenciar o segundo fator do usuário autenticado: `listMfaMethods()`,
+`startTotpEnrollment(label)` (devolve o segredo e a URI `otpauth://` para o QR code, uma única vez),
+`confirmTotpEnrollment(ConfirmTotpRequest(id, code))` (devolve os códigos de recuperação, uma única
+vez), `regenerateRecoveryCodes(MfaReauthRequest(...))` e `removeMfaMethod(id, MfaReauthRequest(...))`.
+As duas últimas exigem a senha atual, um código do app ou um código de recuperação.
 
 ## OAuth 2.1
 
@@ -194,7 +214,7 @@ val client = AssinafyClient.create(
 | `OAuthScope.DOCUMENTS_WRITE` | Criar documentos e enviá-los para assinatura (consome créditos de notificação) |
 | `OAuthScope.TEMPLATES_READ` / `TEMPLATES_WRITE` | Ler / manter templates, papéis, campos e tags |
 | `OAuthScope.ACCOUNT_READ` | Ler perfil, tema e logo do workspace |
-| `OAuthScope.WEBHOOKS_WRITE` | Configurar e desativar a assinatura de webhooks do workspace |
+| `OAuthScope.WEBHOOKS_WRITE` | Criar, alterar e apagar endpoints de webhook |
 | `OAuthScope.OPENID` · `PROFILE` · `EMAIL` | Identificar a pessoa e receber nome / e-mail |
 | `OAuthScope.OFFLINE_ACCESS` | Receber um refresh token e continuar funcionando sem a pessoa presente |
 
@@ -631,11 +651,14 @@ client.documents.sendToken(documentId, "+5511999998888", "whatsapp") // destinat
 
 ### Passo 6 — Acompanhar a conclusão
 
-Em um back-end, prefira webhooks a polling. Registre a inscrição uma vez por conta:
+Em um back-end, prefira webhooks a polling. Cadastre um endpoint por URL que deve receber eventos.
+Uma conta tem 1 endpoint, ou até 3 em planos pagos; criar um além do limite responde `403`, e cada
+endpoint do workspace precisa de uma `url` diferente. Com `signingEnabled = true`, toda entrega leva
+uma assinatura [Standard Webhooks](https://www.standardwebhooks.com):
 
 ```kotlin
-client.webhooks.register(
-    RegisterWebhookRequest(
+val endpoint = client.webhooks.createEndpoint(
+    CreateWebhookEndpointRequest(
         url = "https://example.com/hooks/assinafy",
         email = "ops@example.com",
         events = listOf(
@@ -644,27 +667,49 @@ client.webhooks.register(
             WebhookEvent.SIGNER_REJECTED_DOCUMENT,
             WebhookEvent.DOCUMENT_PROCESSING_FAILED,
         ),
+        name = "ERP",
+        signingEnabled = true,
     ),
 )
+val secret = client.webhooks.getEndpointSecret(endpoint.id).secret // "whsec_...", guarde no back-end
 ```
 
+| Método | Operação |
+|---|---|
+| `webhooks.listEndpoints()` | Todos os endpoints, do mais antigo ao mais novo |
+| `webhooks.getEndpoint(id)` | Um endpoint, ou `null` se não existir |
+| `webhooks.updateEndpoint(id, UpdateWebhookEndpointRequest(...))` | Altera só os campos informados; `isActive = false` pausa, `signingEnabled = false` descarta o segredo |
+| `webhooks.deleteEndpoint(id)` | Para as entregas e libera a vaga |
+| `webhooks.getEndpointSecret(id)` | Segredo atual; exige chave de API (indisponível para aplicações OAuth) |
+| `webhooks.rotateEndpointSecret(id)` | Troca o segredo; o antigo deixa de valer na hora |
+
+`register`, `get` e `inactivate` continuam disponíveis e atuam sobre o endpoint mais antigo da conta.
 `WebhookEvent` lista todos os identificadores de evento, e `webhooks.listEventTypes()` devolve o
 catálogo ao vivo. `webhooks.listDispatches(WebhookDispatchParams(...))` é o histórico de entregas —
-filtre por evento, estado ou intervalo de tempo — e `webhooks.retryDispatch(id)` repete uma entrega
-que falhou. Não existe exclusão: `webhooks.inactivate()` interrompe as entregas, e `register`
-sobrescreve.
+filtre por endpoint, evento, estado ou intervalo de tempo — e `webhooks.retryDispatch(id)` reenvia
+uma entrega ao endpoint daquela entrada.
 
-Webhooks pertencem a um back-end, não a um dispositivo. `WebhookVerifier` é um utilitário opcional de
-HMAC-SHA256 para gateways configurados para assinar entregas; `webhookSecret` só é usado localmente.
+Webhooks pertencem a um back-end, não a um dispositivo. No receptor, verifique a assinatura sobre o
+corpo **bruto**, exatamente como chegou, antes de interpretar qualquer coisa. `verifySignature` também
+recusa entregas com `webhook-timestamp` a mais de cinco minutos do relógio local, contra replay:
 
 ```kotlin
-if (client.webhookVerifier.verify(rawBodyBytes, signatureHeader)) {
-    val event = client.webhookVerifier.extractEvent(rawBodyBytes)
-    when (client.webhookVerifier.getEventType(event)) {
-        WebhookEvent.DOCUMENT_READY -> tratarPronto(client.webhookVerifier.getEventData(event))
-    }
+val verifier = WebhookVerifier(secret) // ou AssinafyClientConfig(webhookSecret = secret) e client.webhookVerifier
+val ok = verifier.verifySignature(
+    payload = rawBodyBytes,
+    webhookId = headers[WebhookVerifier.HEADER_ID],
+    webhookTimestamp = headers[WebhookVerifier.HEADER_TIMESTAMP],
+    webhookSignature = headers[WebhookVerifier.HEADER_SIGNATURE],
+)
+if (!ok) return responder(401)
+val event = verifier.extractEvent(rawBodyBytes)
+when (verifier.getEventType(event)) {
+    WebhookEvent.DOCUMENT_READY -> tratarPronto(verifier.getEventData(event))
 }
 ```
+
+Responda `2xx` rapidamente. A Assinafy faz até 2 tentativas por evento, com o mesmo `webhook-id` —
+use-o para descartar duplicatas.
 
 Onde não houver webhook, consulte o lado da conta:
 
@@ -789,7 +834,7 @@ assinatura sequencial, WhatsApp ou verificação por certificado digital.
 
 | Recurso | O que faz |
 |---|---|
-| `client.authentication` | Login, redefinição e troca de senha, login social e vínculo, chaves de API pessoais |
+| `client.authentication` | Login, dois fatores, redefinição e troca de senha, login social e vínculo, chaves de API pessoais |
 | `client.oauth` | Fluxo OAuth 2.1 com PKCE, refresh, revogação, userinfo e descoberta |
 | `client.workspaces` | CRUD de conta, tema, upload/download/remoção de logo, KPIs por conta |
 | `client.documents` | Upload, listagem, busca, detalhes, renomear, apagar, artefatos, atividades, criação a partir de template, acesso público, tags do documento |
@@ -800,8 +845,8 @@ assinatura sequencial, WhatsApp ou verificação por certificado digital.
 | `client.users` | Perfil autenticado, KPIs entre contas, preferências de notificação |
 | `client.tags` | CRUD de tags do workspace, com exclusão forçada |
 | `client.templates` | Leitura de templates; instancie por `documents.createFromTemplate` |
-| `client.webhooks` | Inscrição, histórico de entregas, retry |
-| `client.webhookVerifier` | Verificação HMAC local e parsing do payload |
+| `client.webhooks` | Até 3 endpoints, segredos de assinatura, histórico de entregas, retry |
+| `client.webhookVerifier` | Verificação de assinatura Standard Webhooks e parsing do payload |
 
 Templates produzem um documento e seu assignment em uma chamada. Mapeie um signatário para cada papel
 do template; os signatários já precisam existir:

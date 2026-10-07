@@ -2,6 +2,34 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.6.0] - 2026-10-07
+
+### Added
+
+- Webhook endpoints: `webhooks.listEndpoints`, `createEndpoint`, `getEndpoint`, `updateEndpoint` and
+  `deleteEndpoint`. An account has 1 endpoint, or up to 3 on paid plans.
+- Webhook signing: `webhooks.getEndpointSecret` and `rotateEndpointSecret`, and
+  `WebhookVerifier.verifySignature`, which checks Standard Webhooks `webhook-id`,
+  `webhook-timestamp` and `webhook-signature` headers with a five-minute replay window.
+- `WebhookDispatchParams.endpointId` filter and `WebhookDispatch.endpointId`.
+- Two-factor authentication: `authentication.verifyMfa`, `listMfaMethods`, `startTotpEnrollment`,
+  `confirmTotpEnrollment`, `regenerateRecoveryCodes` and `removeMfaMethod`.
+- `MfaRequiredException`, thrown by `login` and `socialLogin` when a second factor is required.
+- `CreateSignerRequest.governmentId`, `SignerSelf.governmentId`,
+  `UploadAndRequestSignaturesRequest.SignerEntry.governmentId` and `OAuthTokens.issuedTokenType`.
+- Constants `NotificationSenderType`, `CostBlockingReason`, `NotificationDeliveryStatus` and
+  `MfaMethodType`.
+
+### Changed
+
+- `government_id` is sent as supplied; the API accepts CPF and CNPJ formatting, including
+  alphanumeric CNPJ. The deprecated `CreateSignerRequest.cpf` is sent as `government_id`.
+- `register`, `get` and `inactivate` act on the account's oldest webhook endpoint.
+
+### Deprecated
+
+- `WebhookVerifier.verify(payload, signature)`; use `verifySignature`.
+
 ## [2.5.2] - 2026-10-05
 
 ### Fixed

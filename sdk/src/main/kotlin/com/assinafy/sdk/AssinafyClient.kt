@@ -104,6 +104,7 @@ class AssinafyClient internal constructor(
                     whatsappPhoneNumber = signer.whatsappPhoneNumber,
                     cpf = signer.cpf,
                     metadata = signer.metadata,
+                    governmentId = signer.governmentId,
                 ),
                 request.accountId,
             )

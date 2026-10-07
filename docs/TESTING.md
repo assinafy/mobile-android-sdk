@@ -47,6 +47,13 @@ AAR is below `sdk/build/outputs/aar/`. The consumer smoke publishes that AAR to 
 the published coordinates from a separate minified app, and writes its unsigned APK below
 `consumer-smoke/build/outputs/apk/release/`.
 
+Unit tests replace the transport with `MockApiHttpClient` and assert the method, path, query and
+serialized body of every request as well as the parsed response. Among them, `WebhookEndpointTest`
+covers the webhook endpoint and signing-secret operations and the `endpoint_id` dispatch filter;
+`WebhookSignatureTest` checks `WebhookVerifier.verifySignature` against the Standard Webhooks
+specification's published test vector, plus tampering, replay-window and malformed-secret cases;
+`MfaTest` covers the two-factor operations and the `MfaRequiredException` raised by login.
+
 ## Reproducible Docker build
 
 Docker is the shortest path when the host does not have the required JDK and Android SDK:
@@ -90,15 +97,20 @@ After setting the needed variables outside the repository, run the read-only sui
 
 The read-only smoke test exercises document statuses/search, account details/theme/logo, signer
 listing, fields, templates, users, webhook history/event types, and tags. It does not send messages
-or modify account state.
+or modify account state. Separate read-only tests list webhook endpoints (with an `endpoint_id`
+dispatch filter) and read the two-factor status.
 
 The discovery check sends no credential, but shares the suite's API-key/account opt-in gate so
 ordinary unit runs remain offline. It reads the resource metadata and the issuer it advertises.
-An optional endpoint that returns 404 is reported as a named JUnit skip. Fixture-dependent tests
+An optional endpoint that returns 404 is reported as a named JUnit skip ("… is not deployed on this
+host"); the webhook endpoint and two-factor tests skip this way on a host that has not deployed
+those routes. Fixture-dependent tests
 also report a skip when the account has no suitable document, signer, or template.
 
 Write tests require the additional `ASSINAFY_LIVE_WRITES` opt-in. They exercise reversible
-preference, field, signer, document, assignment, notification, tag, and compatible-template flows.
+preference, field, signer (with `government_id`), document, assignment, notification, tag, and
+compatible-template flows, and a signed webhook endpoint lifecycle: create an inactive endpoint
+with signing enabled, read and rotate its secret, disable signing, and delete it.
 Every created record uses a unique SDK test name and cleanup runs even after a failed assertion. Run
 them only against an isolated live account; confirm the base URL and account before enabling the
 gate.

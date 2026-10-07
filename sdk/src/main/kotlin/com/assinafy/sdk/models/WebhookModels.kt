@@ -3,7 +3,8 @@ package com.assinafy.sdk.models
 import com.google.gson.annotations.SerializedName
 
 /**
- * The single webhook subscription configured for an account.
+ * The account's oldest webhook endpoint, as read and written by the legacy subscription
+ * operations. Accounts with several endpoints use [WebhookEndpoint].
  *
  * @property url Destination that receives event POST requests.
  * @property email Delivery contact address.
@@ -37,6 +38,7 @@ data class WebhookEventTypeInfo(
  * @property id Stable dispatch identifier used by the retry endpoint.
  * @property event Event identifier delivered in the payload.
  * @property activityId Source activity identifier.
+ * @property endpointId Endpoint the delivery was sent to; `null` once that endpoint is deleted.
  * @property endpoint Destination used for the attempt.
  * @property payload JSON object sent to the destination.
  * @property delivered Whether the destination accepted the delivery.
@@ -51,6 +53,7 @@ data class WebhookDispatch(
     @SerializedName("id") val id: String,
     @SerializedName("event") val event: String,
     @SerializedName("activity_id") val activityId: Long? = null,
+    @SerializedName("endpoint_id") val endpointId: String? = null,
     @SerializedName("endpoint") val endpoint: String? = null,
     @SerializedName("payload") val payload: Map<String, Any>? = null,
     @SerializedName("delivered") val delivered: Boolean = false,
@@ -87,3 +90,41 @@ data class WebhookPayload(
     @SerializedName("created_at") val createdAt: Long? = null,
     @SerializedName("account_id") val accountId: String? = null,
 )
+
+/**
+ * A URL that receives the account's webhook events. Every active endpoint subscribed to an event
+ * receives it independently. An account has 1 endpoint, or up to 3 on paid plans.
+ *
+ * @property id Endpoint identifier.
+ * @property name Label that tells endpoints apart, or `null`.
+ * @property url Destination that receives event POST requests.
+ * @property email Contact address for delivery-failure notices.
+ * @property events Event identifiers delivered to this endpoint.
+ * @property isActive Whether events are delivered to this endpoint.
+ * @property signingEnabled Whether deliveries carry a `webhook-signature` header.
+ * @property createdAt ISO-8601 creation timestamp.
+ * @property updatedAt ISO-8601 last-update timestamp.
+ */
+data class WebhookEndpoint(
+    @SerializedName("id") val id: String,
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("url") val url: String,
+    @SerializedName("email") val email: String? = null,
+    @SerializedName("events") val events: List<String> = emptyList(),
+    @SerializedName("is_active") val isActive: Boolean = false,
+    @SerializedName("signing_enabled") val signingEnabled: Boolean = false,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null,
+)
+
+/**
+ * An endpoint's signing secret, used by [com.assinafy.sdk.support.WebhookVerifier].
+ *
+ * @property secret Standard Webhooks secret: `whsec_` followed by the base64-encoded key.
+ */
+data class WebhookEndpointSecret(
+    @SerializedName("secret") val secret: String,
+) {
+    /** Returns a diagnostic representation with the secret redacted. */
+    override fun toString(): String = "WebhookEndpointSecret(secret=***)"
+}

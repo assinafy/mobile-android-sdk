@@ -65,7 +65,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.5.2-local-SNAPSHOT \
+  -Pversion=2.6.0-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -81,7 +81,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.2-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.6.0-local-SNAPSHOT")
 }
 ```
 
@@ -96,7 +96,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.5.2")
+    implementation("com.assinafy:assinafy-android-sdk:2.6.0")
 }
 ```
 
@@ -124,7 +124,7 @@ val client = AssinafyClient.create(
         token = null,             // or a bearer token; the two are mutually exclusive
         accountId = accountId,    // default account for account-scoped calls
         baseUrl = "https://api.assinafy.com.br/v1",
-        webhookSecret = null,     // local HMAC verification only; never sent to Assinafy
+        webhookSecret = null,     // endpoint whsec_ secret, only to verify deliveries; never sent
         timeoutMs = 30_000L,      // connect, read, and write
         logger = null,            // Logger.NONE by default; secrets are never logged
         oauth = null,             // registered OAuth application; see OAuth 2.1
@@ -165,6 +165,26 @@ val signerClient = AssinafyClient.create(
     AssinafyClientConfig(baseUrl = "https://api.assinafy.com.br/v1"),
 )
 ```
+
+### Two-factor login
+
+When the user has two-factor authentication enabled, `login` and `socialLogin` throw
+`MfaRequiredException` instead of returning the session. Finish within five minutes with the
+authenticator-app code or a recovery code:
+
+```kotlin
+val session = try {
+    client.authentication.login(LoginRequest(email, password))
+} catch (e: MfaRequiredException) {
+    client.authentication.verifyMfa(MfaVerifyRequest(e.mfaToken, enteredCode))
+}
+```
+
+To manage the authenticated user's second factor: `listMfaMethods()`, `startTotpEnrollment(label)`
+(returns the secret and the `otpauth://` URI for a QR code, once), `confirmTotpEnrollment(ConfirmTotpRequest(id, code))`
+(returns the recovery codes, once), `regenerateRecoveryCodes(MfaReauthRequest(...))` and
+`removeMfaMethod(id, MfaReauthRequest(...))`. The last two need the current password, an app code,
+or a recovery code.
 
 ## OAuth 2.1
 
@@ -215,7 +235,7 @@ val client = AssinafyClient.create(
 | `OAuthScope.DOCUMENTS_WRITE` | Create documents and send them for signature (spends notification credits) |
 | `OAuthScope.TEMPLATES_READ` / `TEMPLATES_WRITE` | Read / maintain templates, roles, fields, and tags |
 | `OAuthScope.ACCOUNT_READ` | Read the workspace profile, theme, and logo |
-| `OAuthScope.WEBHOOKS_WRITE` | Configure and deactivate the workspace webhook subscription |
+| `OAuthScope.WEBHOOKS_WRITE` | Create, change and delete webhook endpoints |
 | `OAuthScope.OPENID` · `PROFILE` · `EMAIL` | Identify the user and receive their name / email |
 | `OAuthScope.OFFLINE_ACCESS` | Receive a refresh token and keep working while the user is away |
 
@@ -657,11 +677,14 @@ client.documents.sendToken(documentId, "+5511999998888", "whatsapp") // recipien
 
 ### Step 6 — Track completion
 
-On a backend, prefer webhooks over polling. Register the subscription once per account:
+On a backend, prefer webhooks over polling. Register one endpoint per URL that should receive
+events. An account has 1 endpoint, or up to 3 on paid plans; creating one past the limit answers
+`403`, and every endpoint of a workspace needs a different `url`. With `signingEnabled = true`, every
+delivery carries a [Standard Webhooks](https://www.standardwebhooks.com) signature:
 
 ```kotlin
-client.webhooks.register(
-    RegisterWebhookRequest(
+val endpoint = client.webhooks.createEndpoint(
+    CreateWebhookEndpointRequest(
         url = "https://example.com/hooks/assinafy",
         email = "ops@example.com",
         events = listOf(
@@ -670,26 +693,49 @@ client.webhooks.register(
             WebhookEvent.SIGNER_REJECTED_DOCUMENT,
             WebhookEvent.DOCUMENT_PROCESSING_FAILED,
         ),
+        name = "ERP",
+        signingEnabled = true,
     ),
 )
+val secret = client.webhooks.getEndpointSecret(endpoint.id).secret // "whsec_...", keep it on the backend
 ```
 
+| Method | Operation |
+|---|---|
+| `webhooks.listEndpoints()` | Every endpoint, oldest first |
+| `webhooks.getEndpoint(id)` | One endpoint, or `null` when it does not exist |
+| `webhooks.updateEndpoint(id, UpdateWebhookEndpointRequest(...))` | Changes only the supplied fields; `isActive = false` pauses, `signingEnabled = false` discards the secret |
+| `webhooks.deleteEndpoint(id)` | Stops delivery and frees the slot |
+| `webhooks.getEndpointSecret(id)` | Current secret; needs an API key (not available to OAuth applications) |
+| `webhooks.rotateEndpointSecret(id)` | Replaces the secret; the old one stops working immediately |
+
+`register`, `get` and `inactivate` remain available and act on the account's oldest endpoint.
 `WebhookEvent` lists every event identifier, and `webhooks.listEventTypes()` returns the live
 catalog. `webhooks.listDispatches(WebhookDispatchParams(...))` is the delivery history — filter by
-event, delivery state, or timestamp range — and `webhooks.retryDispatch(id)` replays one failed
-delivery. There is no delete: `webhooks.inactivate()` stops delivery, and `register` overwrites.
+endpoint, event, delivery state, or timestamp range — and `webhooks.retryDispatch(id)` resends one
+delivery to that entry's endpoint.
 
-Webhooks belong on a backend, not on a device. `WebhookVerifier` is an optional HMAC-SHA256 helper
-for gateways configured to sign deliveries; `webhookSecret` is only ever used locally.
+Webhooks belong on a backend, not on a device. On the receiver, verify the signature over the **raw**
+body, exactly as received, before interpreting anything. `verifySignature` also rejects deliveries
+whose `webhook-timestamp` is more than five minutes from the local clock, to stop replays:
 
 ```kotlin
-if (client.webhookVerifier.verify(rawBodyBytes, signatureHeader)) {
-    val event = client.webhookVerifier.extractEvent(rawBodyBytes)
-    when (client.webhookVerifier.getEventType(event)) {
-        WebhookEvent.DOCUMENT_READY -> handleReady(client.webhookVerifier.getEventData(event))
-    }
+val verifier = WebhookVerifier(secret) // or AssinafyClientConfig(webhookSecret = secret) and client.webhookVerifier
+val ok = verifier.verifySignature(
+    payload = rawBodyBytes,
+    webhookId = headers[WebhookVerifier.HEADER_ID],
+    webhookTimestamp = headers[WebhookVerifier.HEADER_TIMESTAMP],
+    webhookSignature = headers[WebhookVerifier.HEADER_SIGNATURE],
+)
+if (!ok) return respond(401)
+val event = verifier.extractEvent(rawBodyBytes)
+when (verifier.getEventType(event)) {
+    WebhookEvent.DOCUMENT_READY -> handleReady(verifier.getEventData(event))
 }
 ```
+
+Answer `2xx` quickly. Assinafy makes up to 2 attempts per event with the same `webhook-id`; use it to
+drop duplicates.
 
 Where a webhook is unavailable, poll the account side instead:
 
@@ -811,7 +857,7 @@ sequential signing, WhatsApp, or digital-certificate verification.
 
 | Resource | What it does |
 |---|---|
-| `client.authentication` | Login, password reset and change, social login and linking, personal API keys |
+| `client.authentication` | Login, two-factor, password reset and change, social login and linking, personal API keys |
 | `client.oauth` | OAuth 2.1 with PKCE: authorization URL, exchange, refresh, revoke, userinfo, discovery |
 | `client.workspaces` | Account CRUD, theme, logo upload/download/delete, per-account KPI statistics |
 | `client.documents` | Upload, list, search, details, rename, delete, artifacts, activities, template instantiation, public access, per-document tags |
@@ -822,8 +868,8 @@ sequential signing, WhatsApp, or digital-certificate verification.
 | `client.users` | Authenticated profile, cross-account KPI statistics, notification preferences |
 | `client.tags` | Workspace tag CRUD, with force-detach delete |
 | `client.templates` | Template reads; instantiate through `documents.createFromTemplate` |
-| `client.webhooks` | Subscription, delivery history, retry |
-| `client.webhookVerifier` | Local HMAC verification and payload parsing |
+| `client.webhooks` | Up to 3 endpoints, signing secrets, delivery history, retry |
+| `client.webhookVerifier` | Standard Webhooks signature verification and payload parsing |
 
 Templates produce a document and its assignment in one call. Map one signer to each template role;
 the signers must already exist:

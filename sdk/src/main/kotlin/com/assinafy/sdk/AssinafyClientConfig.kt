@@ -12,7 +12,7 @@ import com.assinafy.sdk.oauth.OAuthConfig
  * @property baseUrl Full absolute HTTP(S) API prefix. Assinafy-hosted URLs must include `/v1`;
  *   reverse proxies may use another path prefix. A trailing slash is accepted; user info, query,
  *   and fragment components are rejected. Defaults to production.
- * @property webhookSecret Optional local HMAC secret used by `webhookVerifier`; never sent to the API.
+ * @property webhookSecret Optional endpoint signing secret (`whsec_...`) used by `webhookVerifier`; never sent to the API.
  * @property timeoutMs Positive connect, read, and write timeout for each HTTP request, in milliseconds.
  * @property logger Optional SDK logging sink; `null` selects [Logger.NONE].
  * @property oauth Registered OAuth application, required only by `client.oauth`. Leave it `null`

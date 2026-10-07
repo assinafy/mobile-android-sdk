@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
+import com.assinafy.sdk.NotificationSenderType
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.AccountTheme
@@ -428,7 +429,7 @@ class WorkspaceResource internal constructor(
     }
 
     private fun validateSenderType(value: String?) {
-        if (value != null && value !in setOf("User", "Account")) {
+        if (value != null && value !in setOf(NotificationSenderType.USER, NotificationSenderType.ACCOUNT)) {
             throw ValidationException("Notification sender type must be User or Account")
         }
     }

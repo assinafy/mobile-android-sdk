@@ -197,3 +197,39 @@ object WebhookEvent {
     /** Template processing ended in failure. */
     const val TEMPLATE_PROCESSING_FAILED = "template_processing_failed"
 }
+
+/** Who appears as the sender of signer notifications (`notification_sender_type`). */
+object NotificationSenderType {
+    /** The user who sent the document. */
+    const val USER = "User"
+
+    /** The workspace itself. */
+    const val ACCOUNT = "Account"
+}
+
+/** Values of `blocking_reason` in a cost estimate. */
+object CostBlockingReason {
+    /** The workspace has an unpaid invoice. */
+    const val PENDING_PAYMENT = "PendingPayment"
+
+    /** The plan's document allowance is exhausted. */
+    const val INSUFFICIENT_DOCUMENTS = "InsufficientDocuments"
+
+    /** The workspace lacks credits for the paid verification or notification methods. */
+    const val INSUFFICIENT_CREDITS = "InsufficientCredits"
+}
+
+/** Delivery outcome of a WhatsApp notification history entry (`status`). */
+object NotificationDeliveryStatus {
+    /** The message was sent. */
+    const val SENT = "sent"
+
+    /** The message could not be sent. */
+    const val FAILED = "failed"
+}
+
+/** Two-factor method types returned by `GET /users/self/mfa`. */
+object MfaMethodType {
+    /** Authenticator app (RFC 6238 time-based one-time password). */
+    const val TOTP = "totp"
+}

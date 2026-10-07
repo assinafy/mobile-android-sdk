@@ -5,6 +5,7 @@ import com.assinafy.sdk.exceptions.ValidationException
 /**
  * Filters accepted by `GET /accounts/{accountId}/webhooks`.
  *
+ * @property endpointId Only deliveries to this webhook endpoint.
  * @property event Exact event identifier to include.
  * @property delivered Whether to include successful or failed delivery attempts.
  * @property from Inclusive minimum Unix timestamp.
@@ -13,6 +14,7 @@ import com.assinafy.sdk.exceptions.ValidationException
  * @property perPage Records per page from 1 through 100, sent as `per-page`.
  */
 data class WebhookDispatchParams(
+    val endpointId: String? = null,
     val event: String? = null,
     val delivered: Boolean? = null,
     val from: Long? = null,
@@ -29,6 +31,7 @@ data class WebhookDispatchParams(
             throw ValidationException("Webhook dispatch per-page must be between 1 and 100")
         }
         return buildMap {
+            endpointId?.trim()?.takeIf(String::isNotEmpty)?.let { put("endpoint_id", it) }
             event?.trim()?.takeIf(String::isNotEmpty)?.let { put("event", it) }
             delivered?.let { put("delivered", it) }
             from?.let { put("from", it) }

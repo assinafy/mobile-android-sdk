@@ -33,6 +33,7 @@ data class UploadAndRequestSignaturesRequest(
      * @property whatsappPhoneNumber Optional WhatsApp destination.
      * @property cpf Legacy CPF value retained for older API deployments.
      * @property metadata Legacy signer metadata retained for older API deployments.
+     * @property governmentId Optional CPF or CNPJ; formatting is accepted.
      */
     data class SignerEntry(
         val name: String,
@@ -40,6 +41,7 @@ data class UploadAndRequestSignaturesRequest(
         val whatsappPhoneNumber: String? = null,
         val cpf: String? = null,
         val metadata: Map<String, Any>? = null,
+        val governmentId: String? = null,
     )
 
     /** Compares file bytes by content and all remaining workflow inputs by value. */

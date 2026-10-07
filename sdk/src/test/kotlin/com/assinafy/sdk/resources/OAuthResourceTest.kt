@@ -10,7 +10,7 @@ import com.assinafy.sdk.oauth.OAuthConfig
 import com.assinafy.sdk.oauth.OAuthException
 import com.assinafy.sdk.oauth.OAuthScope
 import com.assinafy.sdk.oauth.PkcePair
-import com.assinafy.sdk.oauth.base64UrlNoPadding
+import com.assinafy.sdk.util.Base64Codec
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.assertj.core.api.Assertions.assertThat
@@ -95,15 +95,15 @@ class OAuthResourceTest {
         val verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         val digest = MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII))
 
-        assertThat(base64UrlNoPadding(digest)).isEqualTo("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        assertThat(Base64Codec.encodeUrlNoPadding(digest)).isEqualTo("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
     }
 
     @Test
     fun `base64url encoding handles every remainder length without padding`() {
-        assertThat(base64UrlNoPadding(byteArrayOf(0xFB.toByte()))).isEqualTo("-w")
-        assertThat(base64UrlNoPadding(byteArrayOf(0xFB.toByte(), 0xF0.toByte()))).isEqualTo("-_A")
-        assertThat(base64UrlNoPadding(byteArrayOf(0xFB.toByte(), 0xF0.toByte(), 0x00))).isEqualTo("-_AA")
-        assertThat(base64UrlNoPadding(ByteArray(0))).isEmpty()
+        assertThat(Base64Codec.encodeUrlNoPadding(byteArrayOf(0xFB.toByte()))).isEqualTo("-w")
+        assertThat(Base64Codec.encodeUrlNoPadding(byteArrayOf(0xFB.toByte(), 0xF0.toByte()))).isEqualTo("-_A")
+        assertThat(Base64Codec.encodeUrlNoPadding(byteArrayOf(0xFB.toByte(), 0xF0.toByte(), 0x00))).isEqualTo("-_AA")
+        assertThat(Base64Codec.encodeUrlNoPadding(ByteArray(0))).isEmpty()
     }
 
     @Test
@@ -113,7 +113,7 @@ class OAuthResourceTest {
         assertThat(pair.codeVerifier).hasSize(64).matches("[A-Za-z0-9\\-._~]+")
         assertThat(pair.codeChallengeMethod).isEqualTo("S256")
         val expected = MessageDigest.getInstance("SHA-256").digest(pair.codeVerifier.toByteArray(Charsets.US_ASCII))
-        assertThat(pair.codeChallenge).isEqualTo(base64UrlNoPadding(expected))
+        assertThat(pair.codeChallenge).isEqualTo(Base64Codec.encodeUrlNoPadding(expected))
         assertThat(pair.codeChallenge).doesNotContain("=").doesNotContain("+").doesNotContain("/")
         assertThat(PkcePair.generate().codeVerifier).isNotEqualTo(pair.codeVerifier)
     }

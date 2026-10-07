@@ -133,16 +133,35 @@ deployments may still require tag names on the same routes.
 
 | Kotlin function | Exact request | JSON body | Return (`data`) |
 |---|---|---|---|
-| `login(LoginRequest)` | `POST /v1/login` (public) | `{"email":string,"password":string}` | `AuthenticationSession` |
+| `login(LoginRequest)` | `POST /v1/login` (public) | `{"email":string,"password":string}` | `AuthenticationSession`; throws `MfaRequiredException` when a second factor is required |
 | `requestPasswordReset(RequestPasswordResetRequest)` | `PUT /v1/authentication/request-password-reset` (public) | `{"email":string}` | `AuthenticationEmailResponse` |
 | `resetPassword(ResetPasswordRequest)` | `PUT /v1/authentication/reset-password` (public) | `{"email":string,"new_password":string,"token":string?}` | `AuthenticationEmailResponse` |
 | `changePassword(ChangePasswordRequest)` | `PUT /v1/authentication/change-password` | `{"email":string,"password":string,"new_password":string}` | `AuthenticationEmailResponse` |
-| `socialLogin(SocialLoginRequest)` | `POST /v1/authentication/social-login` (public) | `{"provider":"google","token":string,"has_accepted_terms":boolean}` | `AuthenticationSession` |
+| `socialLogin(SocialLoginRequest)` | `POST /v1/authentication/social-login` (public) | `{"provider":"google","token":string,"has_accepted_terms":boolean}` | `AuthenticationSession`; throws `MfaRequiredException` when a second factor is required |
 | `linkSocialLogin(LinkSocialLoginRequest)` | `POST /v1/auth/link-social-login` | `{"provider":"google","token":string}` | `Unit` |
 | `getApiKey()` | `GET /v1/users/api-keys` | none | `ApiKeyResponse?` (`api_key` may also be null) |
 | `createApiKey(CreateApiKeyRequest)` | `POST /v1/users/api-keys` | `{"password":string}` | `ApiKeyResponse` containing the newly generated key |
 | `deleteApiKey()` | `DELETE /v1/users/api-keys` | none | `Unit` |
+| `verifyMfa(MfaVerifyRequest)` | `POST /v1/authentication/mfa/verify` (public) | `{"mfa_token":string,"code":string}` | `AuthenticationSession` |
+| `listMfaMethods()` | `GET /v1/users/self/mfa` | none | `MfaStatus` |
+| `startTotpEnrollment(label)` | `POST /v1/users/self/mfa/totp` | `{"label":string?}` | `TotpEnrollment` (secret shown once) |
+| `confirmTotpEnrollment(ConfirmTotpRequest)` | `PUT /v1/users/self/mfa/totp/confirm` | `{"id":string,"code":string,"password":string?,"reauth_code":string?}` | `MfaRecoveryCodes` (shown once) |
+| `regenerateRecoveryCodes(MfaReauthRequest)` | `POST /v1/users/self/mfa/recovery-codes` | `{"password":string?,"code":string?}`; one is required | `MfaRecoveryCodes` |
+| `removeMfaMethod(methodId, MfaReauthRequest)` | `DELETE /v1/users/self/mfa/{customId}` | `{"password":string?,"code":string?}`; one is required | `MfaRemoval` |
 
+A user with two-factor authentication enabled gets no session from `login` or `socialLogin`: the SDK
+throws `MfaRequiredException`, whose `mfaToken` is a single-use challenge valid for five minutes.
+Pass it with the user's authenticator or recovery code to `verifyMfa`:
+
+```kotlin
+val session = try {
+    client.authentication.login(LoginRequest(email, password))
+} catch (e: MfaRequiredException) {
+    client.authentication.verifyMfa(MfaVerifyRequest(e.mfaToken, codeFromUser))
+}
+```
+
+Confirming a second authenticator replaces the first and then needs `password` or `reauth_code`.
 Creating an API key rotates the previous key; deletion revokes it. Password reset/change and API-key
 rotation are state-changing security operations and should never be used as health checks.
 
@@ -205,7 +224,7 @@ when `openid` was granted. `scope` reports what was actually granted, and never 
 | `OAuthConfig(clientId, redirectUri, scopes, clientSecret, authorizationServerUrl, resource)` | The registered application. `authorizationServerUrl` defaults to `https://auth.assinafy.com.br`; `resource` defaults to the client's base-URL origin. `clientSecret` is deprecated and must stay `null` (a non-null value is rejected, never sent); `toString()` redacts it. |
 | `PkcePair(codeVerifier, codeChallenge, codeChallengeMethod)` | `PkcePair.generate(verifierLength = 64)` draws the verifier from the RFC 7636 unreserved alphabet (43-128 characters) and sets `codeChallenge` to unpadded base64url SHA-256 of it. `toString()` redacts the verifier. |
 | `AuthorizationRequest(url, state, pkce)` | What to open, and what to keep in session until the redirect returns. |
-| `OAuthTokens(accessToken, tokenType, expiresIn, refreshToken, scope, idToken)` | Adds `scopes: List<String>` and `hasScope(name)`. `toString()` redacts every token. |
+| `OAuthTokens(accessToken, tokenType, expiresIn, refreshToken, scope, idToken, issuedTokenType)` | Adds `scopes: List<String>` and `hasScope(name)`. `toString()` redacts every token. |
 | `UserInfo(sub, name, email, emailVerified)` | OpenID Connect claims; only `sub` is always present. |
 | `ProtectedResourceMetadata(resource, authorizationServers, scopesSupported, bearerMethodsSupported)` | RFC 9728 document. Only `resource` is required by the RFC, so the rest are nullable; `authorizationServer` returns the first advertised issuer. |
 | `AuthorizationServerMetadata(issuer, authorizationEndpoint, tokenEndpoint, revocationEndpoint, userinfoEndpoint, jwksUri, …)` | RFC 8414 document. Only `issuer`, `authorizationEndpoint` and `tokenEndpoint` are required by the RFC, so the rest are nullable. |
@@ -551,8 +570,20 @@ role, and each signer must already exist in the account.
 | `inactivate(accountId)` | `PUT /v1/accounts/{accountId}/webhooks/inactivate` | none | `WebhookSubscription` |
 | `listEventTypes()` | `GET /v1/webhooks/event-types` | none | `List<WebhookEventTypeInfo>` |
 | Deprecated `listDispatches(ListParams, accountId)` | `GET /v1/accounts/{accountId}/webhooks` | Optional `page`, `per-page`; other `ListParams` fields are ignored | `PaginatedResult<WebhookDispatch>` |
-| `listDispatches(WebhookDispatchParams, accountId)` | Same endpoint | Optional `event`, `delivered`, Unix-second `from`/`to`, `page`, `per-page` | `PaginatedResult<WebhookDispatch>` |
+| `listDispatches(WebhookDispatchParams, accountId)` | Same endpoint | Optional `endpoint_id`, `event`, `delivered`, Unix-second `from`/`to`, `page`, `per-page` | `PaginatedResult<WebhookDispatch>` |
 | `retryDispatch(dispatchId, accountId)` | `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry` | none | `WebhookDispatch` |
+| `listEndpoints(accountId)` | `GET /v1/accounts/{accountId}/webhooks/endpoints` | none | `List<WebhookEndpoint>`, oldest first |
+| `createEndpoint(CreateWebhookEndpointRequest, accountId)` | `POST /v1/accounts/{accountId}/webhooks/endpoints` | `{"url":string,"email":string,"events":[string],"name":string?,"is_active":boolean?,"signing_enabled":boolean?}` | `WebhookEndpoint`; 403 past the plan limit |
+| `getEndpoint(endpointId, accountId)` | `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | none | `WebhookEndpoint?`; null on 404 |
+| `updateEndpoint(endpointId, UpdateWebhookEndpointRequest, accountId)` | `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | Only supplied members of `{"url","email","events","name","is_active","signing_enabled"}`; at least one | `WebhookEndpoint` |
+| `deleteEndpoint(endpointId, accountId)` | `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | none | `Unit` |
+| `getEndpointSecret(endpointId, accountId)` | `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` (API key only) | none | `WebhookEndpointSecret`; 400 when signing is disabled |
+| `rotateEndpointSecret(endpointId, accountId)` | `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key only) | none | `WebhookEndpointSecret`; the old secret stops working at once |
+
+An account has 1 endpoint, or up to 3 on paid plans, and every active endpoint subscribed to an event
+receives it independently. `register`, `get` and `inactivate` act on the account's oldest endpoint;
+the `*Endpoint*` methods address each endpoint by ID. A `url` already used by another endpoint of the
+workspace answers `400`.
 
 If `events` is `null`, the SDK subscribes to `RegisterWebhookRequest.DEFAULT_EVENTS`. An explicit
 empty list is sent unchanged. Retrieve the server's current event catalog with `listEventTypes()` before
@@ -562,16 +593,40 @@ Assinafy delivers each event as an `application/json` HTTP `POST`; any `2xx` res
 failed event is attempted at most twice (the initial request and one retry after 3 seconds). After 10
 consecutive failed events, the circuit breaker pauses normal delivery and probes about 5% of events
 until one succeeds; `retryDispatch` forces another delivery. Dispatch history stores only the first
-2,000 characters of the endpoint response body. Use the payload `id` to deduplicate deliveries.
+2,000 characters of the endpoint response body. Deduplicate with the `webhook-id` header, identical
+on every attempt of the same event to the same endpoint.
 `subject` and `object` are polymorphic resource objects, and receivers should accept unknown fields as
 forward-compatible additions.
 
 ### WebhookVerifier
 
-`WebhookVerifier` is an optional server-side helper, not an assertion about Assinafy's delivery
-contract. `verify(payload: ByteArray|String, signature)` performs constant-time HMAC-SHA256 checking
-when `webhookSecret` is configured; it returns `false` without a configured secret.
-`extractEvent(payload: ByteArray|String)` parses `WebhookPayload?`. `getEventType(event)` returns
+`WebhookVerifier(webhookSecret)` is a server-side helper; it performs no request. Endpoints created
+with `signing_enabled: true` sign every delivery following
+[Standard Webhooks](https://www.standardwebhooks.com). Construct the verifier with the endpoint's
+`whsec_` secret from `getEndpointSecret` (the prefix is optional).
+
+`verifySignature(payload: ByteArray|String, webhookId, webhookTimestamp, webhookSignature,
+toleranceSeconds = DEFAULT_TOLERANCE_SECONDS, nowEpochSeconds = now)` computes HMAC-SHA256 over
+`{webhook-id}.{webhook-timestamp}.{raw body}` with the base64-decoded secret and returns `true` when
+any space-separated `v1,<base64>` entry matches in constant time and the timestamp is within the
+tolerance. It returns `false` for a missing header, a missing or malformed secret, a stale or future
+timestamp, or no matching signature. Pass the raw body bytes, never re-serialized JSON.
+
+| Constant | Value |
+|---|---|
+| `WebhookVerifier.HEADER_ID` | `webhook-id` |
+| `WebhookVerifier.HEADER_TIMESTAMP` | `webhook-timestamp` |
+| `WebhookVerifier.HEADER_SIGNATURE` | `webhook-signature` |
+| `WebhookVerifier.DEFAULT_TOLERANCE_SECONDS` | `300` |
+
+```kotlin
+val verifier = WebhookVerifier(endpointSecret)
+if (!verifier.verifySignature(rawBody, idHeader, timestampHeader, signatureHeader)) return respond(401)
+val event = verifier.extractEvent(rawBody)
+```
+
+The deprecated `verify(payload, signature)` checks a hex HMAC that Assinafy deliveries do not carry.
+`toString()` redacts the secret. `extractEvent(payload: ByteArray|String)` parses `WebhookPayload?`. `getEventType(event)` returns
 `event` then legacy `type`; `getEventData(event)` returns `payload` or an empty map. Never embed a
 webhook shared secret in an Android application.
 
@@ -592,7 +647,7 @@ webhook shared secret in an Android application.
 | `CreateApiKeyRequest` | `password:String` |
 | `CreateWorkspaceRequest` | `name:String`, `notification_sender_type:String?`; compatibility `primary_color:String?`, `secondary_color:String?` |
 | `UpdateWorkspaceRequest` | `name:String?`, `notification_sender_type:String?`; compatibility `primary_color:String?`, `secondary_color:String?` |
-| `CreateSignerRequest` | `full_name:String`, `email:String?`, `whatsapp_phone_number:String?`; deprecated compatibility `cpf:String?`, `metadata:Map?` |
+| `CreateSignerRequest` | `full_name:String`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?` (CPF or CNPJ; formatting accepted, normalized by the API); deprecated `cpf:String?` (sent as `government_id` when `governmentId` is null), `metadata:Map?` |
 | `UpdateSignerRequest` | `full_name:String?`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?`; deprecated compatibility `cpf:String?` |
 | `ConfirmSignerDataRequest` | `full_name:String?`, `email:String?`, `government_id:String?`; deprecated `whatsapp_phone_number` and `has_accepted_terms` are not sent by `signerDocuments.confirmData` |
 | `SignerReference` | `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?` (Email, WhatsApp, or both), `step:Int?` |
@@ -611,9 +666,14 @@ webhook shared secret in an Android application.
 | `DocumentStatsQuery` | query `granularity:DocumentStatsGranularity?` (`monthly` or `daily`), `month:String?` (`YYYY-MM`, required for daily) |
 | `UpdateNotificationPreferencesRequest` | Nullable booleans: `DocumentCompleted`, `SignerDeclined`, `DocumentCancelled`, `DocumentAboutToExpire`, `DocumentExpired`, `DocumentExpirationReset`, `DocumentProcessingFailed`, `TemplateProcessingFailed`, `SignerWhatsappFailed` |
 | `RegisterWebhookRequest` | `url:String`, `email:String`, `events:List<String>?`, `is_active:Boolean` |
-| `WebhookDispatchParams` | query `event:String?`, `delivered:Boolean?`, `from:Long?`, `to:Long?`, `page:Int?`, `per-page:Int?` |
+| `CreateWebhookEndpointRequest` | `url:String`, `email:String`, `events:List<String>` (nonempty), `name:String?`, `is_active:Boolean?`, `signing_enabled:Boolean?` |
+| `UpdateWebhookEndpointRequest` | `url:String?`, `email:String?`, `events:List<String>?`, `name:String?`, `is_active:Boolean?`, `signing_enabled:Boolean?`; only non-null members are sent |
+| `MfaVerifyRequest` | `mfa_token:String`, `code:String`; `toString()` redacts both |
+| `ConfirmTotpRequest` | `id:String`, `code:String`, `password:String?`, `reauth_code:String?`; `toString()` redacts secrets |
+| `MfaReauthRequest` | `password:String?`, `code:String?`; `toString()` redacts both |
+| `WebhookDispatchParams` | query `endpoint_id:String?`, `event:String?`, `delivered:Boolean?`, `from:Long?`, `to:Long?`, `page:Int?`, `per-page:Int?` |
 | `UploadAndRequestSignaturesRequest` | Local workflow: `fileData:ByteArray`, `fileName:String`, `signers:List<SignerEntry>`, `message:String?`, `metadata:Map?`, `waitForReady:Boolean`, `expiresAt:String?`, `copyReceivers:List<String>?` (signer IDs), `accountId:String?` |
-| `UploadAndRequestSignaturesRequest.SignerEntry` | `name:String`, `email:String`, `whatsappPhoneNumber:String?`, deprecated compatibility `cpf:String?`, `metadata:Map?` |
+| `UploadAndRequestSignaturesRequest.SignerEntry` | `name:String`, `email:String`, `whatsappPhoneNumber:String?`, `governmentId:String?`, deprecated compatibility `cpf:String?`, `metadata:Map?` |
 
 ## Response types
 
@@ -633,6 +693,11 @@ changing standard requests.
 | `AuthenticatedAccount` | `id:String`, `name:String`, `roles:List<String>`, `is_delete_allowed→isDeleteAllowed:Boolean`, `created_at→createdAt:String` |
 | `AuthenticationEmailResponse` | `email:String` |
 | `ApiKeyResponse` | `api_key→apiKey:String?` |
+| `MfaStatus` | `methods:List<MfaMethod>`, `recovery_codes_remaining→recoveryCodesRemaining:Int` |
+| `MfaMethod` | `id:String`, `type:String?`, `label:String?`, `confirmed_at→confirmedAt:String?`, `last_used_at→lastUsedAt:String?` |
+| `TotpEnrollment` | `id:String`, `secret:String`, `provisioning_uri→provisioningUri:String`; `toString()` redacts the secret and URI |
+| `MfaRecoveryCodes` | `recovery_codes→recoveryCodes:List<String>`; `toString()` redacts the codes |
+| `MfaRemoval` | `is_mfa_enabled→isMfaEnabled:Boolean` |
 | `Workspace` / `WorkspaceListItem` | `resource:String?`, `id:String`, `name:String`, `primary_color→primaryColor:String?`, `secondary_color→secondaryColor:String?`, `notification_sender_type→notificationSenderType:String?`, `is_delete_allowed→isDeleteAllowed:Boolean?`, `roles:List<String>?`, `created_at→createdAt:String?` |
 | `AccountTheme` | `account_name→accountName:String?`, `primary_color→primaryColor:String?`, `secondary_color→secondaryColor:String?`, `logo:String?` |
 
@@ -653,7 +718,7 @@ changing standard requests.
 | `AssignmentSummary` | `signer_count→signerCount:Int`, `completed_count→completedCount:Int`, `signers:List<Signer>` |
 | `SigningUrl` | `signer_id→signerId:String`, `url:String` |
 | `Signer` | `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, legacy `cpf:String?`, deployed response `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, legacy `metadata:Map<String,Any>?`; assignment expansions `completed:Boolean?`, `verification_method→verificationMethod:String?`, `notification_methods→notificationMethods:List<String>?`, `step:Int?`, `notified:Boolean?`, `notification_history→notificationHistory:List<NotificationHistoryEntry>?`; signer-self expansions `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?`; `resource:String?` |
-| `SignerSelf` | `resource:String?`, `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?` |
+| `SignerSelf` | `resource:String?`, `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?` |
 | `NotificationHistoryEntry` | `event:String?`, `status:String?`, `error_code→errorCode:String?`, `error_message→errorMessage:String?`, `sent_at→sentAt:String?`, `failed_at→failedAt:String?` |
 | `ResendEmailResponse` | `is_sent→isSent:Boolean?`, `document_id→documentId:String?`, `signer_id→signerId:String?` |
 | `WhatsappNotification` | `sent_at→sentAt:Long?`, `header:String?`, `body:String?`, `buttons:List<WhatsappNotificationButton>`, `phone_number→phoneNumber:String?`, `signer_id→signerId:String?` |
@@ -687,7 +752,9 @@ because their JSON shapes vary by assignment and field type.
 | `NotificationPreferences` | Nine required `Boolean` fields: `DocumentCompleted`, `SignerDeclined`, `DocumentCancelled`, `DocumentAboutToExpire`, `DocumentExpired`, `DocumentExpirationReset`, `DocumentProcessingFailed`, `TemplateProcessingFailed`, `SignerWhatsappFailed` |
 | `WebhookSubscription` | `url:String?`, `email:String?`, `events:List<String>`, `is_active→isActive:Boolean`, `updated_at→updatedAt:String?` |
 | `WebhookEventTypeInfo` | `id:String`, `description:String?` |
-| `WebhookDispatch` | `resource:String?`, `id:String`, `event:String`, `activity_id→activityId:Long?`, `endpoint:String?`, `payload:Map<String,Any>?`, `delivered:Boolean`, `http_status→httpStatus:Int?`, `response_body→responseBody:String?`, `error:String?`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?` |
+| `WebhookEndpoint` | `id:String`, `name:String?`, `url:String`, `email:String?`, `events:List<String>`, `is_active→isActive:Boolean`, `signing_enabled→signingEnabled:Boolean`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?` |
+| `WebhookEndpointSecret` | `secret:String` (`whsec_` + base64 key); `toString()` redacts it |
+| `WebhookDispatch` | `resource:String?`, `id:String`, `event:String`, `activity_id→activityId:Long?`, `endpoint_id→endpointId:String?` (null once the endpoint is deleted), `endpoint:String?`, `payload:Map<String,Any>?`, `delivered:Boolean`, `http_status→httpStatus:Int?`, `response_body→responseBody:String?`, `error:String?`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?` |
 | `WebhookPayload` | `id:Long?`, `event:String?`, compatibility `type:String?`, `message:String?`, `payload:Map<String,Any>?`, `subject:Map<String,Any>?`, `object→obj:Map<String,Any>?`, `origin:Map<String,Any>?`, `created_at→createdAt:Long?`, `account_id→accountId:String?` |
 | `PaginatedResult<T>` | Local `data:List<T>`, `meta:PaginationMeta?` |
 | `PaginationMeta` | Local `currentPage:Int?`, `lastPage:Int?`, `perPage:Int?`, `total:Int?` populated from headers |
@@ -717,6 +784,11 @@ channel. The verification counters partition `signature_requests` and therefore 
 - `DocumentStatus.READY`: `metadata_ready`, `pending_signature`, `certificating`, `certificated`.
 - `DocumentStatus.FAILED`: `failed`, `rejected_by_signer`, `rejected_by_user`, `expired`.
 - `SocialLoginProvider.GOOGLE`: `google`.
+- `NotificationSenderType`: `USER` (`User`) and `ACCOUNT` (`Account`), for `notification_sender_type`.
+- `CostBlockingReason`: `PENDING_PAYMENT` (`PendingPayment`), `INSUFFICIENT_DOCUMENTS`
+  (`InsufficientDocuments`), `INSUFFICIENT_CREDITS` (`InsufficientCredits`), for `CostEstimate.blockingReason`.
+- `NotificationDeliveryStatus`: `SENT` (`sent`) and `FAILED` (`failed`), for `NotificationHistoryEntry.status`.
+- `MfaMethodType.TOTP`: `totp`, for `MfaMethod.type`.
 - `DocumentStatsGranularity`: `MONTHLY` (`monthly`) and `DAILY` (`daily`).
 - `Logger.NONE`: no-op logger used by default.
 - `RegisterWebhookRequest.DEFAULT_EVENTS`: `document_ready`, `document_prepared`,
@@ -1166,6 +1238,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+When two-factor authentication is enabled, `data` is `{"mfa_token": "<redacted-value>"}` and the SDK
+throws `MfaRequiredException`.
+
 ### `authentication.requestPasswordReset`
 
 `PUT /v1/authentication/request-password-reset`
@@ -1322,6 +1397,136 @@ Request body: none.
 Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
 ```json
 []
+```
+
+### `authentication.verifyMfa`
+
+`POST /v1/authentication/mfa/verify` (no credential)
+
+Parameters: none.
+
+Request body (`application/json`):
+```json
+{
+  "mfa_token": "<redacted-value>",
+  "code": "123456"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "access_token": "<redacted-value>",
+  "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
+  "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+}
+```
+
+An expired, used or over-tried challenge answers `401`.
+
+### `authentication.listMfaMethods`
+
+`GET /v1/users/self/mfa`
+
+Parameters: none.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "methods": [
+    {"id": "id-placeholder", "type": "totp", "label": "Phone", "confirmed_at": "2026-01-01T00:00:00Z", "last_used_at": "2026-01-01T00:00:00Z"}
+  ],
+  "recovery_codes_remaining": 10
+}
+```
+
+### `authentication.startTotpEnrollment`
+
+`POST /v1/users/self/mfa/totp`
+
+Parameters: none.
+
+Request body (`application/json`; `label` is optional, `{}` when omitted):
+```json
+{
+  "label": "Phone"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); the secret is returned only once:
+```json
+{
+  "id": "id-placeholder",
+  "secret": "<redacted-value>",
+  "provisioning_uri": "otpauth://totp/Assinafy:person%40example.com?secret=<redacted-value>&issuer=Assinafy"
+}
+```
+
+### `authentication.confirmTotpEnrollment`
+
+`PUT /v1/users/self/mfa/totp/confirm`
+
+Parameters: none.
+
+Request body (`application/json`; `password` and `reauth_code` only when replacing a confirmed method):
+```json
+{
+  "id": "id-placeholder",
+  "code": "123456",
+  "password": "<redacted-value>",
+  "reauth_code": "<redacted-value>"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); the codes are shown only once:
+```json
+{
+  "recovery_codes": ["ABCD-EFGH-JKMN"]
+}
+```
+
+### `authentication.regenerateRecoveryCodes`
+
+`POST /v1/users/self/mfa/recovery-codes`
+
+Parameters: none.
+
+Request body (`application/json`; send `password` or `code`):
+```json
+{
+  "password": "<redacted-value>",
+  "code": "123456"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "recovery_codes": ["ABCD-EFGH-JKMN"]
+}
+```
+
+### `authentication.removeMfaMethod`
+
+`DELETE /v1/users/self/mfa/{customId}`
+
+Parameters: `customId` (path, required; the `methodId` argument).
+
+Request body (`application/json`; send `password` or `code`):
+```json
+{
+  "password": "<redacted-value>",
+  "code": "123456"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "is_mfa_enabled": false
+}
 ```
 
 ### `documents.activities`
@@ -1988,7 +2193,8 @@ Request body (`application/json`; optional members may be omitted):
 {
   "full_name": "Example",
   "email": "person@example.com",
-  "whatsapp_phone_number": "+15555550100"
+  "whatsapp_phone_number": "+15555550100",
+  "government_id": "390.533.447-05"
 }
 ```
 
@@ -2081,6 +2287,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "full_name": "Example",
   "email": null,
   "whatsapp_phone_number": null,
+  "government_id": null,
   "has_accepted_terms": true,
   "has_signature": true,
   "has_initial": true,
@@ -2763,7 +2970,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 
 `GET /v1/accounts/{accountId}/webhooks`
 
-Parameters: `accountId` (path, required), `event` (query, optional), `delivered` (query, optional), `from` (query, optional), `to` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Parameters: `accountId` (path, required), `endpoint_id` (query, optional), `event` (query, optional), `delivered` (query, optional), `from` (query, optional), `to` (query, optional), `page` (query, optional), `per-page` (query, optional).
 
 Request body: none.
 
@@ -2775,7 +2982,8 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "id": "id-placeholder",
     "event": "example",
     "activity_id": 1,
-    "endpoint": null,
+    "endpoint_id": "id-placeholder",
+    "endpoint": "https://example.com/webhooks/assinafy",
     "payload": {},
     "delivered": true,
     "http_status": 1,
@@ -2802,7 +3010,8 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "id": "id-placeholder",
   "event": "example",
   "activity_id": 1,
-  "endpoint": null,
+  "endpoint_id": "id-placeholder",
+  "endpoint": "https://example.com/webhooks/assinafy",
   "payload": {},
   "delivered": true,
   "http_status": 1,
@@ -2813,6 +3022,170 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+### `webhooks.listEndpoints`
+
+`GET /v1/accounts/{accountId}/webhooks/endpoints`
+
+Parameters: `accountId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`) is an array of endpoints, oldest first:
+```json
+[
+  {
+    "id": "id-placeholder",
+    "name": "ERP",
+    "url": "https://example.com/webhooks/assinafy",
+    "email": "ops@example.com",
+    "events": ["document_ready"],
+    "is_active": true,
+    "signing_enabled": true,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+### `webhooks.createEndpoint`
+
+`POST /v1/accounts/{accountId}/webhooks/endpoints`
+
+Parameters: `accountId` (path, required).
+
+Request body (`application/json`; `name`, `is_active` and `signing_enabled` are optional):
+```json
+{
+  "url": "https://example.com/webhooks/assinafy",
+  "email": "ops@example.com",
+  "events": ["document_ready", "signer_signed_document"],
+  "name": "ERP",
+  "is_active": true,
+  "signing_enabled": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "id-placeholder",
+  "name": "ERP",
+  "url": "https://example.com/webhooks/assinafy",
+  "email": "ops@example.com",
+  "events": ["document_ready", "signer_signed_document"],
+  "is_active": true,
+  "signing_enabled": true,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+Past the plan's endpoint limit the API answers `403`; a `url` already used in the workspace answers `400`.
+
+### `webhooks.getEndpoint`
+
+`GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+
+Parameters: `accountId` (path, required), `endpointId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "id-placeholder",
+  "name": "ERP",
+  "url": "https://example.com/webhooks/assinafy",
+  "email": "ops@example.com",
+  "events": ["document_ready", "signer_signed_document"],
+  "is_active": true,
+  "signing_enabled": true,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### `webhooks.updateEndpoint`
+
+`PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+
+Parameters: `accountId` (path, required), `endpointId` (path, required).
+
+Request body (`application/json`; every member optional, at least one required):
+```json
+{
+  "url": "https://example.com/webhooks/assinafy",
+  "email": "ops@example.com",
+  "events": ["document_ready"],
+  "name": "ERP",
+  "is_active": false,
+  "signing_enabled": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "id-placeholder",
+  "name": "ERP",
+  "url": "https://example.com/webhooks/assinafy",
+  "email": "ops@example.com",
+  "events": ["document_ready", "signer_signed_document"],
+  "is_active": true,
+  "signing_enabled": true,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+`signing_enabled: true` generates a secret when the endpoint has none and keeps it otherwise; `false` discards it.
+
+### `webhooks.deleteEndpoint`
+
+`DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+
+Parameters: `accountId` (path, required), `endpointId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+[]
+```
+
+### `webhooks.getEndpointSecret`
+
+`GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` (API key; not available to OAuth applications)
+
+Parameters: `accountId` (path, required), `endpointId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "secret": "whsec_<base64-key>"
+}
+```
+
+Answers `400` when signing is disabled.
+
+### `webhooks.rotateEndpointSecret`
+
+`POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key; not available to OAuth applications)
+
+Parameters: `accountId` (path, required), `endpointId` (path, required).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "secret": "whsec_<base64-key>"
+}
+```
+
+The previous secret stops working immediately. Answers `400` when signing is disabled.
 
 ## OAuth method payloads
 
