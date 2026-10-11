@@ -105,7 +105,7 @@ publishing {
             pom {
                 name.set("Assinafy Android SDK")
                 description.set("Kotlin client library for the Assinafy API")
-                url.set("https://github.com/assinafy/mobile-android-sdk")
+                url.set("https://www.assinafy.com.br")
                 licenses {
                     license {
                         name.set("MIT License")
@@ -118,7 +118,7 @@ publishing {
                         id.set("assinafy")
                         name.set("Assinafy")
                         organization.set("Assinafy")
-                        organizationUrl.set("https://assinafy.com.br")
+                        organizationUrl.set("https://www.assinafy.com.br")
                     }
                 }
                 scm {
