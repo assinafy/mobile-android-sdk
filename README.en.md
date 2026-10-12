@@ -65,7 +65,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.6.0-local-SNAPSHOT \
+  -Pversion=2.6.1-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -81,7 +81,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.6.0-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.6.1-local-SNAPSHOT")
 }
 ```
 
@@ -96,7 +96,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.6.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.6.1")
 }
 ```
 
@@ -607,7 +607,7 @@ put it in analytics.
 
 If a notification needs to go out again, `assignments.resendNotification` re-sends to one signer, and
 `assignments.estimateResendCost` prices that first. `assignments.resetExpiration` moves the deadline;
-passing `null` clears it where the deployment supports that.
+passing `null` sends `"expires_at": null` and clears it.
 
 ### Step 5 — Sign, as the signer
 
@@ -671,8 +671,8 @@ Notes on this flow:
 A signer who has not received their link can request a fresh one-time token for a public document:
 
 ```kotlin
-client.documents.sendToken(documentId, "ada@example.com")            // channel defaults to email
-client.documents.sendToken(documentId, "+5511999998888", "whatsapp") // recipient is the phone number
+val delivery = client.documents.sendAccessToken(documentId, "signer@example.com") // email only
+// delivery.channel == "email"; delivery.recipient; delivery.document (id, name, pageCount, createdBy)
 ```
 
 ### Step 6 — Track completion
@@ -928,6 +928,8 @@ do {
 
 HTTP 429 is retried at most twice, only for safe reads, honoring `Retry-After` and
 `X-Rate-Limit-Reset` up to a 30-second cap. Mutation requests are sent once, without redirects or automatic connection retries.
+A `429` that reaches the caller exposes `ApiException.retryAfter` (seconds) and `rateLimitLimit`,
+`rateLimitRemaining` and `rateLimitReset`.
 
 Five exception types cover every failure. Catch them at the application boundary:
 

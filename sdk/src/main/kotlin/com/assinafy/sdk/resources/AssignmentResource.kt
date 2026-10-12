@@ -187,20 +187,19 @@ class AssignmentResource internal constructor(
     }
 
     /**
-     * Sets a new expiration for an assignment. A non-blank [expiresAt] follows the current OpenAPI
-     * request exactly. Explicitly passing `null` or blank opts into deployed-service compatibility
-     * that clears the expiration entirely (the assignment will no longer expire).
+     * Sets a new expiration for an assignment, or removes it with `null` (the assignment then no
+     * longer expires). Not allowed once the document is closed.
      *
      * Wire request: `PUT /documents/{documentId}/assignments/{assignmentId}/reset-expiration` with
-     * exactly `{"expires_at":"..."}`. The compatibility clear request is
-     * `{"expires_at":null}`. The response `data` is the complete updated [Assignment].
+     * `{"expires_at":"..."}`, or `{"expires_at":null}` to clear; `expires_at` is required and always
+     * sent. The response `data` is the complete updated [Assignment].
      *
      * Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration`.
      *
-     * Request body (`application/json`; optional members may be omitted):
+     * Request body (`application/json`; `expires_at` required, nullable):
      * ```json
      * {
-     *   "expires_at": "2026-01-01T00:00:00Z"
+     *   "expires_at": "2026-12-31T23:59:59Z"
      * }
      * ```
      *
@@ -223,9 +222,10 @@ class AssignmentResource internal constructor(
      *
      * @param documentId Stable document identifier.
      * @param assignmentId Stable assignment identifier.
-     * @param expiresAt Replacement ISO-8601 expiration, or explicit compatibility `null`/blank to clear it.
+     * @param expiresAt Replacement ISO-8601 expiration at least one hour ahead, or `null` to remove
+     * the expiration (sent as `{"expires_at":null}`; the key is always present).
      * @return Complete updated assignment.
-     * @throws ValidationException if either identifier is blank.
+     * @throws ValidationException if either identifier is blank, or [expiresAt] is blank.
      */
     suspend fun resetExpiration(documentId: String, assignmentId: String, expiresAt: String?): Assignment {
         val docId = requireId(documentId, "Document ID")
@@ -233,7 +233,7 @@ class AssignmentResource internal constructor(
         return call("Failed to update assignment expiration", Assignment::class.java) {
             http.put(
                 "/documents/${pathSegment(docId)}/assignments/${pathSegment(asgId)}/reset-expiration",
-                toJsonAllowNulls(mapOf("expires_at" to expiresAt?.trim()?.takeIf { it.isNotEmpty() })),
+                toJsonAllowNulls(mapOf("expires_at" to expiresAt?.let { requireId(it, "Expiration date") })),
             )
         }
     }

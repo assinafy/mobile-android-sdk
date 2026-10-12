@@ -272,14 +272,23 @@ class AssignmentResourceTest {
     }
 
     @Test
-    fun `resetExpiration explicit null opts into deployed clear compatibility`() = runTest {
+    fun `resetExpiration null sends an explicit JSON null to clear the expiration`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(successResponse(assignmentJson))
 
         AssignmentResource(mock, "acc").resetExpiration("doc-1", "asg-1", null)
 
-        // The frozen OpenAPI documents only a date-time; deployed services accept explicit null to clear it.
+        assertThat(mock.lastCall().method).isEqualTo("PUT")
         assertThat(mock.lastCall().body).isEqualTo("""{"expires_at":null}""")
+    }
+
+    @Test
+    fun `resetExpiration rejects a blank date instead of clearing`() = runTest {
+        val mock = MockApiHttpClient()
+
+        assertThatThrownBy { runBlocking { AssignmentResource(mock, "acc").resetExpiration("doc-1", "asg-1", "  ") } }
+            .isInstanceOf(ValidationException::class.java)
+        assertThat(mock.calls).isEmpty()
     }
 
     @Test

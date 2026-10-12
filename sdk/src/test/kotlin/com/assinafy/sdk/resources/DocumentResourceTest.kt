@@ -18,6 +18,9 @@ class DocumentResourceTest {
     private val docUploadJson = """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"metadata_ready","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false,"decline_reason":null,"declined_by":null}"""
     private val docDetailsJson = """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"metadata_ready","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false}"""
 
+    private val tokenDelivery =
+        """{"document":{"resource":"document","id":"doc-1","name":"Agreement.pdf","page_count":3,"created_by":"Sender Name"},"channel":"email","recipient":"signer@example.com"}"""
+
     private fun successResponse(data: String) = HttpRawResponse(200, """{"status":200,"data":$data}""", emptyMap())
 
     @Test
@@ -370,46 +373,48 @@ class DocumentResourceTest {
         val authenticated = MockApiHttpClient()
         val public = MockApiHttpClient()
         public.enqueue(successResponse("""{"id":"doc-1","name":"Agreement.pdf","page_count":1}"""))
-        public.enqueue(HttpRawResponse(200, """{"status":200,"message":"sent"}""", emptyMap()))
+        public.enqueue(successResponse(tokenDelivery))
         val resource = DocumentResource(authenticated, "acc", publicHttp = public)
 
         assertThat(resource.getPublic("doc-1").pageCount?.toInt()).isEqualTo(1)
-        resource.sendToken("doc-1", "recipient@example.com")
+        resource.sendAccessToken("doc-1", "signer@example.com")
 
         assertThat(authenticated.calls).isEmpty()
         assertThat(public.calls.map { it.path }).containsExactly(
             "/public/documents/doc-1",
             "/public/documents/doc-1/send-token",
         )
-        assertThat(public.lastCall().body)
-            .isEqualTo("""{"recipient":"recipient@example.com","channel":"email"}""")
     }
 
     @Test
-    fun `send token defaults to the email channel in a single request`() = runTest {
-        val public = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200}""", emptyMap()))
+    fun `send access token sends channel and recipient and returns the delivery`() = runTest {
+        val public = MockApiHttpClient(defaultResponse = successResponse(tokenDelivery))
 
-        DocumentResource(MockApiHttpClient(), "acc", publicHttp = public).sendToken("doc-1", "recipient@example.com")
+        val delivery = DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
+            .sendAccessToken("doc-1", " signer@example.com ")
 
-        assertThat(public.calls.map { it.body }).containsExactly(
-            """{"recipient":"recipient@example.com","channel":"email"}""",
-        )
+        assertThat(public.lastCall().method).isEqualTo("PUT")
+        assertThat(public.lastCall().body).isEqualTo("""{"channel":"email","recipient":"signer@example.com"}""")
+        assertThat(delivery.channel).isEqualTo("email")
+        assertThat(delivery.recipient).isEqualTo("signer@example.com")
+        assertThat(delivery.document.id).isEqualTo("doc-1")
+        assertThat(delivery.document.pageCount?.toInt()).isEqualTo(3)
+        assertThat(delivery.document.createdBy).isEqualTo("Sender Name")
     }
 
+    @Suppress("DEPRECATION")
     @Test
-    fun `send token sends the recipient and channel the API requires`() = runTest {
-        val public = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200}""", emptyMap()))
+    fun `deprecated send token sends the same email body`() = runTest {
+        val public = MockApiHttpClient(defaultResponse = successResponse(tokenDelivery))
         val resource = DocumentResource(MockApiHttpClient(), "acc", publicHttp = public)
 
-        resource.sendToken("doc-1", "recipient@example.com", "email")
-        resource.sendToken("doc-1", "+5511999998888", "whatsapp")
+        resource.sendToken("doc-1", "signer@example.com")
+        resource.sendToken("doc-1", "signer@example.com", "email")
 
-        assertThat(public.calls.map { it.body }).containsExactly(
-            """{"recipient":"recipient@example.com","channel":"email"}""",
-            """{"recipient":"+5511999998888","channel":"whatsapp"}""",
-        )
+        assertThat(public.calls.map { it.body }).containsOnly("""{"channel":"email","recipient":"signer@example.com"}""")
     }
 
+    @Suppress("DEPRECATION")
     @Test
     fun `send token rejects a missing recipient or unsupported channel before any request`() = runTest {
         val public = MockApiHttpClient()
@@ -418,12 +423,14 @@ class DocumentResourceTest {
         assertThatThrownBy { runBlocking { resource.sendToken("doc-1") } }
             .isInstanceOf(ValidationException::class.java)
             .hasMessageContaining("Token recipient is required")
-        assertThatThrownBy { runBlocking { resource.sendToken("doc-1", "recipient@example.com", "sms") } }
+        assertThatThrownBy { runBlocking { resource.sendToken("doc-1", "+5511999998888", "whatsapp") } }
             .isInstanceOf(ValidationException::class.java)
-            .hasMessageContaining("Token channel must be email or whatsapp")
-        assertThatThrownBy { runBlocking { resource.sendToken("doc-1", "not-an-email") } }
+            .hasMessageContaining("Token channel must be email")
+        assertThatThrownBy { runBlocking { resource.sendAccessToken("doc-1", "not-an-email") } }
             .isInstanceOf(ValidationException::class.java)
             .hasMessageContaining("Invalid email address")
+        assertThatThrownBy { runBlocking { resource.sendAccessToken(" ", "signer@example.com") } }
+            .isInstanceOf(ValidationException::class.java)
 
         assertThat(public.calls).isEmpty()
     }

@@ -8,7 +8,7 @@ import com.google.gson.annotations.SerializedName
  * @property fullName Replacement full name.
  * @property email Replacement email address.
  * @property whatsappPhoneNumber Replacement WhatsApp number.
- * @property cpf Legacy CPF field retained for older deployments.
+ * @property cpf Legacy CPF; sent as `government_id` when [governmentId] is null.
  * @property governmentId Current government-issued CPF or CNPJ identifier.
  */
 data class UpdateSignerRequest(

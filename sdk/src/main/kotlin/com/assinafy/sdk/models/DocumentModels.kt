@@ -205,3 +205,25 @@ data class DocumentStatusInfo(
     @SerializedName("code") val code: String,
     @SerializedName("deletable") val deletable: Boolean? = null,
 )
+
+/**
+ * Result of `PUT /v1/public/documents/{documentId}/send-token`: where the one-time access token went.
+ *
+ * Wire `data`:
+ * ```json
+ * {
+ *   "document": { "resource": "document", "id": "doc-id", "name": "Agreement.pdf", "page_count": 3, "created_by": "Sender Name" },
+ *   "channel": "email",
+ *   "recipient": "signer@example.com"
+ * }
+ * ```
+ *
+ * @property document The public document projection (`resource`, `id`, `name`, `page_count`, `created_by`).
+ * @property channel Delivery channel; always `email`.
+ * @property recipient The signer address the token was sent to.
+ */
+data class AccessTokenDelivery(
+    @SerializedName("document") val document: PublicDocumentInfo,
+    @SerializedName("channel") val channel: String,
+    @SerializedName("recipient") val recipient: String,
+)

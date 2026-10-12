@@ -65,7 +65,7 @@ Failures are:
 | Exception | Meaning |
 |---|---|
 | `ValidationException` | A local required-field, format, range, file, or configuration check failed. No request is sent. |
-| `ApiException` | HTTP or envelope status was not 2xx. Inspect `statusCode`, `responseData`, and `challenge` (the parsed `WWW-Authenticate: Bearer` challenge, if any); do not branch on human-readable text, and redact response data before logging because servers can echo sensitive input. |
+| `ApiException` | HTTP or envelope status was not 2xx. Inspect `statusCode`, `responseData`, and `challenge` (the parsed `WWW-Authenticate: Bearer` challenge, if any); do not branch on human-readable text, and redact response data before logging because servers can echo sensitive input. A `429` also carries `retryAfter` (`Retry-After`, seconds) and `rateLimitLimit`, `rateLimitRemaining`, `rateLimitReset` (`X-Rate-Limit-*`); each is `null` when the header was absent. |
 | `NetworkException` | DNS, TLS, connection, timeout, or response-read failure. |
 | `OAuthException` | An OAuth endpoint or authorization redirect reported a flat `{error, error_description}` failure. Branch on `error`, never on message text. |
 | `AssinafyException` | Common SDK base exception and response-decoding failures. |
@@ -288,8 +288,10 @@ and deletes the workspace immediately.
 | `createFromTemplate(templateId, signers, options, accountId)` | `POST /v1/accounts/{accountId}/templates/{templateId}/documents` | `CreateDocumentFromTemplateRequest`; function `signers` replaces `options.signers` | `DocumentDetails` |
 | `estimateCostFromTemplate(templateId, signers, accountId)` | `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `{"signers":[{"role_id":string,"verification_method":string?,"notification_methods":[string]?}]}` | `CostEstimate` |
 | `verify(hash)` | `GET /v1/documents/{documentSignatureHash}/verify` (public) | none | `DocumentVerification` |
-| `getPublic(documentId)` | `GET /v1/public/documents/{documentId}` (public) | none | `PublicDocumentInfo` |
-| `sendToken(documentId, email?, channel?)` | `PUT /v1/public/documents/{documentId}/send-token` (public) | `{"recipient":string,"channel":"email"\|"whatsapp"}`; both keys are required by the service and `channel` defaults to `email` | `Unit` |
+| `getPublic(documentId)` | `GET /v1/public/documents/{documentId}` (public) | none | `AccessTokenDelivery` | `document:PublicDocumentInfo`, `channel:String`, `recipient:String` |
+| `PublicDocumentInfo` |
+| `sendAccessToken(documentId, email)` | `PUT /v1/public/documents/{documentId}/send-token` (public) | `{"channel":"email","recipient":string}`; both required; `recipient` is the signer's email | `AccessTokenDelivery` (`document`, `channel`, `recipient`) |
+| `sendToken(documentId, email?, channel?)` | Same request; deprecated | `email` required; `channel` must be `null` or `email` | `Unit` |
 | `isFullySigned(documentId)` | Calls `details` | local derivation | `true` when every signer is complete or status is `certificated`; does not guarantee the certificated artifact is ready during `certificating` |
 | `getSigningProgress(documentId)` | Calls `details` | local derivation | `SigningProgress` |
 | `getStatuses()` | `GET /v1/documents/statuses` | none | `List<DocumentStatusInfo>` |
@@ -312,10 +314,9 @@ the terminal `failed`, `rejected_by_signer`, `rejected_by_user`, and `expired` s
 `verify(hash)` always returns HTTP `200`. For an unknown hash or an unsigned document,
 `is_valid=false`, the other nullable certification details are null, and `message` explains why.
 
-`sendToken` diverges from the published OpenAPI schema, which shows an optional `{"email":...}` body.
-The deployed service rejects that body with `400` naming `channel`, then `recipient`, as missing, so
-the SDK always sends both keys. `email` is the recipient for the selected channel — an address on
-`email`, the signer's phone number on `whatsapp` — and only the address form is format-validated.
+`sendAccessToken` sends a one-time access token to a signer who has not signed yet, on a document
+pending signature. Only the `email` channel exists; the deprecated `sendToken` rejects any other
+channel before sending.
 
 The current OpenAPI multipart schema declares only `file`, which is exactly what the default
 `metadata=null` call sends. Supplying metadata explicitly opts into the deployed API's legacy `name`
@@ -369,9 +370,14 @@ current OpenAPI more precisely.
 | `verifyEmail(accessCode, verificationCode)` | `POST /v1/verify?signer-access-code=...` | `{"verification-code":string}` | Compatibility `Map<String,Any>` |
 | `uploadSignature(accessCode, type, imageData, contentType, reuse)` | `POST /v1/signature?signer-access-code=...&type=...&reuse=...` | Raw image body; current API specifies PNG | `Unit` |
 | `downloadSignature(accessCode, type)` | `GET /v1/signature/{type}?signer-access-code=...` | none | Raw `ByteArray` |
+| `listDocumentsAsWorkspace(signerId, ListParams)` | `GET /v1/signers/{signerId}/documents` with the workspace API key or bearer token | Query uses only `page`, `per-page` | `PaginatedResult<DocumentDetails>` |
+| `searchDocumentsAsWorkspace(signerId, search)` | `GET /v1/signers/{signerId}/documents/search` with the workspace API key or bearer token | `search` (omitted when blank) | `PaginatedResult<DocumentDetails>` |
 
-Deprecated `cpf`/`metadata` create fields and `cpf` update are sent only when explicitly set; they
-are not part of the current create-signer OpenAPI schema.
+The deprecated `cpf` field is sent as `government_id` on create and update; the deprecated `metadata`
+create field is sent only when explicitly set and is not part of the current create-signer schema.
+Every method that takes a signer access code rejects a blank code before any request and sends only
+that code, never the API key or bearer token. Workspace access to a signer's documents goes through
+the two `AsWorkspace` methods above.
 
 The service locks signer updates while verification is in progress. Changing an unverified email or
 WhatsApp number rotates the signer access and OTP codes; resend the notification before continuing.
@@ -428,7 +434,7 @@ paths, authentication, requests, or responses; the SDK therefore does not expose
 | `list(ListParams, accountId)` | `GET /v1/assignments` | Optional `page`, `per-page`; explicitly passing `accountId` opts into the deployed-service compatibility `accountId` query | `PaginatedResult<Assignment>` |
 | `create(documentId, CreateAssignmentRequest)` | `POST /v1/documents/{documentId}/assignments` | Full assignment request below | `Assignment` |
 | `estimateCost(documentId, CreateAssignmentRequest)` | `POST /v1/documents/{documentId}/assignments/estimate-cost` | Projected `method`, `signers`, and `entries`; signer IDs/steps omitted | `CostEstimate` |
-| `resetExpiration(documentId, assignmentId, expiresAt)` | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration` | `{"expires_at":string}`; explicit null/blank opts into deployed clear compatibility `{"expires_at":null}` | `Assignment` |
+| `resetExpiration(documentId, assignmentId, expiresAt)` | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration` | `{"expires_at":string}`, or `{"expires_at":null}` for `null` to remove the expiration; a blank string is rejected | `Assignment` |
 | `decline(documentId, assignmentId, accessCode, reason)` | Compatibility alias for signer reject | `{"decline_reason":string}` and signer query code | `Unit` |
 | `listWhatsappNotifications(documentId, assignmentId)` | `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications` | none | `List<WhatsappNotification>` |
 | `resendNotification(documentId, assignmentId, signerId, channel?)` | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend` | none; optional deployed-service `{"channel":"email"\|"whatsapp"}` | `ResendEmailResponse` |
@@ -1169,10 +1175,10 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 
 Parameters: `documentId` (path, required), `assignmentId` (path, required).
 
-Request body (`application/json`; optional members may be omitted):
+Request body (`application/json`; `expires_at` required and nullable — `null` removes the expiration):
 ```json
 {
-  "expires_at": "2026-01-01T00:00:00Z"
+  "expires_at": "2026-12-31T23:59:59Z"
 }
 ```
 
@@ -2632,25 +2638,26 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
-### `documents.sendToken`
+### `documents.sendAccessToken`
 
-`PUT /v1/public/documents/{documentId}/send-token`
+`PUT /v1/public/documents/{documentId}/send-token` (public; the deprecated `documents.sendToken` sends the same request)
 
 Parameters: `documentId` (path, required).
 
-Request body (`application/json`):
+Request body (`application/json`; both members required):
 ```json
 {
-  "recipient": "person@example.com",
-  "channel": "email"
+  "channel": "email",
+  "recipient": "signer@example.com"
 }
 ```
 
-Response 200 body; optional members depend on document state and permissions:
+Response 200 `data` payload (inside `{status,message,data}`):
 ```json
 {
-  "status": 200,
-  "message": "example"
+  "document": {"resource": "document","id": "id-placeholder","name": "Agreement.pdf","page_count": 3,"created_by": "Sender Name"},
+  "channel": "email",
+  "recipient": "signer@example.com"
 }
 ```
 

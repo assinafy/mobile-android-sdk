@@ -158,11 +158,11 @@ carrying the standard `error` code rather than `ApiException`.
 | `PUT /v1/signers/accept-terms` | `signerDocuments.acceptTerms(accessCode)` | Signer | Covered |
 | `POST /v1/signature` | `signerDocuments.uploadSignature(...)` | Signer | Covered |
 | `GET /v1/signature/{signatureType}` | `signerDocuments.downloadSignature(...)` | Signer | Covered |
-| `GET /v1/signers/{signerId}/documents` | `signerDocuments.list(...)` | Signer | Covered |
-| `GET /v1/signers/{signerId}/documents/search` | `signerDocuments.search(...)` | Signer | Covered |
+| `GET /v1/signers/{signerId}/documents` | `signerDocuments.list(...)`; `signers.listDocumentsAsWorkspace(...)` | Signer; Account | Covered |
+| `GET /v1/signers/{signerId}/documents/search` | `signerDocuments.search(...)`; `signers.searchDocumentsAsWorkspace(...)` | Signer; Account | Covered |
 | `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}` | `signerDocuments.download(...)` | Public | Covered |
 | `GET /v1/public/documents/{documentId}` | `documents.getPublic(documentId)` | Public | Covered |
-| `PUT /v1/public/documents/{documentId}/send-token` | `documents.sendToken(documentId, email)` | Public | Covered |
+| `PUT /v1/public/documents/{documentId}/send-token` | `documents.sendAccessToken(documentId, email)` | Public | Covered |
 
 ## Tags (4/4)
 
@@ -228,9 +228,22 @@ signing page instead.
 
 ## Public token delivery
 
-`documents.sendToken` sends `PUT /v1/public/documents/{documentId}/send-token` with
-`{"recipient":"person@example.com","channel":"email"}`. Both members are required;
-`channel` accepts `email` or `whatsapp` and defaults to `email` in the SDK.
+`documents.sendAccessToken` sends `PUT /v1/public/documents/{documentId}/send-token` with
+`{"channel":"email","recipient":"signer@example.com"}` and returns `data`
+`{document, channel, recipient}` as `AccessTokenDelivery`. Both members are required and `email` is
+the only channel. The deprecated `documents.sendToken` sends the same request.
+
+## Signer access code and workspace credentials
+
+Signer methods take the access code as a required argument, reject a blank one before any request,
+and send only that code (`signer-access-code` query) on the credential-free transport. The two
+routes the OpenAPI document also opens to account credentials are reached through separate methods,
+`signers.listDocumentsAsWorkspace` and `signers.searchDocumentsAsWorkspace`.
+
+## Rate limits
+
+A `429` that reaches the caller raises `ApiException` with `retryAfter` (`Retry-After`, seconds) and
+`rateLimitLimit`, `rateLimitRemaining`, `rateLimitReset` (`X-Rate-Limit-*`).
 
 ## Retained compatibility behavior
 
@@ -241,12 +254,10 @@ the default request path:
   only when the caller explicitly supplies metadata;
 - assignment listing adds the deployed API's `accountId` query to OpenAPI's `page`/`per-page` only
   when the caller explicitly passes that override;
-- assignment expiration reset sends `{"expires_at":null}` only when the caller explicitly passes
-  null or blank to clear an expiration on deployments that support that extension;
 - notification resend adds the deployed API's `channel` JSON body only when the caller explicitly
   passes that compatibility parameter;
 - document tag mutations pass the supplied strings unchanged. IDs attach existing tags; a supplied tag name creates the tag if it does not exist yet;
 - account create/update may send the deprecated six-digit `primary_color` and `secondary_color`
   fields when callers explicitly use them;
 - `signers.create` may send the deprecated `metadata` field when callers explicitly use it; the
-  deprecated `cpf` value is sent as `government_id` when `governmentId` is not set.
+  deprecated `cpf` value is sent as `government_id` on create and update when `governmentId` is not set.

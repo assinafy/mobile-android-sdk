@@ -15,6 +15,11 @@ import com.google.gson.reflect.TypeToken
  *   carried none. A `403` whose challenge [OAuthChallenge.isInsufficientScope] means the OAuth token
  *   lacks [OAuthChallenge.scope]: connect the user again requesting it instead of retrying. A `403`
  *   without it means another workspace, the user's role, or an area OAuth tokens cannot reach.
+ *
+ * Rate limits: every limited response carries `X-Rate-Limit-Limit`, `X-Rate-Limit-Remaining` and
+ * `X-Rate-Limit-Reset`; past the limit the API answers `429` with `Retry-After` (seconds). The
+ * default transport already retries a read-only `429` up to twice; a `429` that reaches the caller
+ * exposes these values through [rateLimitLimit], [rateLimitRemaining], [rateLimitReset] and [retryAfter].
  */
 class ApiException private constructor(
     message: String,
@@ -22,6 +27,7 @@ class ApiException private constructor(
     val responseData: Any?,
     cause: Throwable?,
     val challenge: OAuthChallenge?,
+    headers: Map<String, String>,
 ) : AssinafyException(
     message,
     buildMap {
@@ -30,6 +36,17 @@ class ApiException private constructor(
     },
     cause,
 ) {
+    /** `X-Rate-Limit-Limit`: requests allowed in the current window, or `null` when not sent. */
+    val rateLimitLimit: Int? = headers.header("x-rate-limit-limit")?.toIntOrNull()
+
+    /** `X-Rate-Limit-Remaining`: requests left in the current window, or `null` when not sent. */
+    val rateLimitRemaining: Int? = headers.header("x-rate-limit-remaining")?.toIntOrNull()
+
+    /** `X-Rate-Limit-Reset`: seconds until the current window resets, or `null` when not sent. */
+    val rateLimitReset: Long? = headers.header("x-rate-limit-reset")?.toLongOrNull()
+
+    /** `Retry-After` of a `429`: seconds to wait before retrying, or `null` when not sent in seconds. */
+    val retryAfter: Long? = headers.header("retry-after")?.toLongOrNull()
 
     /**
      * Creates an exception without an authentication challenge.
@@ -44,7 +61,7 @@ class ApiException private constructor(
         statusCode: Int,
         responseData: Any? = null,
         cause: Throwable? = null,
-    ) : this(message, statusCode, responseData, cause, null)
+    ) : this(message, statusCode, responseData, cause, null, emptyMap())
 
     /** Factories for converting raw API error responses to typed exceptions. */
     companion object {
@@ -59,9 +76,9 @@ class ApiException private constructor(
          * @param responseData Parsed response, raw JSON/text, or `null` for an empty response.
          * @return Exception with normalized message, status, response data, and structured context.
          */
-        fun fromResponse(statusCode: Int, responseData: Any?): ApiException = fromResponse(statusCode, responseData, null)
+        fun fromResponse(statusCode: Int, responseData: Any?): ApiException = fromResponse(statusCode, responseData, emptyMap())
 
-        internal fun fromResponse(statusCode: Int, responseData: Any?, wwwAuthenticate: String?): ApiException {
+        internal fun fromResponse(statusCode: Int, responseData: Any?, headers: Map<String, String>): ApiException {
             val data = responseData.asMapOrNull()
             val message = when {
                 (data?.get("message") as? String)?.isNotBlank() == true -> data["message"] as String
@@ -69,8 +86,18 @@ class ApiException private constructor(
                 responseData is String && responseData.isNotBlank() -> responseData
                 else -> "API request failed"
             }
-            return ApiException(message, statusCode, data ?: responseData, null, OAuthChallenge.parse(wwwAuthenticate))
+            return ApiException(
+                message,
+                statusCode,
+                data ?: responseData,
+                null,
+                OAuthChallenge.parse(headers.header("www-authenticate")),
+                headers,
+            )
         }
+
+        private fun Map<String, String>.header(name: String): String? =
+            entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value?.trim()
 
         @Suppress("UNCHECKED_CAST")
         private fun Any?.asMapOrNull(): Map<String, Any>? = when (this) {

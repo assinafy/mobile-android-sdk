@@ -5,6 +5,7 @@ import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
+import com.assinafy.sdk.models.DocumentDetails
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.Signer
 import com.assinafy.sdk.request.CreateSignerRequest
@@ -302,6 +303,81 @@ class SignerResource internal constructor(
     }
 
     /**
+     * Lists the documents a workspace signer is party to, authenticated with the workspace API key
+     * or bearer token. The signer must belong to the credential's workspace. For the signer's own
+     * view with an access code, use [SignerDocumentResource.list].
+     *
+     * Wire operation: `GET /v1/signers/{signerId}/documents` with query `page`, `per-page`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`), with `X-Pagination-*` headers
+     * exposed through [PaginatedResult.meta]:
+     * ```json
+     * [
+     *   {
+     *     "resource": "document", "id": "doc-id", "account_id": "account-id", "template_id": null,
+     *     "name": "Agreement.pdf", "status": "pending_signature",
+     *     "artifacts": {"original": "https://api.assinafy.com.br/v1/documents/doc-id/download/original"},
+     *     "is_closed": false, "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
+     *     "decline_reason": null, "declined_by": null, "tags": [], "assignment": null, "pages": [],
+     *     "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
+     *
+     * @param signerId Signer ID placed in the URL path.
+     * @param params Pagination; only `page` and `perPage` are sent.
+     * @return The signer's documents and optional pagination metadata.
+     * @throws ValidationException if [signerId] is blank.
+     */
+    suspend fun listDocumentsAsWorkspace(
+        signerId: String,
+        params: ListParams = ListParams(),
+    ): PaginatedResult<DocumentDetails> {
+        val sid = requireId(signerId, "Signer ID")
+        return callList("Failed to list signer documents", DocumentDetails::class.java) {
+            http.get("/signers/${pathSegment(sid)}/documents", mapOf("page" to params.page, "per-page" to params.perPage))
+        }
+    }
+
+    /**
+     * Searches a workspace signer's documents by name, authenticated with the workspace API key or
+     * bearer token. For the signer's own view with an access code, use [SignerDocumentResource.search].
+     *
+     * Wire operation: `GET /v1/signers/{signerId}/documents/search` with query `search` (omitted
+     * when null or blank).
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`):
+     * ```json
+     * [
+     *   {
+     *     "resource": "document", "id": "doc-id", "account_id": "account-id", "template_id": null,
+     *     "name": "Agreement.pdf", "status": "pending_signature",
+     *     "artifacts": {"original": "https://api.assinafy.com.br/v1/documents/doc-id/download/original"},
+     *     "is_closed": false, "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
+     *     "decline_reason": null, "declined_by": null, "tags": [], "assignment": null, "pages": [],
+     *     "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
+     *
+     * @param signerId Signer ID placed in the URL path.
+     * @param search Optional document-name term.
+     * @return Matching documents.
+     * @throws ValidationException if [signerId] is blank.
+     */
+    suspend fun searchDocumentsAsWorkspace(signerId: String, search: String? = null): PaginatedResult<DocumentDetails> {
+        val sid = requireId(signerId, "Signer ID")
+        val term = search?.trim()?.takeIf { it.isNotEmpty() }
+        return callList("Failed to search signer documents", DocumentDetails::class.java) {
+            http.get("/signers/${pathSegment(sid)}/documents/search", mapOf("search" to term))
+        }
+    }
+
+    /**
      * Fetches the current signer through a public signing-link access code.
      *
      * Request: `GET /signers/self?signer-access-code={code}` with no body and no account
@@ -511,8 +587,7 @@ class SignerResource internal constructor(
         request.fullName?.trim()?.takeIf { it.isNotEmpty() }?.let { put("full_name", it) }
         request.email?.trim()?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
         request.whatsappPhoneNumber?.trim()?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
-        request.governmentId?.trim()?.takeIf { it.isNotEmpty() }?.let { put("government_id", it) }
         @Suppress("DEPRECATION")
-        request.cpf?.replace("\\D".toRegex(), "")?.takeIf { it.isNotEmpty() }?.let { put("cpf", it) }
+        (request.governmentId ?: request.cpf)?.trim()?.takeIf { it.isNotEmpty() }?.let { put("government_id", it) }
     }
 }

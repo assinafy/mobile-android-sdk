@@ -201,16 +201,18 @@ class LiveIntegrationTest {
         reversible(
             block = {
                 val created = optionalEndpoint("Webhook endpoints") {
-                    sdk.webhooks.createEndpoint(
-                        CreateWebhookEndpointRequest(
-                            url = url,
-                            email = "ops@example.com",
-                            events = listOf(WebhookEvent.DOCUMENT_READY),
-                            name = "SDK live",
-                            isActive = false,
-                            signingEnabled = true,
-                        ),
-                    )
+                    planLimited("The workspace plan's webhook endpoint limit") {
+                        sdk.webhooks.createEndpoint(
+                            CreateWebhookEndpointRequest(
+                                url = url,
+                                email = "ops@example.com",
+                                events = listOf(WebhookEvent.DOCUMENT_READY),
+                                name = "SDK live",
+                                isActive = false,
+                                signingEnabled = true,
+                            ),
+                        )
+                    }
                 }
                 endpointId = created.id
                 assertThat(created.signingEnabled).isTrue()
@@ -544,11 +546,22 @@ class LiveIntegrationTest {
                 sdk.documents.isFullySigned(document.id)
 
                 val assignment = workflow.assignment
-                sdk.assignments.resetExpiration(document.id, assignment.id, null)
+                val nextMonth = java.time.Instant.now().plus(30, java.time.temporal.ChronoUnit.DAYS)
+                    .truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString()
+                assertThat(sdk.assignments.resetExpiration(document.id, assignment.id, nextMonth).expiresAt).isNotNull()
+                assertThat(sdk.assignments.resetExpiration(document.id, assignment.id, null).expiresAt).isNull()
                 sdk.assignments.listWhatsappNotifications(document.id, assignment.id)
                 sdk.assignments.estimateResendCost(document.id, assignment.id, workflow.signerIds.first())
-                sdk.assignments.resendNotification(document.id, assignment.id, workflow.signerIds.first(), "email")
-                sdk.documents.sendToken(document.id, testEmail, "email")
+                sdk.assignments.resendNotification(document.id, assignment.id, workflow.signerIds.first())
+                val delivery = sdk.documents.sendAccessToken(document.id, testEmail)
+                assertThat(delivery.channel).isEqualTo("email")
+                assertThat(delivery.recipient).isEqualTo(testEmail)
+                assertThat(delivery.document.id).isEqualTo(document.id)
+
+                val signerId = workflow.signerIds.first()
+                assertThat(sdk.signers.listDocumentsAsWorkspace(signerId, ListParams(perPage = 100)).data.map { it.id })
+                    .contains(document.id)
+                sdk.signers.searchDocumentsAsWorkspace(signerId, document.name)
 
                 val tag = sdk.tags.create("SDK live tag $suffix", "336699")
                 tagId = tag.id
@@ -735,6 +748,17 @@ class LiveIntegrationTest {
         block()
     } catch (error: ApiException) {
         assumeTrue(error.statusCode != 404, "$name is not deployed on this host")
+        throw error
+    }
+
+    // A 403 here is the account's plan gate (an endpoint limit already reached), not an SDK defect.
+    private suspend fun <T> planLimited(
+        name: String,
+        block: suspend () -> T,
+    ): T = try {
+        block()
+    } catch (error: ApiException) {
+        assumeTrue(error.statusCode != 403, "$name is reached on this account: ${error.message}")
         throw error
     }
 

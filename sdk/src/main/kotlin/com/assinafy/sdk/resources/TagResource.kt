@@ -83,7 +83,7 @@ class TagResource internal constructor(
      * ```
      *
      * @param name Non-blank name, collapsed to single spaces and limited to 64 characters.
-     * @param color Optional six-digit hexadecimal value, with or without a leading `#`.
+     * @param color Optional six-digit hexadecimal value; a leading `#` is accepted and removed before sending.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Created tag.
      * @throws ValidationException for an invalid account, name, or color.
@@ -94,7 +94,7 @@ class TagResource internal constructor(
         validateColor(color)
         val body = buildMap<String, Any?> {
             put("name", tagName)
-            color?.let { put("color", it) }
+            color?.let { put("color", it.removePrefix("#")) }
         }
         return call("Failed to create tag", Tag::class.java) {
             http.post("/accounts/${pathSegment(accId)}/tags", toJson(body))
@@ -159,7 +159,7 @@ class TagResource internal constructor(
             tagName?.let { put("name", it) }
             when {
                 clearColor -> put("color", null)
-                color != null -> put("color", color)
+                color != null -> put("color", color.removePrefix("#"))
             }
         }
         return call("Failed to update tag", Tag::class.java) {

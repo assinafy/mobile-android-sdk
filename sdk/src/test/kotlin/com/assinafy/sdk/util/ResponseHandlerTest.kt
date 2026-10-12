@@ -46,6 +46,24 @@ class ResponseHandlerTest {
     }
 
     @Test
+    fun `a 429 exposes the rate-limit headers and Retry-After`() {
+        val response = HttpRawResponse(
+            429,
+            """{"status":429,"message":"Too Many Requests","data":null}""",
+            mapOf("X-Rate-Limit-Limit" to "60", "x-rate-limit-remaining" to "0", "x-rate-limit-reset" to "17", "retry-after" to "17"),
+        )
+
+        val error = runCatching { ResponseHandler.handle(response, TestModel::class.java) }.exceptionOrNull() as ApiException
+
+        assertThat(error.statusCode).isEqualTo(429)
+        assertThat(error.rateLimitLimit).isEqualTo(60)
+        assertThat(error.rateLimitRemaining).isEqualTo(0)
+        assertThat(error.rateLimitReset).isEqualTo(17L)
+        assertThat(error.retryAfter).isEqualTo(17L)
+        assertThat(ApiException.fromResponse(429, null).retryAfter).isNull()
+    }
+
+    @Test
     fun `handle throws ApiException on non-2xx envelope status`() {
         val response = HttpRawResponse(200, """{"status":400,"message":"Bad request","data":{}}""", emptyMap())
         assertThatThrownBy {

@@ -59,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.6.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.6.1")
 }
 ```
 
@@ -68,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.6.0-local-SNAPSHOT \
+  -Pversion=2.6.1-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -583,7 +583,7 @@ credencial.
 
 Se uma notificação precisar sair de novo, `assignments.resendNotification` reenvia para um
 signatário, e `assignments.estimateResendCost` precifica isso antes.
-`assignments.resetExpiration` move o prazo; passar `null` remove o prazo onde o ambiente permite.
+`assignments.resetExpiration` move o prazo; passar `null` envia `"expires_at": null` e remove o prazo.
 
 ### Passo 5 — Assinar, como signatário
 
@@ -645,8 +645,8 @@ Observações sobre esse fluxo:
 Um signatário que não recebeu o link pode pedir um novo token de uso único para um documento público:
 
 ```kotlin
-client.documents.sendToken(documentId, "ada@example.com")            // canal padrão é e-mail
-client.documents.sendToken(documentId, "+5511999998888", "whatsapp") // destinatário é o telefone
+val entrega = client.documents.sendAccessToken(documentId, "signer@example.com") // só e-mail
+// entrega.channel == "email"; entrega.recipient; entrega.document (id, name, pageCount, createdBy)
 ```
 
 ### Passo 6 — Acompanhar a conclusão
@@ -904,6 +904,8 @@ do {
 
 HTTP 429 é repetido no máximo duas vezes, só em leituras seguras, respeitando `Retry-After` e
 `X-Rate-Limit-Reset` até um teto de 30 segundos. Mutações são enviadas uma vez, sem redirecionamento ou retry automático de conexão.
+Um `429` que chega ao chamador expõe `ApiException.retryAfter` (segundos) e `rateLimitLimit`,
+`rateLimitRemaining` e `rateLimitReset`.
 
 Cinco tipos de exceção cobrem toda falha. Capture-os na fronteira da aplicação:
 

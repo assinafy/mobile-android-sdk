@@ -2,6 +2,42 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.6.1] - 2026-10-12
+
+### Added
+
+- `ApiException.retryAfter`, `rateLimitLimit`, `rateLimitRemaining` and `rateLimitReset` expose the
+  `Retry-After` and `X-Rate-Limit-*` headers of a `429` (seconds; `null` when absent).
+- `documents.sendAccessToken(documentId, email)` returns the new `AccessTokenDelivery`
+  (`document`, `channel`, `recipient`).
+- `signers.listDocumentsAsWorkspace(signerId, params)` and `signers.searchDocumentsAsWorkspace(signerId, search)`
+  read a signer's documents with the workspace API key or bearer token.
+
+### Changed
+
+- Send-token requests send `{"channel": "email", "recipient": "<signer email>"}`. Email is the
+  only channel the API offers, so `documents.sendToken(..., channel = "whatsapp")` now raises
+  `ValidationException` before sending. Migration: call `sendAccessToken(documentId, signerEmail)`.
+- `assignments.resetExpiration(documentId, assignmentId, null)` sends `{"expires_at": null}` to
+  remove the expiration. A blank `expiresAt` now raises `ValidationException` instead of clearing it.
+- The deprecated `UpdateSignerRequest.cpf` is sent as `government_id`, unchanged.
+- Tag colors are sent without a leading `#`.
+
+### Fixed
+
+- A read retried after `429` with `Retry-After: 0` now waits the one-second backoff instead of
+  retrying at once and meeting the same limit.
+
+### Deprecated
+
+- `documents.sendToken`; use `sendAccessToken`.
+
+### Security
+
+- Every method that takes a signer access code rejects a blank code before sending anything and
+  sends only that code, never the API key or bearer token; workspace access to signer documents
+  uses the new `AsWorkspace` methods.
+
 ## [2.6.0] - 2026-10-07
 
 ### Added

@@ -472,4 +472,34 @@ class SignerDocumentResourceTest {
         dataJson: String,
         headers: Map<String, String> = emptyMap(),
     ): HttpRawResponse = HttpRawResponse(200, """{"status":200,"data":$dataJson}""", headers)
+
+    @Test
+    fun `every signer access code method rejects a blank code before any request`() {
+        val mock = MockApiHttpClient()
+        val resource = SignerDocumentResource(mock)
+        val calls: List<suspend (String) -> Unit> = listOf(
+            { resource.self(it) },
+            { resource.getCurrent("s1", it) },
+            { resource.getAssignment(it) },
+            { resource.sign("d1", "a1", it, emptyList()) },
+            { resource.decline("d1", "a1", it, "reason") },
+            { resource.signMultiple(listOf("d1"), it) },
+            { resource.declineMultiple(listOf("d1"), "reason", it) },
+            { resource.verifyEmail(it, VerifySignerEmailRequest("123456")) },
+            { resource.confirmData("d1", it, ConfirmSignerDataRequest(fullName = "Signer")) },
+            { resource.acceptTerms(it) },
+            { resource.uploadSignature(it, byteArrayOf(1)) },
+            { resource.downloadSignature(it) },
+            { resource.list("s1", it) },
+            { resource.search("s1", it) },
+        )
+        calls.forEach { call ->
+            listOf("", "   ").forEach { code ->
+                assertThatThrownBy { runBlocking { call(code) } }
+                    .isInstanceOf(ValidationException::class.java)
+                    .hasMessageContaining("Signer access code")
+            }
+        }
+        assertThat(mock.calls).isEmpty()
+    }
 }

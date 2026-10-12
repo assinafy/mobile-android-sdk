@@ -364,4 +364,35 @@ class SignerResourceTest {
 
         assertThat(mock.lastCall().path).isEqualTo("/signature/drawn%20signature?signer-access-code=access%2B%2F%3D")
     }
+
+    @Test
+    fun `update maps the legacy cpf onto government_id unchanged`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(200, """{"status":200,"data":$signerJson}""", emptyMap()))
+
+        SignerResource(mock, "acc").update("s1", UpdateSignerRequest(cpf = "390.533.447-05"))
+
+        assertThat(mock.lastCall().body).isEqualTo("""{"government_id":"390.533.447-05"}""")
+    }
+
+    @Test
+    fun `workspace document listing and search use the authenticated transport without a signer code`() = runTest {
+        val authenticated = MockApiHttpClient(defaultResponse = HttpRawResponse(200, emptyListJson, emptyMap()))
+        val public = MockApiHttpClient()
+        val resource = SignerResource(authenticated, "acc", publicHttp = public)
+
+        resource.listDocumentsAsWorkspace("s 1", ListParams(page = 2, perPage = 10, search = "ignored"))
+        assertThat(authenticated.lastCall().method).isEqualTo("GET")
+        assertThat(authenticated.lastCall().path).isEqualTo("/signers/s%201/documents")
+        assertThat(authenticated.lastCall().queryParams.filterValues { it != null })
+            .isEqualTo(mapOf("page" to 2, "per-page" to 10))
+
+        resource.searchDocumentsAsWorkspace("s1", " contract ")
+        assertThat(authenticated.lastCall().path).isEqualTo("/signers/s1/documents/search")
+        assertThat(authenticated.lastCall().queryParams).isEqualTo(mapOf("search" to "contract"))
+
+        assertThat(authenticated.calls.map { it.path }).noneMatch { it.contains("signer-access-code") }
+        assertThat(public.calls).isEmpty()
+        assertThatThrownBy { runBlocking { resource.listDocumentsAsWorkspace(" ") } }
+            .isInstanceOf(ValidationException::class.java)
+    }
 }

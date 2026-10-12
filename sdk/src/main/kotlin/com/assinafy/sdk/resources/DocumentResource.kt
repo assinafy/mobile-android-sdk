@@ -7,6 +7,7 @@ import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.SdkConstants
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
+import com.assinafy.sdk.models.AccessTokenDelivery
 import com.assinafy.sdk.models.DocumentActivity
 import com.assinafy.sdk.models.DocumentDetails
 import com.assinafy.sdk.models.DocumentListItem
@@ -831,52 +832,75 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Sends a one-time access token for a public document.
+     * Sends a one-time access token to a signer of a public document so they can view it.
      *
-     * Wire request: `PUT /public/documents/{documentId}/send-token` with no credential and the
-     * complete body `{"recipient":"signer@example.com","channel":"email"}`. The service requires
-     * both keys and answers `400` when either is missing, so the SDK always sends both. The
-     * response is the bare success envelope `{"status":200,"message":"..."}`, returned as [Unit].
+     * The document must be pending signature and [email] must belong to a signer of the document who
+     * has not signed yet. Only the `email` channel exists. No credential is sent: this uses the
+     * client's credential-free transport.
      *
      * Wire operation: `PUT /v1/public/documents/{documentId}/send-token`.
      *
-     * Request body (`application/json`):
+     * Request body (`application/json`; both members required):
      * ```json
      * {
-     *   "recipient": "person@example.com",
-     *   "channel": "email"
+     *   "channel": "email",
+     *   "recipient": "signer@example.com"
      * }
      * ```
      *
-     * Response 200 body; optional members depend on document state and permissions:
+     * Response 200 `data` payload (inside `{status,message,data}`):
      * ```json
      * {
-     *   "status": 200,
-     *   "message": "example"
+     *   "document": {"resource": "document","id": "doc-id","name": "Agreement.pdf","page_count": 3,"created_by": "Sender Name"},
+     *   "channel": "email",
+     *   "recipient": "signer@example.com"
      * }
      * ```
      *
      * @param documentId Stable public document identifier.
-     * @param email Destination for [channel]: an email address for `email`, or the signer's phone
-     * number for `whatsapp`. Required; only the `email` channel is format-validated.
-     * @param channel Delivery channel, `email` (default) or `whatsapp`.
-     * @throws ValidationException for a blank document ID or recipient, an unsupported channel, or
-     * a malformed address on the `email` channel.
+     * @param email The signer's email address, sent as `recipient`.
+     * @return Where the token was sent.
+     * @throws ValidationException for a blank document ID or a malformed email, before any request.
      */
-    suspend fun sendToken(documentId: String, email: String? = null, channel: String? = null) {
+    suspend fun sendAccessToken(documentId: String, email: String): AccessTokenDelivery {
         val id = requireId(documentId, "Document ID")
-        val tokenChannel = requireId(channel ?: DEFAULT_SEND_TOKEN_CHANNEL, "Token channel").lowercase()
-        if (tokenChannel !in SEND_TOKEN_CHANNELS) {
-            throw ValidationException("Token channel must be email or whatsapp")
-        }
-        val recipient = requireId(email, "Token recipient")
-        val normalizedRecipient = if (tokenChannel == DEFAULT_SEND_TOKEN_CHANNEL) requireValidEmail(recipient) else recipient
-        callVoid("Failed to send signing token") {
+        val recipient = requireValidEmail(requireId(email, "Token recipient"))
+        return call("Failed to send signing token", AccessTokenDelivery::class.java) {
             publicHttp.put(
                 "/public/documents/${pathSegment(id)}/send-token",
-                toJson(mapOf("recipient" to normalizedRecipient, "channel" to tokenChannel)),
+                toJson(mapOf("channel" to ACCESS_TOKEN_CHANNEL, "recipient" to recipient)),
             )
         }
+    }
+
+    /**
+     * Sends a one-time access token to a signer of a public document; same request as
+     * [sendAccessToken], discarding its result.
+     *
+     * Wire operation: `PUT /v1/public/documents/{documentId}/send-token`.
+     *
+     * Request body (`application/json`; both members required):
+     * ```json
+     * {
+     *   "channel": "email",
+     *   "recipient": "signer@example.com"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload: the [AccessTokenDelivery] shape documented on [sendAccessToken].
+     *
+     * @param documentId Stable public document identifier.
+     * @param email The signer's email address. Required.
+     * @param channel `email` or `null`; the API supports no other channel.
+     * @throws ValidationException for a blank document ID or recipient, a malformed email, or a
+     * channel other than `email`.
+     */
+    @Deprecated("Use sendAccessToken(documentId, email)", ReplaceWith("sendAccessToken(documentId, email!!)"))
+    suspend fun sendToken(documentId: String, email: String? = null, channel: String? = null) {
+        if (channel != null && !channel.trim().equals(ACCESS_TOKEN_CHANNEL, ignoreCase = true)) {
+            throw ValidationException("Token channel must be email")
+        }
+        sendAccessToken(documentId, requireId(email, "Token recipient"))
     }
 
     /**
@@ -1273,8 +1297,7 @@ class DocumentResource internal constructor(
 
     /** PDF upload and token-delivery validation constants. */
     companion object {
-        private const val DEFAULT_SEND_TOKEN_CHANNEL = "email"
-        private val SEND_TOKEN_CHANNELS = setOf(DEFAULT_SEND_TOKEN_CHANNEL, "whatsapp")
+        private const val ACCESS_TOKEN_CHANNEL = "email"
         private val PDF_MAGIC = "%PDF-".toByteArray(Charsets.US_ASCII)
     }
 }

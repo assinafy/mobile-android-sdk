@@ -82,7 +82,7 @@ class TagResourceTest {
 
         TagResource(mock, "acc").create("  Signed   Contracts  ", "#ff8800")
 
-        assertThat(mock.lastCall().body).contains("Signed Contracts")
+        assertThat(mock.lastCall().body).isEqualTo("""{"name":"Signed Contracts","color":"ff8800"}""")
         assertThatThrownBy {
             runBlocking { TagResource(MockApiHttpClient(), "acc").create("Tag", "orange") }
         }.isInstanceOf(ValidationException::class.java)

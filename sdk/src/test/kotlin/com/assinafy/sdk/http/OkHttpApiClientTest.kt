@@ -310,7 +310,10 @@ class OkHttpApiClientTest {
 
             val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
 
+            val started = System.nanoTime()
             assertThat(runBlocking { client.get("/safe") }.statusCode).isEqualTo(200)
+            // A zero Retry-After falls back to the one-second backoff instead of an immediate retry.
+            assertThat(System.nanoTime() - started).isGreaterThanOrEqualTo(900_000_000L)
             assertThat(runBlocking { client.put("/unsafe-action", "{}") }.statusCode).isEqualTo(429)
             assertThat(runBlocking { client.post("/unsafe", "{}") }.statusCode).isEqualTo(429)
             assertThat(server.requestCount).isEqualTo(4)

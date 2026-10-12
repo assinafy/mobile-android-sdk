@@ -138,7 +138,7 @@ class OkHttpApiClient private constructor(
         val body = raw.body ?: ByteArray(0)
         if (raw.statusCode !in 200..299) {
             val errorBody = body.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
-            throw ApiException.fromResponse(raw.statusCode, errorBody, raw.headers["www-authenticate"])
+            throw ApiException.fromResponse(raw.statusCode, errorBody, raw.headers)
         }
         if (body.isEmpty()) throw ApiException("Empty binary response", raw.statusCode)
         return body
@@ -224,8 +224,9 @@ class OkHttpApiClient private constructor(
     private fun retryDelayMs(headers: Map<String, String>, attempt: Int): Long {
         val hinted = headers["retry-after"]?.let(::parseRetryAfter)
             ?: headers["x-rate-limit-reset"]?.toDoubleOrNull()?.times(1_000)?.toLong()
+        // A zero hint arrives at a window edge; retrying at once only meets the same limit again.
         val fallback = 1_000L shl (attempt - 1).coerceAtMost(3)
-        return (hinted ?: fallback).coerceIn(0, MAX_RETRY_DELAY_MS)
+        return (hinted?.takeIf { it > 0 } ?: fallback).coerceIn(0, MAX_RETRY_DELAY_MS)
     }
 
     private fun parseRetryAfter(value: String): Long? {
