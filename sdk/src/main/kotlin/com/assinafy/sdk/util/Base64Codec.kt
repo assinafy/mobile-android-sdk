@@ -21,7 +21,8 @@ internal object Base64Codec {
      */
     fun decode(text: String): ByteArray? {
         val body = text.trimEnd('=')
-        if (body.length % 4 == 1) return null
+        val padding = text.length - body.length
+        if (body.length % 4 == 1 || padding > 2 || padding > 0 && text.length % 4 != 0) return null
         val out = java.io.ByteArrayOutputStream(body.length * 3 / 4)
         var buffer = 0
         var bits = 0
@@ -38,6 +39,7 @@ internal object Base64Codec {
                 out.write((buffer shr bits) and 0xFF)
             }
         }
+        if (bits > 0 && buffer and ((1 shl bits) - 1) != 0) return null
         return out.toByteArray()
     }
 

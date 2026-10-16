@@ -20,5 +20,8 @@ class SmokeApplication : Application() {
         client.documents.list(ListParams(perPage = 1))
         client.users.getCurrent()
         client.webhooks.listEventTypes()
+        client.webhooks.listEndpoints(url = "https://example.com/hook")
+        client.signerDocuments.getIdentityVerification("signer-code")
+        client.assignments.getIdentityVerification("document", "assignment", "signer")
     }
 }

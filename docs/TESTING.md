@@ -3,7 +3,7 @@
 ## Supported build environment
 
 - Gradle Wrapper 9.5; use `./gradlew`, not a machine-wide Gradle installation.
-- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.2 with built-in Kotlin support and Kotlin compiler 2.4.20.
+- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.2 with built-in Kotlin support and Kotlin compiler 2.4.21.
 - Java 17 toolchain and bytecode for the published library.
 - Android SDK platform 37.0 and Build Tools 36.0.0.
 - Android API 21 minimum at runtime. The consuming application owns `targetSdk`.
@@ -53,6 +53,9 @@ covers the webhook endpoint and signing-secret operations and the `endpoint_id` 
 `WebhookSignatureTest` checks `WebhookVerifier.verifySignature` against the Standard Webhooks
 specification's published test vector, plus tampering, replay-window and malformed-secret cases;
 `MfaTest` covers the two-factor operations and the `MfaRequiredException` raised by login.
+`IdentityVerificationTest` covers consent, credential separation, hosted session states, complete
+account-review evidence, temporary binary downloads, decisions, note limits and biometric templates.
+The webhook suite also checks one-time secrets, URL filtering/deletion, invalid base64 and timestamp overflow.
 
 ## Reproducible Docker build
 
@@ -111,6 +114,13 @@ Write tests require the additional `ASSINAFY_LIVE_WRITES` opt-in. They exercise 
 preference, field, signer (with `government_id`), document, assignment, notification, tag, and
 compatible-template flows, and a signed webhook endpoint lifecycle: create an inactive endpoint
 with signing enabled, read and rotate its secret, disable signing, and delete it.
+Additional write checks use an isolated disposable workspace for branding and signed endpoint
+creation, rotation, re-enabling signing and deletion. Separate checks exercise exact-URL filtering/deletion, one-time secrets, tag
+colors and verification-method estimates. Hosts without the biometric status catalog or exact-URL filtering report named feature-deployment skips. A 403 on an estimate is recorded as a feature gate,
+not successful paid-method execution. Notification tests skip unless both disposable recipient
+addresses are supplied. Biometric capture/review completion needs an entitled host and purpose-created
+signer session; certificate completion runs in Assinafy's web flow.
+Live scenarios are paced to stay within the shared host's per-minute request limit.
 Every created record uses a unique SDK test name and cleanup runs even after a failed assertion. Run
 them only against an isolated live account; confirm the base URL and account before enabling the
 gate.

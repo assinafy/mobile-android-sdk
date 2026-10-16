@@ -33,18 +33,18 @@ internal object ResponseHandler {
 
     fun <T> handle(response: HttpRawResponse, type: Class<T>): T {
         validateSuccess(response)
-        return parseEnvelope(response.body, type)
+        return parseEnvelope(response.body, type, response.headers)
     }
 
     fun handleMap(response: HttpRawResponse): Map<String, Any> {
         validateSuccess(response)
-        return parseEnvelopeAsMap(response.body)
+        return parseEnvelopeAsMap(response.body, response.headers)
     }
 
     fun <T> handleList(response: HttpRawResponse, elementType: Class<T>): PaginatedResult<T> {
         validateSuccess(response)
         return PaginatedResult(
-            data = parseListData(response.body, elementType),
+            data = parseListData(response.body, elementType, response.headers),
             meta = parsePaginationMeta(response.headers),
         )
     }
@@ -55,7 +55,7 @@ internal object ResponseHandler {
         try {
             parseEnvelopeOrNull(JsonParser.parseString(response.body))?.let { envelope ->
                 if (envelope.status !in 200..299) {
-                    throw ApiException.fromResponse(envelope.status, envelope.asMap())
+                    throw ApiException.fromResponse(envelope.status, envelope.asMap(), response.headers)
                 }
             }
         } catch (e: AssinafyException) {
@@ -86,7 +86,7 @@ internal object ResponseHandler {
         }
     }
 
-    private fun <T> parseEnvelope(body: String?, type: Class<T>): T {
+    private fun <T> parseEnvelope(body: String?, type: Class<T>, headers: Map<String, String>): T {
         if (body.isNullOrBlank()) {
             throw AssinafyException("Empty response body where ${type.simpleName} was expected")
         }
@@ -101,7 +101,7 @@ internal object ResponseHandler {
                     }
                     return GSON.fromJson(data, type)
                 }
-                throw ApiException.fromResponse(envelope.status, envelope.asMap())
+                throw ApiException.fromResponse(envelope.status, envelope.asMap(), headers)
             }
             GSON.fromJson(root, type)
         } catch (e: AssinafyException) {
@@ -111,7 +111,7 @@ internal object ResponseHandler {
         }
     }
 
-    private fun parseEnvelopeAsMap(body: String?): Map<String, Any> {
+    private fun parseEnvelopeAsMap(body: String?, headers: Map<String, String>): Map<String, Any> {
         if (body.isNullOrBlank()) return emptyMap()
         return try {
             val root = JsonParser.parseString(body)
@@ -127,7 +127,7 @@ internal object ResponseHandler {
                         mapOf("data" to GSON.fromJson<Any>(dataNode, Any::class.java))
                     }
                 }
-                throw ApiException.fromResponse(envelope.status, envelope.asMap())
+                throw ApiException.fromResponse(envelope.status, envelope.asMap(), headers)
             }
             (root as? JsonObject)?.toPlainMap() ?: emptyMap()
         } catch (e: AssinafyException) {
@@ -165,14 +165,14 @@ internal object ResponseHandler {
 
     private fun JsonObject.toPlainMap(): Map<String, Any> = GSON.fromJson(this, object : TypeToken<Map<String, Any>>() {}.type)
 
-    private fun <T> parseListData(body: String?, elementType: Class<T>): List<T> {
+    private fun <T> parseListData(body: String?, elementType: Class<T>, headers: Map<String, String>): List<T> {
         if (body.isNullOrBlank()) return emptyList()
         return try {
             val root = JsonParser.parseString(body)
             val envelope = parseEnvelopeOrNull(root)
             if (envelope != null) {
                 if (envelope.status !in 200..299) {
-                    throw ApiException.fromResponse(envelope.status, envelope.asMap())
+                    throw ApiException.fromResponse(envelope.status, envelope.asMap(), headers)
                 }
                 return extractArray(envelope.data, elementType)
             }

@@ -56,6 +56,7 @@ class SignerResource internal constructor(
      *   "full_name": "Example",
      *   "email": null,
      *   "whatsapp_phone_number": null,
+     *   "government_id": null,
      *   "has_accepted_terms": true
      * }
      * ```
@@ -113,6 +114,7 @@ class SignerResource internal constructor(
      *   "full_name": "Example",
      *   "email": null,
      *   "whatsapp_phone_number": null,
+     *   "government_id": null,
      *   "has_accepted_terms": true
      * }
      * ```
@@ -150,6 +152,7 @@ class SignerResource internal constructor(
      *     "full_name": "Example",
      *     "email": null,
      *     "whatsapp_phone_number": null,
+     *     "government_id": null,
      *     "has_accepted_terms": true
      *   }
      * ]
@@ -201,6 +204,7 @@ class SignerResource internal constructor(
      *   "full_name": "Example",
      *   "email": null,
      *   "whatsapp_phone_number": null,
+     *   "government_id": null,
      *   "has_accepted_terms": true
      * }
      * ```
@@ -274,6 +278,7 @@ class SignerResource internal constructor(
      *     "full_name": "Example",
      *     "email": null,
      *     "whatsapp_phone_number": null,
+     *     "government_id": null,
      *     "has_accepted_terms": true
      *   }
      * ]
@@ -396,7 +401,9 @@ class SignerResource internal constructor(
      *   "full_name": "Example",
      *   "email": null,
      *   "whatsapp_phone_number": null,
+     *   "government_id": null,
      *   "has_accepted_terms": true,
+     *   "verification_method": "Email",
      *   "has_signature": true,
      *   "has_initial": true,
      *   "is_signature_reusable": true
@@ -418,6 +425,7 @@ class SignerResource internal constructor(
             hasSignature = it.hasSignature,
             hasInitial = it.hasInitial,
             isSignatureReusable = it.isSignatureReusable,
+            verificationMethod = it.verificationMethod,
         )
     }
 

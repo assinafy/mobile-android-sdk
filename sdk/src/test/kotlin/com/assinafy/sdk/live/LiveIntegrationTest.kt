@@ -14,6 +14,7 @@ import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.CreateFieldRequest
 import com.assinafy.sdk.request.CreateSignerRequest
 import com.assinafy.sdk.request.CreateWebhookEndpointRequest
+import com.assinafy.sdk.request.CreateWorkspaceRequest
 import com.assinafy.sdk.request.FieldValidationEntry
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.SignerReference
@@ -22,6 +23,7 @@ import com.assinafy.sdk.request.UpdateFieldRequest
 import com.assinafy.sdk.request.UpdateNotificationPreferencesRequest
 import com.assinafy.sdk.request.UpdateSignerRequest
 import com.assinafy.sdk.request.UpdateWebhookEndpointRequest
+import com.assinafy.sdk.request.UpdateWorkspaceRequest
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest
 import com.assinafy.sdk.request.WebhookDispatchParams
 import kotlinx.coroutines.runBlocking
@@ -62,6 +64,7 @@ class LiveIntegrationTest {
             credentialsSupplied,
             "Set ASSINAFY_API_KEY and ASSINAFY_ACCOUNT_ID to run live integration tests",
         )
+        Thread.sleep(2_000) // Pace scenarios within the shared sandbox's per-minute request limit.
     }
 
     private fun client(): AssinafyClient = AssinafyClient.create(
@@ -216,6 +219,7 @@ class LiveIntegrationTest {
                 }
                 endpointId = created.id
                 assertThat(created.signingEnabled).isTrue()
+                assertThat(created.secret).isNotBlank()
                 val secret = sdk.webhooks.getEndpointSecret(created.id).secret
                 assertThat(secret).startsWith("whsec_")
                 val rotated = sdk.webhooks.rotateEndpointSecret(created.id).secret
@@ -681,15 +685,162 @@ class LiveIntegrationTest {
         )
     }
 
+    @Test
+    fun `disposable workspace branding and signed webhook lifecycle is reversible`() = runBlocking<Unit> {
+        requireWrites()
+        val sdk = client()
+        val name = "SDK live workspace ${UUID.randomUUID()}"
+        var workspaceId: String? = null
+        reversible(
+            block = {
+                val workspace = sdk.workspaces.create(CreateWorkspaceRequest(name))
+                workspaceId = workspace.id
+                val id = workspace.id
+                assertThat(sdk.workspaces.get(id).name).isEqualTo(name)
+                assertThat(sdk.workspaces.update(id, UpdateWorkspaceRequest(name = "$name updated")).name).isEqualTo("$name updated")
+                sdk.workspaces.getTheme(id)
+                val png = java.util.Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=")
+                sdk.workspaces.uploadLogo(id, png, "sdk-live.png")
+                assertThat(sdk.workspaces.getLogo(id)).isNotEmpty()
+                sdk.workspaces.deleteLogo(id)
+                assertThat(sdk.workspaces.getLogo(id)).isNull()
+                sdk.workspaces.getStats(id)
+                val url = "https://example.com/sdk-live/${UUID.randomUUID()}?source=android&mode=test"
+                val endpoint = sdk.webhooks.createEndpoint(
+                    CreateWebhookEndpointRequest(url, "ops@example.com", listOf(WebhookEvent.DOCUMENT_READY), isActive = false, signingEnabled = true),
+                    id,
+                )
+                val secret = sdk.webhooks.getEndpointSecret(endpoint.id, id).secret
+                assertThat(secret).startsWith("whsec_")
+                endpoint.secret?.let { assertThat(it == secret).isTrue() }
+                assertThat(sdk.webhooks.getEndpoint(endpoint.id, id)?.id == endpoint.id).isTrue()
+                assertThat(sdk.webhooks.listEndpoints(accountId = id).size).isEqualTo(1)
+                val rotated = sdk.webhooks.rotateEndpointSecret(endpoint.id, id).secret
+                assertThat(rotated != secret).isTrue()
+                sdk.webhooks.updateEndpoint(endpoint.id, UpdateWebhookEndpointRequest(signingEnabled = false), id)
+                val enabled = sdk.webhooks.updateEndpoint(endpoint.id, UpdateWebhookEndpointRequest(signingEnabled = true), id)
+                assertThat(enabled.signingEnabled).isTrue()
+                val renewedSecret = sdk.webhooks.getEndpointSecret(endpoint.id, id).secret
+                assertThat(renewedSecret != rotated).isTrue()
+                enabled.secret?.let { assertThat(it == renewedSecret).isTrue() }
+                sdk.webhooks.deleteEndpoint(endpoint.id, id)
+                assertThat(sdk.webhooks.listEndpoints(accountId = id)).isEmpty()
+            },
+            cleanup = {
+                val ids = sdk.workspaces.list().data.filter { it.id == workspaceId || it.name == name || it.name == "$name updated" }.map { it.id }
+                cleanUpAll(*ids.map { id -> suspend { sdk.workspaces.delete(id, force = true) } }.toTypedArray())
+            },
+        )
+    }
+
+    @Test
+    fun `disposable tag color lifecycle is reversible`() = runBlocking<Unit> {
+        requireWrites()
+        val sdk = client()
+        val name = "SDK live tag ${UUID.randomUUID()}"
+        var tagId: String? = null
+        reversible(
+            block = {
+                val tag = sdk.tags.create(name, "#336699")
+                tagId = tag.id
+                assertThat(tag.color).isEqualTo("336699")
+                assertThat(sdk.tags.update(tag.id, color = "993366").color).isEqualTo("993366")
+                assertThat(sdk.tags.update(tag.id, clearColor = true).color).isNull()
+            },
+            cleanup = {
+                val ids = sdk.tags.list(search = name).filter { it.id == tagId || it.name == name }.map { it.id }
+                cleanUpAll(*ids.map { id -> suspend { sdk.tags.delete(id) } }.toTypedArray())
+            },
+        )
+    }
+
+    @Test
+    fun `verification method estimates expose sandbox feature gates`() = runBlocking<Unit> {
+        requireWrites()
+        val sdk = client()
+        val name = "sdk-live-pricing-${UUID.randomUUID()}.pdf"
+        val ids = linkedSetOf<String>()
+        reversible(
+            block = {
+                val doc = sdk.documents.upload(minimalPdf("pricing"), name)
+                ids += doc.id
+                sdk.documents.waitUntilReady(doc.id)
+                com.assinafy.sdk.VerificationMethod.ALL.filter { it != com.assinafy.sdk.VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC }.forEach { verification ->
+                    try {
+                        val estimate = sdk.assignments.estimateCost(doc.id, CreateAssignmentRequest(signers = listOf(SignerReference(verificationMethod = verification))))
+                        assertThat(estimate.totalCredits).isNotNull()
+                    } catch (error: ApiException) {
+                        assertThat(error.statusCode).describedAs("Verification feature gate for %s", verification).isEqualTo(403)
+                    }
+                }
+            },
+            cleanup = { recoverDocuments(sdk, ids, name).forEach { deleteDocumentWhenReady(sdk, it) } },
+        )
+    }
+
+    @Test
+    fun `webhook URL operations and one-time secrets are operational when deployed`() = runBlocking<Unit> {
+        requireWrites()
+        val sdk = client()
+        var workspaceId: String? = null
+        reversible(
+            block = {
+                val workspace = sdk.workspaces.create(CreateWorkspaceRequest("SDK live workspace ${UUID.randomUUID()}"))
+                workspaceId = workspace.id
+                val id = workspace.id
+                val url = "https://example.com/sdk-live/${UUID.randomUUID()}?source=android&mode=test"
+                val endpoint = sdk.webhooks.createEndpoint(
+                    CreateWebhookEndpointRequest(url, "ops@example.com", listOf(WebhookEvent.DOCUMENT_READY), isActive = false, signingEnabled = true),
+                    id,
+                )
+                val unmatched = sdk.webhooks.listEndpoints(accountId = id, url = "https://example.com/not-registered")
+                assumeTrue(unmatched.isEmpty(), "This host does not deploy exact-URL webhook filtering/deletion and one-time creation secrets")
+                assertThat(sdk.webhooks.listEndpoints(accountId = id, url = url).size).isEqualTo(1)
+                assertThat(endpoint.secret).isNotBlank()
+                assertThat(sdk.webhooks.getEndpointSecret(endpoint.id, id).secret == endpoint.secret).isTrue()
+                sdk.webhooks.deleteEndpointByUrl(url, id)
+                assertThat(sdk.webhooks.listEndpoints(accountId = id, url = url)).isEmpty()
+            },
+            cleanup = { workspaceId?.let { sdk.workspaces.delete(it, force = true) } },
+        )
+    }
+
+    @Test
+    fun `biometric estimate is operational when deployed`() = runBlocking<Unit> {
+        requireWrites()
+        val sdk = client()
+        assumeTrue(
+            sdk.documents.getStatuses().any { it.code == DocumentStatus.PENDING_IDENTITY_REVIEW },
+            "Biometric verification is not deployed in this host's document-status catalog",
+        )
+        val name = "sdk-live-biometric-pricing-${UUID.randomUUID()}.pdf"
+        val ids = linkedSetOf<String>()
+        reversible(
+            block = {
+                val doc = sdk.documents.upload(minimalPdf("biometric-pricing"), name)
+                ids += doc.id
+                val estimate = planLimited("Biometric verification entitlement") {
+                    sdk.assignments.estimateCost(
+                        doc.id,
+                        CreateAssignmentRequest(signers = listOf(SignerReference(verificationMethod = com.assinafy.sdk.VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC))),
+                    )
+                }
+                assertThat(estimate.totalCredits).isNotNull()
+            },
+            cleanup = { recoverDocuments(sdk, ids, name).forEach { deleteDocumentWhenReady(sdk, it) } },
+        )
+    }
+
     private fun requireWrites() {
         assumeTrue(writesEnabled, "Set ASSINAFY_LIVE_WRITES=true to run reversible write tests")
     }
 
     private fun requireWritesAndEmails() {
         requireWrites()
-        assertThat(testEmail.isNotBlank() && secondTestEmail.isNotBlank())
-            .withFailMessage("ASSINAFY_TEST_EMAIL and ASSINAFY_TEST_EMAIL_2 are required when live writes are enabled")
-            .isTrue()
+        assumeTrue(
+            testEmail.isNotBlank() && secondTestEmail.isNotBlank(),
+            "Set ASSINAFY_TEST_EMAIL and ASSINAFY_TEST_EMAIL_2 to disposable recipients for notification success paths",
+        )
     }
 
     private suspend fun recoverDocuments(

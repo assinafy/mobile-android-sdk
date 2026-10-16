@@ -76,4 +76,22 @@ class WebhookSignatureTest {
         assertThat(Base64Codec.encode(byteArrayOf(1))).isEqualTo("AQ==")
         assertThat(Base64Codec.decode("A")).isNull()
     }
+
+    @Test
+    fun `malformed base64 padding and nonzero unused bits are rejected`() {
+        listOf("AQ=", "AQ===", "AAAA=", "AR==", "AR", "A=Q=").forEach { encoded ->
+            assertThat(Base64Codec.decode(encoded)).describedAs(encoded).isNull()
+        }
+        assertThat(verify(WebhookVerifier(secret + "="))).isFalse
+    }
+
+    @Test
+    fun `replay window rejects timestamp overflow and negative tolerance`() {
+        val time = Long.MIN_VALUE.toString()
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(Base64Codec.decode(secret.removePrefix("whsec_"))!!, "HmacSHA256"))
+        val signed = "v1," + Base64Codec.encode(mac.doFinal("$id.$time.$body".toByteArray()))
+        assertThat(verify(webhookTimestamp = time, webhookSignature = signed, nowEpochSeconds = 0)).isFalse
+        assertThat(WebhookVerifier(secret).verifySignature(body, id, timestamp, signature, toleranceSeconds = -1, nowEpochSeconds = now)).isFalse
+    }
 }

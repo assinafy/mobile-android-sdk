@@ -496,4 +496,29 @@ class DocumentResourceTest {
 
     private fun docStatus(status: String) =
         """{"id":"doc-1","account_id":"acc","name":"t.pdf","status":"$status","created_at":"x","updated_at":"x","is_closed":false}"""
+
+    @Test
+    fun `metadata readiness includes a document waiting for identity review`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse(docStatus("pending_identity_review")))
+        assertThat(DocumentResource(mock, "acc").waitUntilReady("doc", maxWaitMs = 10, pollIntervalMs = 1).status)
+            .isEqualTo("pending_identity_review")
+        assertThat(mock.callCount()).isEqualTo(1)
+    }
+
+    @Test
+    fun `template creation rejects a certificate signer sharing a signing step`() {
+        val mock = MockApiHttpClient()
+        assertThatThrownBy {
+            runBlocking {
+                DocumentResource(mock, "acc").createFromTemplate(
+                    "template",
+                    listOf(
+                        TemplateSigner("role-1", "signer-1", verificationMethod = "DigitalCertificate"),
+                        TemplateSigner("role-2", "signer-2"),
+                    ),
+                )
+            }
+        }.isInstanceOf(ValidationException::class.java)
+        assertThat(mock.calls).isEmpty()
+    }
 }

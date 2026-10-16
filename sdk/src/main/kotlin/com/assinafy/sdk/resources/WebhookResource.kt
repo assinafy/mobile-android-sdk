@@ -346,10 +346,40 @@ class WebhookResource internal constructor(
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Every endpoint of the account, oldest first.
      */
-    suspend fun listEndpoints(accountId: String? = null): List<WebhookEndpoint> {
+    suspend fun listEndpoints(accountId: String? = null): List<WebhookEndpoint> = listEndpoints(accountId, null)
+
+    /**
+     * Lists the account's webhook endpoints, oldest first.
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/webhooks/endpoints`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`) is an array of endpoints:
+     * ```json
+     * [
+     *   {
+     *     "id": "id-placeholder",
+     *     "name": "ERP",
+     *     "url": "https://example.com/webhooks/assinafy",
+     *     "email": "ops@example.com",
+     *     "events": ["document_ready"],
+     *     "is_active": true,
+     *     "signing_enabled": true,
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z"
+     *   }
+     * ]
+     * ```
+     *
+     * @param url Optional exact registered endpoint URL; omitted to return all endpoints.
+     * @param accountId Account override; otherwise the client's default account is used.
+     * @return Every endpoint of the account, oldest first.
+     */
+    suspend fun listEndpoints(accountId: String? = null, url: String?): List<WebhookEndpoint> {
         val id = accountId(accountId)
         return callList("Failed to list webhook endpoints", WebhookEndpoint::class.java) {
-            http.get(endpointsPath(id))
+            http.get(endpointsPath(id), url?.let { mapOf("url" to requireHttpUrl(it)) } ?: emptyMap())
         }.data
     }
 
@@ -357,7 +387,7 @@ class WebhookResource internal constructor(
      * Registers a new URL to receive the account's webhook events. An account can have 1 endpoint,
      * or up to 3 on paid plans; one past the limit answers `403`, and a `url` another endpoint of
      * the workspace already uses answers `400`. With `signing_enabled: true` a secret is generated;
-     * read it with [getEndpointSecret].
+     * store [WebhookEndpoint.secret] from this response; OAuth applications cannot read it later.
      *
      * Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints`.
      *
@@ -384,9 +414,12 @@ class WebhookResource internal constructor(
      *   "is_active": true,
      *   "signing_enabled": true,
      *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z"
+     *   "updated_at": "2026-01-01T00:00:00Z",
+     *   "secret": "whsec_redacted"
      * }
      * ```
+     *
+     * The response may include a one-time `secret` when signing is first enabled; store it on the server.
      *
      * @param request URL, contact email, events and optional label, state and signing flag.
      * @param accountId Account override; otherwise the client's default account is used.
@@ -471,6 +504,8 @@ class WebhookResource internal constructor(
      *   "updated_at": "2026-01-01T00:00:00Z"
      * }
      * ```
+     *
+     * To obtain a one-time secret as an OAuth application, create the endpoint with signing enabled.
      *
      * @param endpointId Endpoint identifier.
      * @param request Fields to change.
@@ -565,6 +600,27 @@ class WebhookResource internal constructor(
         val path = endpointPath(accountId(accountId), endpointId) + "/secret/rotate"
         logger.info("Rotating webhook endpoint secret")
         return call("Failed to rotate webhook endpoint secret", WebhookEndpointSecret::class.java) { http.post(path) }
+    }
+
+    /**
+     * Deletes an endpoint by its exact registered URL, freeing its slot and stopping deliveries.
+     *
+     * Wire operation: `DELETE /v1/accounts/{accountId}/webhooks/endpoints?url={url}`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`):
+     * ```json
+     * []
+     * ```
+     *
+     * @param url Exact URL used at registration; sent as a URL-encoded query parameter.
+     * @param accountId Explicit account or the client's configured default.
+     * @throws com.assinafy.sdk.exceptions.ApiException if no endpoint uses the URL (404).
+     */
+    suspend fun deleteEndpointByUrl(url: String, accountId: String? = null) {
+        val path = endpointsPath(accountId(accountId)) + queryString("url" to requireHttpUrl(url))
+        callVoid("Failed to delete webhook endpoint by URL") { http.delete(path) }
     }
 
     private fun endpointsPath(accountId: String) = "/accounts/${pathSegment(accountId)}/webhooks/endpoints"

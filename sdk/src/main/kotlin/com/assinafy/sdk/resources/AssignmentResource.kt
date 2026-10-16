@@ -1,6 +1,8 @@
 package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.AssignmentMethod
+import com.assinafy.sdk.IdentityReviewDecision
+import com.assinafy.sdk.IdentityReviewImage
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.exceptions.ValidationException
@@ -9,6 +11,7 @@ import com.assinafy.sdk.models.Assignment
 import com.assinafy.sdk.models.CostEstimate
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.ResendEmailResponse
+import com.assinafy.sdk.models.SignerIdentityReview
 import com.assinafy.sdk.models.WhatsappNotification
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.ListParams
@@ -50,10 +53,10 @@ class AssignmentResource internal constructor(
      *     "method": "virtual",
      *     "expires_at": null,
      *     "message": null,
-     *     "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-     *     "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
-     *     "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-     *     "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+     *     "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+     *     "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
+     *     "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+     *     "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
      *     "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
      *   }
      * ]
@@ -108,10 +111,10 @@ class AssignmentResource internal constructor(
      *   "method": "virtual",
      *   "expires_at": null,
      *   "message": null,
-     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
-     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
+     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
      *   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
      * }
      * ```
@@ -139,7 +142,7 @@ class AssignmentResource internal constructor(
      * copy receivers are deliberately omitted:
      * `blocking_reason` is one of `PendingPayment`, `InsufficientDocuments`, or
      * `InsufficientCredits`. A digital-certificate signer adds a `SignatureDigitalCertificate`
-     * breakdown line worth two credits on top of its notification.
+     * breakdown line worth 0.5 credits on top of its notification.
      *
      * Wire operation: `POST /v1/documents/{documentId}/assignments/estimate-cost`.
      *
@@ -212,10 +215,10 @@ class AssignmentResource internal constructor(
      *   "method": "virtual",
      *   "expires_at": null,
      *   "message": null,
-     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
-     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
+     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
      *   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
      * }
      * ```
@@ -402,6 +405,199 @@ class AssignmentResource internal constructor(
             )
         }
     }
+
+    /**
+     * Reads an account-facing identity review without fetching evidence images.
+     *
+     * InReview permits signing to continue, but certification waits for the account decision.
+     * Evidence is a summary; images are fetched separately and are available only while the review is open.
+     *
+     * Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`):
+     * ```json
+     * {
+     *   "id": "verification-placeholder",
+     *   "status": "InReview",
+     *   "provider": "AssinafyVerify",
+     *   "verification_method": "IdDocumentFaceMatchBasic",
+     *   "reason_codes": [
+     *     {
+     *       "code": "NAME_MISMATCH",
+     *       "description": "Registered and captured names differ"
+     *     }
+     *   ],
+     *   "evidence_available": true,
+     *   "expected": {
+     *     "name": "Example Signer",
+     *     "cpf": "00000000000"
+     *   },
+     *   "document": {
+     *     "type": "CNH",
+     *     "name": "Example Signer",
+     *     "cpf": "00000000000"
+     *   },
+     *   "matches": {
+     *     "cpf": true,
+     *     "name": 0.52,
+     *     "birth_date": null
+     *   },
+     *   "checks": [
+     *     {
+     *       "name": "name",
+     *       "result": "review",
+     *       "score": 0.52,
+     *       "reasons": [
+     *         "NAME_MISMATCH"
+     *       ]
+     *     }
+     *   ],
+     *   "images": [
+     *     "document_front",
+     *     "document_back",
+     *     "face"
+     *   ],
+     *   "ruleset_version": "example",
+     *   "evidence_sha256": "digest-placeholder",
+     *   "reviewed_by": {
+     *     "id": "reviewer-placeholder",
+     *     "name": "Example Reviewer"
+     *   },
+     *   "reviewed_at": null,
+     *   "review_note": null,
+     *   "completed_at": null
+     * }
+     * ```
+     *
+     * @param documentId Document identifier.
+     * @param assignmentId Assignment identifier.
+     * @param signerId Signer identifier within the assignment.
+     */
+    suspend fun getIdentityVerification(documentId: String, assignmentId: String, signerId: String): SignerIdentityReview {
+        val path = identityVerificationPath(documentId, assignmentId, signerId)
+        return call("Failed to fetch signer identity review", SignerIdentityReview::class.java) { http.get(path) }
+    }
+
+    /**
+     * Downloads a reviewer evidence image or digital-document PDF.
+     *
+     * The API sends Cache-Control: no-store. Do not cache the sensitive evidence.
+     * Images return 404 after a review decision; the SDK propagates [com.assinafy.sdk.exceptions.ApiException].
+     *
+     * Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}`.
+     *
+     * Request body: none.
+     *
+     * Response 200 payload: raw `image/jpeg`, `image/png`, or `application/pdf` bytes; no JSON envelope.
+     *
+     * @param documentId Document identifier.
+     * @param assignmentId Assignment identifier.
+     * @param signerId Signer identifier within the assignment.
+     * @param name One of [IdentityReviewImage], as listed in the open review.
+     */
+    suspend fun downloadIdentityVerificationImage(documentId: String, assignmentId: String, signerId: String, name: String): ByteArray {
+        val path = identityVerificationPath(documentId, assignmentId, signerId)
+        if (name !in IdentityReviewImage.ALL) throw ValidationException("Unsupported identity evidence image")
+        return callBinary("Failed to download identity review image") { http.getBinary("$path/images/${pathSegment(name)}") }
+    }
+
+    /**
+     * Approves or rejects an open account identity review.
+     *
+     * Approval permits certification after every signature and review completes. Rejection cancels
+     * the document and sends the cancellation notice to signers and copy receivers.
+     * The document must still be pending_signature or pending_identity_review.
+     *
+     * Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review`.
+     *
+     * Request body: (`application/json`):
+     * ```json
+     * {
+     *   "decision": "Approved",
+     *   "note": "Identity checked by the account reviewer"
+     * }
+     * ```
+     *
+     * Response 200 `data` payload (inside `{status,message,data}`):
+     * ```json
+     * {
+     *   "id": "verification-placeholder",
+     *   "status": "Approved",
+     *   "provider": "AssinafyVerify",
+     *   "verification_method": "IdDocumentFaceMatchBasic",
+     *   "reason_codes": [
+     *     {
+     *       "code": "NAME_MISMATCH",
+     *       "description": "Registered and captured names differ"
+     *     }
+     *   ],
+     *   "evidence_available": true,
+     *   "expected": {
+     *     "name": "Example Signer",
+     *     "cpf": "00000000000"
+     *   },
+     *   "document": {
+     *     "type": "CNH",
+     *     "name": "Example Signer",
+     *     "cpf": "00000000000"
+     *   },
+     *   "matches": {
+     *     "cpf": true,
+     *     "name": 0.52,
+     *     "birth_date": null
+     *   },
+     *   "checks": [
+     *     {
+     *       "name": "name",
+     *       "result": "review",
+     *       "score": 0.52,
+     *       "reasons": [
+     *         "NAME_MISMATCH"
+     *       ]
+     *     }
+     *   ],
+     *   "images": [],
+     *   "ruleset_version": "example",
+     *   "evidence_sha256": "digest-placeholder",
+     *   "reviewed_by": {
+     *     "id": "reviewer-placeholder",
+     *     "name": "Example Reviewer"
+     *   },
+     *   "reviewed_at": "2026-10-16T12:00:00Z",
+     *   "review_note": "Identity checked by the account reviewer",
+     *   "completed_at": "2026-10-16T12:00:00Z"
+     * }
+     * ```
+     *
+     * @param documentId Document identifier.
+     * @param assignmentId Assignment identifier.
+     * @param signerId Signer identifier within the assignment.
+     * @param decision [IdentityReviewDecision.APPROVED] or [IdentityReviewDecision.REJECTED].
+     * @param note Optional internal note, at most 2000 Unicode characters; never shown to the signer.
+     */
+    suspend fun reviewIdentityVerification(
+        documentId: String,
+        assignmentId: String,
+        signerId: String,
+        decision: String,
+        note: String? = null,
+    ): SignerIdentityReview {
+        val path = identityVerificationPath(documentId, assignmentId, signerId)
+        if (decision !in setOf(IdentityReviewDecision.APPROVED, IdentityReviewDecision.REJECTED)) {
+            throw ValidationException("Identity review decision must be Approved or Rejected")
+        }
+        if (note != null && note.codePointCount(0, note.length) > 2000) throw ValidationException("Identity review note must not exceed 2000 characters")
+        return call("Failed to decide signer identity review", SignerIdentityReview::class.java) {
+            http.post("$path/review", toJson(mapOf("decision" to decision, "note" to note)))
+        }
+    }
+
+    private fun identityVerificationPath(documentId: String, assignmentId: String, signerId: String): String =
+        "/documents/${pathSegment(requireId(documentId, "Document ID"))}/assignments/" +
+            "${pathSegment(requireId(assignmentId, "Assignment ID"))}/signers/" +
+            "${pathSegment(requireId(signerId, "Signer ID"))}/identity-verification"
 
     private fun normalise(
         request: CreateAssignmentRequest,

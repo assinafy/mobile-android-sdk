@@ -65,7 +65,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.6.1-local-SNAPSHOT \
+  -Pversion=2.7.0-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -81,7 +81,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.6.1-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.7.0-local-SNAPSHOT")
 }
 ```
 
@@ -96,7 +96,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.6.1")
+    implementation("com.assinafy:assinafy-android-sdk:2.7.0")
 }
 ```
 
@@ -697,12 +697,14 @@ val endpoint = client.webhooks.createEndpoint(
         signingEnabled = true,
     ),
 )
-val secret = client.webhooks.getEndpointSecret(endpoint.id).secret // "whsec_...", keep it on the backend
+val secret = requireNotNull(endpoint.secret) // store on the backend; returned once at creation
 ```
 
 | Method | Operation |
 |---|---|
 | `webhooks.listEndpoints()` | Every endpoint, oldest first |
+| `webhooks.listEndpoints(url = url)` | Only the endpoint with that exact registered URL |
+| `webhooks.deleteEndpointByUrl(url)` | Deletes the exact registered URL and frees the slot |
 | `webhooks.getEndpoint(id)` | One endpoint, or `null` when it does not exist |
 | `webhooks.updateEndpoint(id, UpdateWebhookEndpointRequest(...))` | Changes only the supplied fields; `isActive = false` pauses, `signingEnabled = false` discards the secret |
 | `webhooks.deleteEndpoint(id)` | Stops delivery and frees the slot |
@@ -790,7 +792,8 @@ both, or neither — the missing side is inferred, and sending neither defaults 
 | --- | --- | --- | --- |
 | `VerificationMethod.EMAIL` *(default)* | One-time code (OTP) by email, required before signing | `NotificationMethod.EMAIL` | Free |
 | `VerificationMethod.WHATSAPP` | One-time code (OTP) over WhatsApp | `NotificationMethod.WHATSAPP` | 0.45 credits, paid plans only |
-| `VerificationMethod.DIGITAL_CERTIFICATE` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a **qualified PAdES signature** | `EMAIL` **or** `WHATSAPP` | 2 credits + the notification |
+| `VerificationMethod.DIGITAL_CERTIFICATE` | The signer signs with their **own ICP-Brasil certificate (A1 or A3)** through the Web PKI browser extension, producing a **qualified PAdES signature** | `EMAIL` **or** `WHATSAPP` | 0.5 credits + the notification |
+| `VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC` | Hosted identity document and face capture with explicit biometric consent | `EMAIL` or `WHATSAPP` | Per-signer fee + notification; use the estimate |
 
 Exactly one notification method per signer. The SDK validates the pairing locally, so an invalid
 combination fails with `ValidationException` before the request leaves.
@@ -803,10 +806,10 @@ SignerReference.over(signer.id, NotificationMethod.WHATSAPP)
 SignerReference.withDigitalCertificate(signer.id, notifyBy = NotificationMethod.EMAIL, step = 2)
 ```
 
-No verification method carries a price of its own: what is billed is the **notification** it travels
+Email and WhatsApp OTP verification have no separate fee: what is billed is the **notification** it travels
 with. Because choosing WhatsApp verification also chooses WhatsApp notification, such a signer costs
 0.45 credits against 0 for an email-verified one. Digital certificate is the exception — the
-signature itself costs 2 credits per signer on top of the notification, charged when the assignment
+signature itself costs 0.5 credits per signer on top of the notification, charged when the assignment
 is created and shown in the estimate `breakdown` under the `SignatureDigitalCertificate` code.
 
 Digital certificate requires the account feature (Standard and Pro plans), a CPF or CNPJ in
@@ -815,6 +818,78 @@ certificate (an e-CPF, or an e-CNPJ naming them as legal representative); a CNPJ
 for that company, from any of its representatives. Because certificate signing runs through a
 handshake with the Web PKI browser extension, it is not completed by this SDK's native signing flow —
 send the signer to the web signing page.
+
+### Biometric identity-document and face verification
+
+Use `VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC` when the account has the feature enabled.
+The existing signer must have a valid CPF in `government_id`; certificate signing has separate
+CPF/CNPJ rules. Biometric verification accepts Email or WhatsApp invitations and carries a per-signer
+fee. Call `assignments.estimateCost` before creating the assignment; prices come from the server.
+
+On the backend, after creating the signer and uploading the PDF:
+
+```kotlin
+val assignment = client.assignments.create(
+    documentId,
+    CreateAssignmentRequest(
+        signers = listOf(
+            SignerReference(
+                id = signer.id,
+                verificationMethod = VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC,
+                notificationMethods = listOf(NotificationMethod.EMAIL),
+            ),
+        ),
+    ),
+)
+```
+
+In the signer app, `self(accessCode).verificationMethod` identifies the required flow. Use the code
+received through the invitation channel and the credential-free `signerDocuments` resource:
+
+```kotlin
+val state = client.signerDocuments.getIdentityVerification(accessCode)
+if (state.canStart && consentGrantedBySigner) {
+    val session = client.signerDocuments.startIdentityVerification(accessCode, consent = consentGrantedBySigner)
+    openInBrowser(session.url)
+}
+val current = client.signerDocuments.getIdentityVerification(accessCode)
+```
+
+Obtain the person's explicit consent to biometric processing before starting. Keep `session.url`
+out of logs because it contains an access token. Open the hosted URL in a browser to capture the
+document and face, then poll the state again. `canStart` is true only before the first session or
+after `Expired`. A `Pending`, `InReview`, `Approved`, `Declined` or `Abandoned` session cannot be
+replaced. Restarting after expiration does not charge again; resending an invitation never replaces
+a session. `Declined` or `Abandoned` requires a new document and assignment.
+
+With `Approved` or `InReview`, continue viewing, confirming data, accepting terms and signing.
+Biometric verification replaces the OTP. `InReview` permits signing, but certification waits for
+the account's decision; once all signatures finish, the document is `pending_identity_review`.
+On the backend, present the evidence to an authorized reviewer:
+
+```kotlin
+val review = client.assignments.getIdentityVerification(documentId, assignment.id, signer.id)
+val image = if (IdentityReviewImage.FACE in review.images) {
+    client.assignments.downloadIdentityVerificationImage(
+        documentId, assignment.id, signer.id, IdentityReviewImage.FACE,
+    )
+} else null // only if FACE appears in review.images; do not cache
+val decided = client.assignments.reviewIdentityVerification(
+    documentId, assignment.id, signer.id,
+    decision = IdentityReviewDecision.APPROVED,
+    note = "Identity checked by the account reviewer",
+)
+```
+
+Approval permits certification after all signatures and reviews finish. `REJECTED` cancels the
+document and notifies signers and copy receivers. The optional internal note allows 2000 characters
+and is never shown to the signer. Images exist only while review is open; after a decision they
+return 404. The summary includes reasons, expected and captured identity, match results, checks,
+ruleset version, evidence digest and reviewer details.
+
+Subscribe to `WebhookEvent.SIGNER_IDENTITY_VERIFIED`, `SIGNER_IDENTITY_VERIFICATION_FAILED`,
+`SIGNER_IDENTITY_REVIEW_REQUIRED`, `SIGNER_IDENTITY_REVIEW_APPROVED` and
+`SIGNER_IDENTITY_REVIEW_REJECTED`. Assignment signers expose `identityVerificationStatus`.
 
 ## The one-call shortcut
 
@@ -983,7 +1058,7 @@ has its own independent budget.
 Set `baseUrl` when creating a sandbox client and use credentials issued for that environment.
 The OAuth flow above uses a Public app registered in production and issuer
 `https://auth.assinafy.com.br`; discover the issuer before configuring another deployment.
-Sandbox OAuth discovery advertises `https://auth-sandbox.assinafy.com.br`; register a separate Public app in the sandbox dashboard when using that issuer. API-key integration tests default to sandbox. The build uses Kotlin 2.4.20 and JDK 25 LTS.
+Sandbox OAuth discovery advertises `https://auth-sandbox.assinafy.com.br`; register a separate Public app in the sandbox dashboard when using that issuer. API-key integration tests default to sandbox. The build uses Kotlin 2.4.21 and JDK 25 LTS.
 
 ## Building and testing
 

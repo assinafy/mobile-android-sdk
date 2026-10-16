@@ -308,7 +308,7 @@ Uploads must be non-empty PDF content, have a `.pdf` name, begin with `%PDF-`, a
 digital-certificate signers and contains their ICP-Brasil signatures plus the platform certification
 box. `bundle` is a ZIP containing the original,
 certificated, and certificate-page artifacts, plus PAdES when available. Readiness stops at
-`metadata_ready`, `pending_signature`, `certificating`, or `certificated`, and fails immediately for
+`metadata_ready`, `pending_signature`, `pending_identity_review`, `certificating`, or `certificated`, and fails immediately for
 the terminal `failed`, `rejected_by_signer`, `rejected_by_user`, and `expired` states.
 
 `verify(hash)` always returns HTTP `200`. For an unknown hash or an unsigned document,
@@ -391,6 +391,8 @@ in a JSON body.
 | Kotlin function | Exact request | Body | Return (`data`) |
 |---|---|---|---|
 | `self(accessCode)` | `GET /v1/signers/self?signer-access-code=...` | none | `SignerSelf` |
+| `getIdentityVerification(accessCode)` | `GET /v1/signers/identity-verification?signer-access-code=...` | none | `SignerIdentityVerification` |
+| `startIdentityVerification(accessCode, consent)` | `POST /v1/signers/identity-verification?signer-access-code=...` | `{"consent":true}` after explicit signer consent | `IdentityVerificationSession` |
 | `getCurrent(signerId, accessCode)` | `GET /v1/signers/{signerId}/document?signer-access-code=...` | none | `DocumentDetails` |
 | `getAssignment(accessCode, hasAcceptedTerms)` | `GET /v1/sign?signer-access-code=...&has_accepted_terms=...` | none | `DocumentDetails` |
 | `sign(documentId, assignmentId, accessCode, entries)` | `POST /v1/documents/{documentId}/assignments/{assignmentId}?signer-access-code=...` | Collect: array of `SignAssignmentItemRequest`; confirmed virtual: exactly `[]` | API result `Map<String,Any>` |
@@ -439,6 +441,9 @@ paths, authentication, requests, or responses; the SDK therefore does not expose
 | `listWhatsappNotifications(documentId, assignmentId)` | `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications` | none | `List<WhatsappNotification>` |
 | `resendNotification(documentId, assignmentId, signerId, channel?)` | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend` | none; optional deployed-service `{"channel":"email"\|"whatsapp"}` | `ResendEmailResponse` |
 | `estimateResendCost(documentId, assignmentId, signerId)` | `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost` | none | `CostEstimate` |
+| `getIdentityVerification(documentId, assignmentId, signerId)` | `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification` | none | `SignerIdentityReview` |
+| `downloadIdentityVerificationImage(documentId, assignmentId, signerId, name)` | `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}` | none; temporary evidence only | Raw image/PDF `ByteArray` |
+| `reviewIdentityVerification(documentId, assignmentId, signerId, decision, note)` | `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review` | `{"decision":"Approved"\|"Rejected","note":string?}` | `SignerIdentityReview` |
 
 Create body:
 
@@ -476,12 +481,13 @@ side, and omitting both defaults to Email. Exactly one notification method is al
 | `Email` | `["Email"]` |
 | `Whatsapp` | `["Whatsapp"]` |
 | `DigitalCertificate` | `["Email"]` or `["Whatsapp"]` |
+| `IdDocumentFaceMatchBasic` | `["Email"]` or `["Whatsapp"]` |
 
 The SDK applies this table, the signing-step rules, and the collect field-placement rules locally, so
 an invalid pairing raises `ValidationException` instead of costing a round trip. WhatsApp delivery
 requires a paid subscription and costs 0.45 credits per signer. A digital-certificate signer must be
 alone in its signing step, requires account entitlement and a CPF/CNPJ in the signer's
-`government_id` (set through `signers.update` after signer creation), costs two credits in addition
+`government_id` (set through `signers.update` after signer creation), costs 0.5 credits in addition
 to its notification, and completes through certificate-specific signing.
 
 `method` is `virtual` or `collect`. Create requires an ID for every signer. Steps, if present, form a
@@ -495,13 +501,18 @@ Step 1 signers are notified when the assignment is created. A later step is noti
 signer in all preceding steps has completed. Each assignment consumes one document from the plan
 allowance; when that allowance is exhausted, an extra document costs 1 credit. Email notifications
 cost 0 credits, WhatsApp notifications cost 0.45 credits each, and each digital-certificate signer
-costs 2 credits in addition to notification costs. The estimate uses breakdown code
+costs 0.5 credits in addition to notification costs. The estimate uses breakdown code
 `SignatureDigitalCertificate` for that signer cost and may report `PendingPayment`,
 `InsufficientDocuments`, or `InsufficientCredits` in `blocking_reason`.
 
 In non-production environments, `listWhatsappNotifications` returns simulated messages without
 real delivery. Its button URLs contain signer access or verification codes; treat those URLs as
 credentials and do not log, persist, or publish them.
+
+Biometric identity-document/face verification requires the account feature and a valid signer CPF.
+The hosted flow needs explicit consent; `InReview` permits signing but holds certification until
+the account approves. `Declined`/`Abandoned` requires a new signing process. The server prices it
+per signer; use the cost estimate.
 
 ## FieldResource
 
@@ -578,10 +589,11 @@ role, and each signer must already exist in the account.
 | Deprecated `listDispatches(ListParams, accountId)` | `GET /v1/accounts/{accountId}/webhooks` | Optional `page`, `per-page`; other `ListParams` fields are ignored | `PaginatedResult<WebhookDispatch>` |
 | `listDispatches(WebhookDispatchParams, accountId)` | Same endpoint | Optional `endpoint_id`, `event`, `delivered`, Unix-second `from`/`to`, `page`, `per-page` | `PaginatedResult<WebhookDispatch>` |
 | `retryDispatch(dispatchId, accountId)` | `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry` | none | `WebhookDispatch` |
-| `listEndpoints(accountId)` | `GET /v1/accounts/{accountId}/webhooks/endpoints` | none | `List<WebhookEndpoint>`, oldest first |
+| `listEndpoints(accountId)` / `listEndpoints(accountId, url)` | `GET /v1/accounts/{accountId}/webhooks/endpoints` | Optional exact `url` query | `List<WebhookEndpoint>`, oldest first |
 | `createEndpoint(CreateWebhookEndpointRequest, accountId)` | `POST /v1/accounts/{accountId}/webhooks/endpoints` | `{"url":string,"email":string,"events":[string],"name":string?,"is_active":boolean?,"signing_enabled":boolean?}` | `WebhookEndpoint`; 403 past the plan limit |
 | `getEndpoint(endpointId, accountId)` | `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | none | `WebhookEndpoint?`; null on 404 |
 | `updateEndpoint(endpointId, UpdateWebhookEndpointRequest, accountId)` | `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | Only supplied members of `{"url","email","events","name","is_active","signing_enabled"}`; at least one | `WebhookEndpoint` |
+| `deleteEndpointByUrl(url, accountId)` | `DELETE /v1/accounts/{accountId}/webhooks/endpoints` | Required exact `url` query | `Unit`; 404 if absent |
 | `deleteEndpoint(endpointId, accountId)` | `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | none | `Unit` |
 | `getEndpointSecret(endpointId, accountId)` | `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` (API key only) | none | `WebhookEndpointSecret`; 400 when signing is disabled |
 | `rotateEndpointSecret(endpointId, accountId)` | `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key only) | none | `WebhookEndpointSecret`; the old secret stops working at once |
@@ -656,7 +668,7 @@ webhook shared secret in an Android application.
 | `CreateSignerRequest` | `full_name:String`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?` (CPF or CNPJ; formatting accepted, normalized by the API); deprecated `cpf:String?` (sent as `government_id` when `governmentId` is null), `metadata:Map?` |
 | `UpdateSignerRequest` | `full_name:String?`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?`; deprecated compatibility `cpf:String?` |
 | `ConfirmSignerDataRequest` | `full_name:String?`, `email:String?`, `government_id:String?`; deprecated `whatsapp_phone_number` and `has_accepted_terms` are not sent by `signerDocuments.confirmData` |
-| `SignerReference` | `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?` (Email, WhatsApp, or both), `step:Int?` |
+| `SignerReference` | `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?` (exactly one: Email or WhatsApp), `step:Int?` |
 | `CreateAssignmentRequest` | `method:String`, `signers:List<SignerReference>`, `message:String?`, `expires_at:String?`, `copy_receivers:List<String>?` (signer IDs), `entries:List<AssignmentEntry>?` |
 | `AssignmentEntry` | `page_id:String`, `fields:List<AssignmentFieldPlacement>` |
 | `AssignmentFieldPlacement` | `signer_id:String`, `field_id:String`, `display_settings:DisplaySettings?` |
@@ -723,8 +735,8 @@ changing standard requests.
 | `Assignment` | `resource:String?`, `id:String`, `sender_email→senderEmail:String?`, `method:String?`, `expires_at→expiresAt:String?`, compatibility `expiration:String?`, `message:String?`, `signers:List<Signer>`, `copy_receivers→copyReceivers:List<Signer>?`, `items:List<AssignmentItem>?`, `summary:AssignmentSummary?`, `signing_urls→signingUrls:List<SigningUrl>?` |
 | `AssignmentSummary` | `signer_count→signerCount:Int`, `completed_count→completedCount:Int`, `signers:List<Signer>` |
 | `SigningUrl` | `signer_id→signerId:String`, `url:String` |
-| `Signer` | `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, legacy `cpf:String?`, deployed response `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, legacy `metadata:Map<String,Any>?`; assignment expansions `completed:Boolean?`, `verification_method→verificationMethod:String?`, `notification_methods→notificationMethods:List<String>?`, `step:Int?`, `notified:Boolean?`, `notification_history→notificationHistory:List<NotificationHistoryEntry>?`; signer-self expansions `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?`; `resource:String?` |
-| `SignerSelf` | `resource:String?`, `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?` |
+| `Signer` | `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, legacy `cpf:String?`, deployed response `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, legacy `metadata:Map<String,Any>?`; assignment expansions `completed:Boolean?`, `verification_method→verificationMethod:String?`, `notification_methods→notificationMethods:List<String>?`, `step:Int?`, `notified:Boolean?`, `notification_history→notificationHistory:List<NotificationHistoryEntry>?`; signer-self expansions `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?`; `resource:String?`, `identity_verification_status→identityVerificationStatus:String?` |
+| `SignerSelf` | `resource:String?`, `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?`, `verification_method→verificationMethod:String?` |
 | `NotificationHistoryEntry` | `event:String?`, `status:String?`, `error_code→errorCode:String?`, `error_message→errorMessage:String?`, `sent_at→sentAt:String?`, `failed_at→failedAt:String?` |
 | `ResendEmailResponse` | `is_sent→isSent:Boolean?`, `document_id→documentId:String?`, `signer_id→signerId:String?` |
 | `WhatsappNotification` | `sent_at→sentAt:Long?`, `header:String?`, `body:String?`, `buttons:List<WhatsappNotificationButton>`, `phone_number→phoneNumber:String?`, `signer_id→signerId:String?` |
@@ -758,7 +770,7 @@ because their JSON shapes vary by assignment and field type.
 | `NotificationPreferences` | Nine required `Boolean` fields: `DocumentCompleted`, `SignerDeclined`, `DocumentCancelled`, `DocumentAboutToExpire`, `DocumentExpired`, `DocumentExpirationReset`, `DocumentProcessingFailed`, `TemplateProcessingFailed`, `SignerWhatsappFailed` |
 | `WebhookSubscription` | `url:String?`, `email:String?`, `events:List<String>`, `is_active→isActive:Boolean`, `updated_at→updatedAt:String?` |
 | `WebhookEventTypeInfo` | `id:String`, `description:String?` |
-| `WebhookEndpoint` | `id:String`, `name:String?`, `url:String`, `email:String?`, `events:List<String>`, `is_active→isActive:Boolean`, `signing_enabled→signingEnabled:Boolean`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?` |
+| `WebhookEndpoint` | `id:String`, `name:String?`, `url:String`, `email:String?`, `events:List<String>`, `is_active→isActive:Boolean`, `signing_enabled→signingEnabled:Boolean`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?`, `secret:String?` (one-time creation secret; redacted in `toString()`) |
 | `WebhookEndpointSecret` | `secret:String` (`whsec_` + base64 key); `toString()` redacts it |
 | `WebhookDispatch` | `resource:String?`, `id:String`, `event:String`, `activity_id→activityId:Long?`, `endpoint_id→endpointId:String?` (null once the endpoint is deleted), `endpoint:String?`, `payload:Map<String,Any>?`, `delivered:Boolean`, `http_status→httpStatus:Int?`, `response_body→responseBody:String?`, `error:String?`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?` |
 | `WebhookPayload` | `id:Long?`, `event:String?`, compatibility `type:String?`, `message:String?`, `payload:Map<String,Any>?`, `subject:Map<String,Any>?`, `object→obj:Map<String,Any>?`, `origin:Map<String,Any>?`, `created_at→createdAt:Long?`, `account_id→accountId:String?` |
@@ -770,6 +782,22 @@ in the requested `YYYY-MM`. Rows are newest-first. Notification counters can exc
 `signature_requests` because a signer notified through multiple channels counts once in each
 channel. The verification counters partition `signature_requests` and therefore sum to that total.
 
+### Identity verification models
+
+| Kotlin type | Complete wire fields and Kotlin types |
+|---|---|
+| `IdentityReviewReason` | `code:String`, `description:String` |
+| `IdentityReviewExpected` | `name:String?`, `cpf:String?` |
+| `IdentityReviewDocument` | `type:String?`, `name:String?`, `cpf:String?` |
+| `IdentityReviewMatches` | `cpf:Boolean?`, `name:Double?`, `birth_date→birthDate:Boolean?` |
+| `IdentityReviewCheck` | `name:String`, `result:String`, `score:Double?`, `reasons:List<String>` |
+| `IdentityReviewer` | `id:String`, `name:String` |
+| `SignerIdentityReview` | `id:String`, `status:String`, `provider:String`, `verification_method→verificationMethod:String`, `reason_codes→reasonCodes:List<IdentityReviewReason>`, `evidence_available→evidenceAvailable:Boolean`, `expected:IdentityReviewExpected?`, `document:IdentityReviewDocument?`, `matches:IdentityReviewMatches?`, `checks:List<IdentityReviewCheck>`, `images:List<String>`, `ruleset_version→rulesetVersion:String?`, `evidence_sha256→evidenceSha256:String?`, `reviewed_by→reviewedBy:IdentityReviewer?`, `reviewed_at→reviewedAt:String?`, `review_note→reviewNote:String?`, `completed_at→completedAt:String?` |
+| `SignerIdentityVerification` | `can_start→canStart:Boolean`, `status:String?`, `url:String?`, `expires_at→expiresAt:String?`, `completed_at→completedAt:String?` |
+| `IdentityVerificationSession` | `id:String`, `url:String`, `expires_at→expiresAt:String?` |
+
+Hosted capture URLs are credentials; both capture response types redact them in `toString()`.
+
 ## Constants
 
 - `SdkConstants`: `VERSION`/`USER_AGENT`, production `DEFAULT_BASE_URL`, 30-second
@@ -779,15 +807,19 @@ channel. The verification counters partition `signature_requests` and therefore 
 - `DocumentArtifact`: `original`, `certificated`, `certificate-page`, `pades`, `bundle`.
 - `SignatureType`: `signature`, `initial`.
 - `AssignmentMethod`: `virtual`, `collect`.
-- `VerificationMethod`: `Email`, `Whatsapp`, `DigitalCertificate` (ICP-Brasil A1/A3), plus `ALL`.
+- `VerificationMethod`: `Email`, `Whatsapp`, `DigitalCertificate` (ICP-Brasil A1/A3), `IdDocumentFaceMatchBasic`, plus `ALL`.
 - `NotificationMethod`: `Email`, `Whatsapp`, plus `ALL`. Exactly one per signer, paired with the
   verification method.
 - `OAuthScope`: `documents:read`, `documents:write`, `templates:read`, `templates:write`,
   `account:read`, `webhooks:write`, `openid`, `profile`, `email`, `offline_access`.
 - `OAuthConfig.DEFAULT_AUTHORIZATION_SERVER`: `https://auth.assinafy.com.br`.
 - `OAuthChallenge.INSUFFICIENT_SCOPE`: `insufficient_scope`.
+- `IdentityVerificationStatus`: `Pending`, `InReview`, `Approved`, `Declined`, `Expired`, `Abandoned`.
+- `IdentityReviewDecision`: `Approved`, `Rejected`.
+- `IdentityReviewImage`: `document_front`, `document_back`, `document_pdf`, `face`, plus `ALL`.
+- `DocumentStatus.PENDING_IDENTITY_REVIEW`: `pending_identity_review`.
 - `DocumentStatus.CERTIFICATED`: `certificated`.
-- `DocumentStatus.READY`: `metadata_ready`, `pending_signature`, `certificating`, `certificated`.
+- `DocumentStatus.READY`: `metadata_ready`, `pending_signature`, `pending_identity_review`, `certificating`, `certificated`.
 - `DocumentStatus.FAILED`: `failed`, `rejected_by_signer`, `rejected_by_user`, `expired`.
 - `SocialLoginProvider.GOOGLE`: `google`.
 - `NotificationSenderType`: `USER` (`User`) and `ACCOUNT` (`Account`), for `notification_sender_type`.
@@ -804,7 +836,9 @@ channel. The verification counters partition `signature_requests` and therefore 
   `signer_email_verified`, `signer_whatsapp_verified`, `signer_data_confirmed`,
   `signer_signed_document`, `signer_viewed_document`, `signer_rejected_document`,
   `user_rejected_document`, `document_processing_failed`, `template_created`,
-  `template_processed`, and `template_processing_failed`. Use `webhooks.listEventTypes()` to accept
+  `template_processed`, `template_processing_failed`, `signer_identity_verified`,
+  `signer_identity_verification_failed`, `signer_identity_review_required`,
+  `signer_identity_review_approved`, and `signer_identity_review_rejected`. Use `webhooks.listEventTypes()` to accept
   future server events without an SDK update.
 
 ## Complete method payloads
@@ -1051,10 +1085,10 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "method": "virtual",
     "expires_at": null,
     "message": null,
-    "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-    "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
-    "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-    "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+    "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+    "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
+    "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+    "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
     "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
   }
 ]
@@ -1087,10 +1121,10 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "method": "virtual",
   "expires_at": null,
   "message": null,
-  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
-  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
+  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
 }
 ```
@@ -1191,10 +1225,10 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "method": "virtual",
   "expires_at": null,
   "message": null,
-  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],
-  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},
+  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
+  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
+  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
+  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
 }
 ```
@@ -1579,9 +1613,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
     "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
     "created_at": "2026-01-01T00:00:00Z",
     "updated_at": "2026-01-01T00:00:00Z"
@@ -1615,9 +1649,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
   "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
@@ -1646,9 +1680,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
     "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
     "created_at": "2026-01-01T00:00:00Z",
     "updated_at": "2026-01-01T00:00:00Z"
@@ -1695,9 +1729,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
   "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
@@ -1743,9 +1777,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
   "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
@@ -1929,9 +1963,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
   "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
@@ -2183,6 +2217,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "full_name": "Example",
     "email": null,
     "whatsapp_phone_number": null,
+    "government_id": null,
     "has_accepted_terms": true
   }
 ]
@@ -2212,6 +2247,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "full_name": "Example",
   "email": null,
   "whatsapp_phone_number": null,
+  "government_id": null,
   "has_accepted_terms": true
 }
 ```
@@ -2232,6 +2268,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "full_name": "Example",
   "email": null,
   "whatsapp_phone_number": null,
+  "government_id": null,
   "has_accepted_terms": true
 }
 ```
@@ -2260,6 +2297,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "full_name": "Example",
   "email": null,
   "whatsapp_phone_number": null,
+  "government_id": null,
   "has_accepted_terms": true
 }
 ```
@@ -2295,6 +2333,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "whatsapp_phone_number": null,
   "government_id": null,
   "has_accepted_terms": true,
+  "verification_method": "Email",
   "has_signature": true,
   "has_initial": true,
   "is_signature_reusable": true
@@ -2322,9 +2361,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
   "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
@@ -2352,9 +2391,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
   "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
@@ -2485,6 +2524,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "full_name": "Example",
   "email": null,
   "whatsapp_phone_number": null,
+  "government_id": null,
   "has_accepted_terms": true
 }
 ```
@@ -2556,9 +2596,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
     "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
     "created_at": "2026-01-01T00:00:00Z",
     "updated_at": "2026-01-01T00:00:00Z"
@@ -2588,9 +2628,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
     "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
     "created_at": "2026-01-01T00:00:00Z",
     "updated_at": "2026-01-01T00:00:00Z"
@@ -2629,9 +2669,9 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},
+  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
   "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true,"verification_method": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
+  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z"
@@ -3033,7 +3073,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 
 `GET /v1/accounts/{accountId}/webhooks/endpoints`
 
-Parameters: `accountId` (path, required).
+Parameters: `accountId` (path, required); optional `url` query matches the exact registered URL.
 
 Request body: none.
 
@@ -3083,11 +3123,14 @@ Response 200 `data` payload (inside `{status,message,data}`):
   "is_active": true,
   "signing_enabled": true,
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "secret": "whsec_redacted"
 }
 ```
 
 Past the plan's endpoint limit the API answers `403`; a `url` already used in the workspace answers `400`.
+
+Store `WebhookEndpoint.secret` from creation with signing enabled. It is absent from reads; OAuth applications cannot fetch it later.
 
 ### `webhooks.getEndpoint`
 
@@ -3376,3 +3419,258 @@ Authorization-code exchange response:
   "id_token": "<id-token>"
 }
 ```
+
+## Identity verification method payloads
+
+### `assignments.getIdentityVerification`
+
+Reads an account-facing identity review without fetching evidence images.
+
+InReview permits signing to continue, but certification waits for the account decision.
+Evidence is a summary; images are fetched separately and are available only while the review is open.
+
+Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "verification-placeholder",
+  "status": "InReview",
+  "provider": "AssinafyVerify",
+  "verification_method": "IdDocumentFaceMatchBasic",
+  "reason_codes": [
+    {
+      "code": "NAME_MISMATCH",
+      "description": "Registered and captured names differ"
+    }
+  ],
+  "evidence_available": true,
+  "expected": {
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "document": {
+    "type": "CNH",
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "matches": {
+    "cpf": true,
+    "name": 0.52,
+    "birth_date": null
+  },
+  "checks": [
+    {
+      "name": "name",
+      "result": "review",
+      "score": 0.52,
+      "reasons": [
+        "NAME_MISMATCH"
+      ]
+    }
+  ],
+  "images": [
+    "document_front",
+    "document_back",
+    "face"
+  ],
+  "ruleset_version": "example",
+  "evidence_sha256": "digest-placeholder",
+  "reviewed_by": {
+    "id": "reviewer-placeholder",
+    "name": "Example Reviewer"
+  },
+  "reviewed_at": null,
+  "review_note": null,
+  "completed_at": null
+}
+```
+
+`documentId`: Document identifier.
+
+`assignmentId`: Assignment identifier.
+
+`signerId`: Signer identifier within the assignment.
+
+
+### `assignments.downloadIdentityVerificationImage`
+
+Downloads a reviewer evidence image or digital-document PDF.
+
+The API sends Cache-Control: no-store. Do not cache the sensitive evidence.
+Images return 404 after a review decision; the SDK propagates `com.assinafy.sdk.exceptions.ApiException`.
+
+Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}`.
+
+Request body: none.
+
+Response 200 payload: raw `image/jpeg`, `image/png`, or `application/pdf` bytes; no JSON envelope.
+
+`documentId`: Document identifier.
+
+`assignmentId`: Assignment identifier.
+
+`signerId`: Signer identifier within the assignment.
+
+`name`: One of `IdentityReviewImage`, as listed in the open review.
+
+
+### `assignments.reviewIdentityVerification`
+
+Approves or rejects an open account identity review.
+
+Approval permits certification after every signature and review completes. Rejection cancels
+the document and sends the cancellation notice to signers and copy receivers.
+The document must still be pending_signature or pending_identity_review.
+
+Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review`.
+
+Request body: (`application/json`):
+```json
+{
+  "decision": "Approved",
+  "note": "Identity checked by the account reviewer"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "verification-placeholder",
+  "status": "Approved",
+  "provider": "AssinafyVerify",
+  "verification_method": "IdDocumentFaceMatchBasic",
+  "reason_codes": [
+    {
+      "code": "NAME_MISMATCH",
+      "description": "Registered and captured names differ"
+    }
+  ],
+  "evidence_available": true,
+  "expected": {
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "document": {
+    "type": "CNH",
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "matches": {
+    "cpf": true,
+    "name": 0.52,
+    "birth_date": null
+  },
+  "checks": [
+    {
+      "name": "name",
+      "result": "review",
+      "score": 0.52,
+      "reasons": [
+        "NAME_MISMATCH"
+      ]
+    }
+  ],
+  "images": [],
+  "ruleset_version": "example",
+  "evidence_sha256": "digest-placeholder",
+  "reviewed_by": {
+    "id": "reviewer-placeholder",
+    "name": "Example Reviewer"
+  },
+  "reviewed_at": "2026-10-16T12:00:00Z",
+  "review_note": "Identity checked by the account reviewer",
+  "completed_at": "2026-10-16T12:00:00Z"
+}
+```
+
+`documentId`: Document identifier.
+
+`assignmentId`: Assignment identifier.
+
+`signerId`: Signer identifier within the assignment.
+
+`decision`: `IdentityReviewDecision.APPROVED` or `IdentityReviewDecision.REJECTED`.
+
+`note`: Optional internal note, at most 2000 Unicode characters; never shown to the signer.
+
+
+### `signerDocuments.getIdentityVerification`
+
+Reads the hosted identity-document verification state.
+
+can_start is true only before a provider session exists or after it expires. InReview
+permits viewing and signing while the account reviews identity; certification waits.
+Declined or Abandoned requires a new document and assignment, not another session.
+
+Wire operation: `GET /v1/signers/identity-verification`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "can_start": false,
+  "status": "Pending",
+  "url": "https://example.com/verification#t=redacted",
+  "expires_at": "2026-10-16T13:00:00Z",
+  "completed_at": null
+}
+```
+
+`signerAccessCode`: Signer access code, sent only on the credential-free transport as a query parameter.
+
+
+### `signerDocuments.startIdentityVerification`
+
+Records explicit biometric-processing consent and opens a hosted capture session.
+
+Open the returned URL in the browser. A live session cannot be replaced; only an Expired
+session can restart. Resending a notification never replaces it, and restarting does not
+charge again. Never log the hosted URL or obtain consent on the signer's behalf.
+
+Wire operation: `POST /v1/signers/identity-verification`.
+
+Request body: (`application/json`):
+```json
+{
+  "consent": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "verification-placeholder",
+  "url": "https://example.com/verification#t=redacted",
+  "expires_at": "2026-10-16T13:00:00Z"
+}
+```
+
+`signerAccessCode`: Signer access code, sent only on the credential-free transport as a query parameter.
+
+`consent`: The signer explicitly agreed to biometric processing; false is rejected before a request.
+
+
+## Webhook URL method payload
+
+### `webhooks.deleteEndpointByUrl`
+
+Deletes an endpoint by its exact registered URL, freeing its slot and stopping deliveries.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/webhooks/endpoints?url={url}`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+[]
+```
+
+`url`: Exact URL used at registration; sent as a URL-encoded query parameter.
+
+`accountId`: Explicit account or the client's configured default.
+
+Raises `com.assinafy.sdk.exceptions.ApiException` if no endpoint uses the URL (404).

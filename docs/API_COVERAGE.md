@@ -3,8 +3,8 @@
 This SDK covers every operation in the Assinafy v1 OpenAPI document published at
 [`https://api.assinafy.com.br/v1/docs/openapi.json`](https://api.assinafy.com.br/v1/docs/openapi.json).
 
-- Paths: 81
-- Operations: **106 covered / 106 documented**
+- Paths: 85
+- Operations: **112 covered / 112 documented**
 - API base URL: `https://api.assinafy.com.br/v1`
 
 Authentication modes below are:
@@ -39,7 +39,7 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 | `POST /v1/accounts` | `workspaces.create(request)` | Account | Covered |
 | `GET /v1/accounts/{accountId}/stats` | `workspaces.getStats(...)` | Account | Covered |
 
-## Assignments (7/7)
+## Assignments (10/10)
 
 | Operation | SDK method | Auth | Status |
 |---|---|---|---|
@@ -50,6 +50,9 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 | `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost` | `assignments.estimateResendCost(...)` | Account | Covered |
 | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration` | `assignments.resetExpiration(...)` | Account | Covered |
 | `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications` | `assignments.listWhatsappNotifications(...)` | Account | Covered |
+| `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification` | `assignments.getIdentityVerification(...)` | Account | Covered |
+| `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}` | `assignments.downloadIdentityVerificationImage(...)` | Account | Covered |
+| `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review` | `assignments.reviewIdentityVerification(...)` | Account | Covered |
 
 ## Authentication (15/15)
 
@@ -126,7 +129,7 @@ a request, so neither maps to an operation above.
 
 `oauth.authorizationServerMetadata(issuer)` reads the RFC 8414 document from the authorization
 server (`https://auth.assinafy.com.br/.well-known/oauth-authorization-server`). That document is
-served by the issuer, not by this API, so it is likewise not one of the 106 operations.
+served by the issuer, not by this API, so it is likewise not one of the 112 operations.
 
 These four endpoints are the only ones that do not use the `{status, message, data}` envelope: they
 answer with flat RFC 6749, OpenID Connect, and RFC 9728 objects, and the SDK raises `OAuthException`
@@ -142,7 +145,7 @@ carrying the standard `error` code rather than `ApiException`.
 | `PUT /v1/accounts/{accountId}/signers/{signerId}` | `signers.update(signerId, request, accountId)` | Account | Covered |
 | `DELETE /v1/accounts/{accountId}/signers/{signerId}` | `signers.delete(signerId, accountId)` | Account | Covered |
 
-## Signing (17/17)
+## Signing (19/19)
 
 | Operation | SDK method | Auth | Status |
 |---|---|---|---|
@@ -163,6 +166,8 @@ carrying the standard `error` code rather than `ApiException`.
 | `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}` | `signerDocuments.download(...)` | Public | Covered |
 | `GET /v1/public/documents/{documentId}` | `documents.getPublic(documentId)` | Public | Covered |
 | `PUT /v1/public/documents/{documentId}/send-token` | `documents.sendAccessToken(documentId, email)` | Public | Covered |
+| `GET /v1/signers/identity-verification` | `signerDocuments.getIdentityVerification(accessCode)` | Signer | Covered |
+| `POST /v1/signers/identity-verification` | `signerDocuments.startIdentityVerification(accessCode, consent)` | Signer | Covered |
 
 ## Tags (4/4)
 
@@ -188,7 +193,7 @@ carrying the standard `error` code rather than `ApiException`.
 | `GET /v1/users/self/notification-preferences` | `users.getNotificationPreferences()` | Account | Covered |
 | `PUT /v1/users/self/notification-preferences` | `users.updateNotificationPreferences(request)` | Account | Covered |
 
-## Webhooks (13/13)
+## Webhooks (14/14)
 
 | Operation | SDK method | Auth | Status |
 |---|---|---|---|
@@ -198,8 +203,9 @@ carrying the standard `error` code rather than `ApiException`.
 | `GET /v1/webhooks/event-types` | `webhooks.listEventTypes()` | Account | Covered |
 | `GET /v1/accounts/{accountId}/webhooks` | `webhooks.listDispatches(...)` | Account | Covered |
 | `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry` | `webhooks.retryDispatch(historyId, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.listEndpoints(accountId)` | Account | Covered |
+| `GET /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.listEndpoints(accountId, url)` | Account | Covered |
 | `POST /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.createEndpoint(request, accountId)` | Account | Covered |
+| `DELETE /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.deleteEndpointByUrl(url, accountId)` | Account | Covered |
 | `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.getEndpoint(endpointId, accountId)` | Account | Covered |
 | `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.updateEndpoint(endpointId, request, accountId)` | Account | Covered |
 | `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.deleteEndpoint(endpointId, accountId)` | Account | Covered |
@@ -218,7 +224,7 @@ Webhooks and are checked locally by `WebhookVerifier.verifySignature`, which per
 `templates.get(templateId, accountId)` calls
 `GET /v1/accounts/{accountId}/templates/{templateId}`. The route is absent from the OpenAPI document
 but answers `200` with the complete template — pages, roles, and tags — on the deployed service, so
-it is retained. It is not counted among the 106 OpenAPI operations. No other undocumented HTTP route
+it is retained. It is not counted among the 112 OpenAPI operations. No other undocumented HTTP route
 is added by the SDK.
 
 `POST /v1/signers/certificate/start` and `/complete` also answer on the deployed service and are

@@ -208,4 +208,24 @@ class ResponseHandlerTest {
         }.isInstanceOf(AssinafyException::class.java)
             .hasMessageContaining("data must be an array")
     }
+
+    @Test
+    fun `every envelope error retains challenge and rate-limit headers`() {
+        val response = HttpRawResponse(
+            200,
+            """{"status":403,"message":"Forbidden","data":null}""",
+            mapOf("WWW-Authenticate" to """Bearer error="insufficient_scope", scope="documents:read"""", "Retry-After" to "17"),
+        )
+        val handlers = listOf<() -> Unit>(
+            { ResponseHandler.handle(response, TestModel::class.java) },
+            { ResponseHandler.handleList(response, TestModel::class.java) },
+            { ResponseHandler.handleMap(response) },
+            { ResponseHandler.handleVoid(response) },
+        )
+        handlers.forEach { handle ->
+            val error = runCatching(handle).exceptionOrNull() as ApiException
+            assertThat(error.challenge?.scope).isEqualTo("documents:read")
+            assertThat(error.retryAfter).isEqualTo(17L)
+        }
+    }
 }

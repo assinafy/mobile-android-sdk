@@ -104,6 +104,7 @@ data class WebhookPayload(
  * @property signingEnabled Whether deliveries carry a `webhook-signature` header.
  * @property createdAt ISO-8601 creation timestamp.
  * @property updatedAt ISO-8601 last-update timestamp.
+ * @property secret One-time signing secret on creation when signing is enabled; absent from reads. Store server-side.
  */
 data class WebhookEndpoint(
     @SerializedName("id") val id: String,
@@ -115,7 +116,13 @@ data class WebhookEndpoint(
     @SerializedName("signing_enabled") val signingEnabled: Boolean = false,
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("updated_at") val updatedAt: String? = null,
-)
+    @SerializedName("secret") val secret: String? = null,
+) {
+    /** Returns endpoint diagnostics with the signing secret redacted. */
+    override fun toString(): String = "WebhookEndpoint(id=$id, name=$name, url=$url, email=$email, events=$events, " +
+        "isActive=$isActive, signingEnabled=$signingEnabled, createdAt=$createdAt, updatedAt=$updatedAt, " +
+        "secret=${if (secret == null) "null" else "***"})"
+}
 
 /**
  * An endpoint's signing secret, used by [com.assinafy.sdk.support.WebhookVerifier].

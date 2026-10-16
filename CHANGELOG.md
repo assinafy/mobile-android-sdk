@@ -2,6 +2,28 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.7.0] - 2026-10-16
+
+### Added
+
+- Biometric identity-document and face verification (`IdDocumentFaceMatchBasic`) in assignments and templates, with Email or WhatsApp invitations.
+- Signer identity-verification status and hosted capture sessions requiring explicit consent.
+- Account identity reviews, temporary evidence downloads, approval/rejection decisions, and identity webhook event constants.
+- Exact-URL webhook endpoint filtering and deletion.
+- `WebhookEndpoint.secret` preserves the one-time signing secret returned on creation when signing is enabled, including for OAuth applications.
+
+### Fixed
+
+- Template certificate signers must be alone in their signing step.
+- Readiness polling recognizes documents awaiting identity review.
+- Envelope errors preserve authentication challenges and rate-limit headers.
+- Webhook verification rejects malformed base64 secrets and timestamp overflow.
+
+### Changed
+
+- Kotlin compiler 2.4.21; Java 17 consumer bytecode and Android API 21 minimum remain supported.
+- Digital-certificate pricing examples use 0.5 credits per signature plus the notification; the cost estimate returns current prices.
+
 ## [2.6.1] - 2026-10-12
 
 ### Added

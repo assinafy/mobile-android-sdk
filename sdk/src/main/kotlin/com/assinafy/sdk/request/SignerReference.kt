@@ -15,15 +15,17 @@ import com.google.gson.annotations.SerializedName
  * |---|---|
  * | [VerificationMethod.EMAIL] | [NotificationMethod.EMAIL] |
  * | [VerificationMethod.WHATSAPP] | [NotificationMethod.WHATSAPP] |
+ * | [VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC] | [NotificationMethod.EMAIL] or [NotificationMethod.WHATSAPP] |
  * | [VerificationMethod.DIGITAL_CERTIFICATE] | [NotificationMethod.EMAIL] or [NotificationMethod.WHATSAPP] |
  *
  * @property id Signer ID. Required when creating an assignment; optional for cost estimation.
  * @property verificationMethod One of [VerificationMethod]. Omit to let the API infer it.
  *   [VerificationMethod.DIGITAL_CERTIFICATE] (ICP-Brasil A1/A3) additionally requires an entitled
  *   account, the signer's CPF or CNPJ in `government_id` (set through `signers.update` after
- *   creation), and costs two credits plus the selected notification.
- * @property notificationMethods Exactly one channel from [NotificationMethod]. For non-certificate
- *   verification it must be the matching channel. Omit to use the API's Email default.
+ *   creation), and costs 0.5 credits plus the selected notification.
+ *   Biometric verification requires the account feature and a valid CPF in the existing signer's `government_id`.
+ * @property notificationMethods Exactly one channel from [NotificationMethod]. Email and WhatsApp
+ *   OTP verification must use their matching channel; biometric and certificate verification accept either. Omit to use the API's Email default.
  * @property step Positive integer controlling signing order. Signers sharing a step sign in
  *   parallel; a step is activated only after the previous step completes, and each signer is
  *   notified when their step activates. If supplied for any signer it must be supplied for all,

@@ -464,4 +464,19 @@ class AssignmentResourceTest {
         assertThat(copies[0].id).isEqualTo("cr1")
         assertThat(copies[0].fullName).isEqualTo("Obs One")
     }
+
+    @Test
+    fun `biometric verification supports either notification channel and pricing without a signer id`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse(assignmentJson))
+        val resource = AssignmentResource(mock, "acc")
+        listOf(null, listOf("Email"), listOf("Whatsapp")).forEach { channels ->
+            resource.create("doc", CreateAssignmentRequest(signers = listOf(SignerReference("signer", "IdDocumentFaceMatchBasic", channels))))
+            val call = mock.lastCall()
+            assertThat(call.method).isEqualTo("POST")
+            assertThat(call.path).isEqualTo("/documents/doc/assignments")
+            assertThat(call.body).contains("\"verification_method\":\"IdDocumentFaceMatchBasic\"")
+            resource.estimateCost("doc", CreateAssignmentRequest(signers = listOf(SignerReference(verificationMethod = "IdDocumentFaceMatchBasic", notificationMethods = channels))))
+            assertThat(mock.lastCall().body).doesNotContain("\"id\"")
+        }
+    }
 }

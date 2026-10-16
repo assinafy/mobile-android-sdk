@@ -16,5 +16,9 @@ authenticator and recovery codes through `authentication`.
 
 For delegated workspace access, register a Public OAuth app and use PKCE. The client validates the
 registered callback, parses flat token responses, refreshes rotating grants and revokes connections.
-Production and sandbox use separate app registrations and credentials. Kotlin 2.4.20 builds Java17
+Production and sandbox use separate app registrations and credentials. Kotlin 2.4.21 builds Java17
 consumer bytecode; runtime support starts at Android API21.
+
+Identity-document and face verification uses hosted capture after explicit signer consent. The SDK
+starts sessions, reads their state, downloads temporary reviewer evidence and submits account
+review decisions. In-review signers can sign; certification waits for approval.

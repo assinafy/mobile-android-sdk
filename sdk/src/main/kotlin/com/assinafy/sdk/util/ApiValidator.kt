@@ -60,7 +60,7 @@ internal object ApiValidator {
         if (notifications.size != 1 || notifications.single() !in NotificationMethod.ALL) {
             throw ValidationException("Exactly one notification method (Email or Whatsapp) is required")
         }
-        if (verification != null && verification != VerificationMethod.DIGITAL_CERTIFICATE && verification !in notifications) {
+        if (verification != null && verification in setOf(VerificationMethod.EMAIL, VerificationMethod.WHATSAPP) && verification !in notifications) {
             throw ValidationException("Verification and notification methods must match")
         }
     }

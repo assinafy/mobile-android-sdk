@@ -37,13 +37,16 @@ object DocumentStatus {
     /** Terminal state for a document whose signatures are complete and certificate is issued. */
     const val CERTIFICATED = "certificated"
 
+    /** Every signer signed; certification waits for the account's identity-review decision. */
+    const val PENDING_IDENTITY_REVIEW = "pending_identity_review"
+
     /**
      * Statuses at which a document has finished metadata processing and can proceed to an
      * assignment (or is already past that point). Used by `DocumentResource.waitUntilReady`.
      * `certificating` is included because the API reports it once every signer has finished and the
      * final artifact is being produced — further metadata polling would never advance from there.
      */
-    val READY = setOf("metadata_ready", "pending_signature", "certificating", CERTIFICATED)
+    val READY = setOf("metadata_ready", "pending_signature", PENDING_IDENTITY_REVIEW, "certificating", CERTIFICATED)
 
     /** Terminal non-success statuses that stop a `DocumentResource.waitUntilReady` poll loop. */
     val FAILED = setOf("failed", "rejected_by_signer", "rejected_by_user", "expired")
@@ -82,14 +85,17 @@ object VerificationMethod {
      *
      * Requires the account's Digital Certificate feature (Standard and Pro plans) and a CPF or CNPJ
      * in the signer's `government_id`; the signer must be alone in their signing step, and the
-     * signature costs 2 credits on top of the notification. The certificate handshake itself runs in
+     * signature costs 0.5 credits on top of the notification. The certificate handshake itself runs in
      * the browser extension, so send the signer to the web signing page rather than signing through
      * this SDK's native flow.
      */
     const val DIGITAL_CERTIFICATE = "DigitalCertificate"
 
+    /** Hosted identity-document and face verification; requires the account feature and a valid signer CPF. */
+    const val ID_DOCUMENT_FACE_MATCH_BASIC = "IdDocumentFaceMatchBasic"
+
     /** Every value the API accepts. */
-    val ALL = setOf(EMAIL, WHATSAPP, DIGITAL_CERTIFICATE)
+    val ALL = setOf(EMAIL, WHATSAPP, DIGITAL_CERTIFICATE, ID_DOCUMENT_FACE_MATCH_BASIC)
 }
 
 /**
@@ -170,6 +176,21 @@ object WebhookEvent {
     /** A signer verified a WhatsApp number. */
     const val SIGNER_WHATSAPP_VERIFIED = "signer_whatsapp_verified"
 
+    /** The signer passed identity-document verification, directly or after review. */
+    const val SIGNER_IDENTITY_VERIFIED = "signer_identity_verified"
+
+    /** Identity-document verification ended without approval. */
+    const val SIGNER_IDENTITY_VERIFICATION_FAILED = "signer_identity_verification_failed"
+
+    /** The account must review the signer's identity before certification. */
+    const val SIGNER_IDENTITY_REVIEW_REQUIRED = "signer_identity_review_required"
+
+    /** The account approved the signer's identity after review. */
+    const val SIGNER_IDENTITY_REVIEW_APPROVED = "signer_identity_review_approved"
+
+    /** The account rejected the signer's identity and cancelled the document. */
+    const val SIGNER_IDENTITY_REVIEW_REJECTED = "signer_identity_review_rejected"
+
     /** A signer confirmed identity data. */
     const val SIGNER_DATA_CONFIRMED = "signer_data_confirmed"
 
@@ -232,4 +253,52 @@ object NotificationDeliveryStatus {
 object MfaMethodType {
     /** Authenticator app (RFC 6238 time-based one-time password). */
     const val TOTP = "totp"
+}
+
+/** States of a hosted identity-document verification session. */
+object IdentityVerificationStatus {
+    /** Capture or provider processing is pending. */
+    const val PENDING = "Pending"
+
+    /** The account must decide the provider's review. Signing may continue meanwhile. */
+    const val IN_REVIEW = "InReview"
+
+    /** The identity was approved. */
+    const val APPROVED = "Approved"
+
+    /** The provider declined the verification; a new signing process is required. */
+    const val DECLINED = "Declined"
+
+    /** The capture link expired before submission; a replacement session may be opened. */
+    const val EXPIRED = "Expired"
+
+    /** Capture was abandoned; a new signing process is required. */
+    const val ABANDONED = "Abandoned"
+}
+
+/** Account decisions accepted by the identity-review endpoint. */
+object IdentityReviewDecision {
+    /** Approve the identity and permit certification once every signer has signed. */
+    const val APPROVED = "Approved"
+
+    /** Reject the identity and cancel the document, notifying signers and copy receivers. */
+    const val REJECTED = "Rejected"
+}
+
+/** Evidence names available only while an identity review is open. */
+object IdentityReviewImage {
+    /** Front of the identity document. */
+    const val DOCUMENT_FRONT = "document_front"
+
+    /** Back of the identity document. */
+    const val DOCUMENT_BACK = "document_back"
+
+    /** Digital identity document PDF. */
+    const val DOCUMENT_PDF = "document_pdf"
+
+    /** Captured face photograph. */
+    const val FACE = "face"
+
+    /** Every evidence name accepted by the API. */
+    val ALL = setOf(DOCUMENT_FRONT, DOCUMENT_BACK, DOCUMENT_PDF, FACE)
 }

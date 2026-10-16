@@ -99,7 +99,7 @@ class WebhookVerifier(private val webhookSecret: String? = null) {
         if (webhookId.isNullOrBlank() || webhookSignature.isNullOrBlank()) return false
         val timestampText = webhookTimestamp?.trim().orEmpty()
         val timestamp = timestampText.toLongOrNull() ?: return false
-        if (abs(nowEpochSeconds - timestamp) > toleranceSeconds) return false
+        if (timestamp < 0 || nowEpochSeconds < 0 || toleranceSeconds < 0 || abs(nowEpochSeconds - timestamp) > toleranceSeconds) return false
         val key = webhookSecret?.trim()?.removePrefix(SECRET_PREFIX)?.let(Base64Codec::decode)
             ?.takeIf { it.isNotEmpty() } ?: return false
         val signed = "$webhookId.$timestampText.".toByteArray(Charsets.UTF_8) + payload

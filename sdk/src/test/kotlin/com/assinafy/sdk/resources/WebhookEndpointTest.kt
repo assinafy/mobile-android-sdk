@@ -161,4 +161,33 @@ class WebhookEndpointTest {
         assertThat(mock.lastCall().queryParams).isEqualTo(mapOf("endpoint_id" to "ep1", "per-page" to 5))
         assertThat(page.data.single().endpointId).isEqualTo("ep1")
     }
+
+    @Test
+    fun `endpoint creation retains the one-time secret and redacts diagnostics`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = ok(endpointJson.dropLast(1) + ",\"secret\":\"whsec_test\"}"))
+        val endpoint = WebhookResource(mock, "acc").createEndpoint(
+            CreateWebhookEndpointRequest("https://example.com/wh", "ops@example.com", listOf("document_ready"), signingEnabled = true),
+        )
+        assertThat(Gson().toJson(endpoint)).contains("\"secret\":\"whsec_test\"")
+        assertThat(endpoint.toString()).doesNotContain("whsec_test")
+    }
+
+    @Test
+    fun `endpoint URL filtering and deletion encode the complete URL once`() = runTest {
+        val mock = MockApiHttpClient().apply {
+            enqueue(ok("[$endpointJson]"))
+            enqueue(ok("[]"))
+        }
+        val resource = WebhookResource(mock, "acc")
+        val url = "https://example.com/hook?tenant=a+b&secret=x=y"
+        resource.listEndpoints(url = url)
+        assertThat(mock.lastCall().queryParams).isEqualTo(mapOf("url" to url))
+        resource.deleteEndpointByUrl(url)
+        assertThat(mock.lastCall().method).isEqualTo("DELETE")
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/webhooks/endpoints?url=https%3A%2F%2Fexample.com%2Fhook%3Ftenant%3Da%2Bb%26secret%3Dx%3Dy")
+        assertThat(mock.lastCall().body).isNull()
+        assertThatThrownBy { runBlocking { resource.deleteEndpointByUrl(" ") } }.isInstanceOf(ValidationException::class.java)
+        assertThatThrownBy { runBlocking { resource.listEndpoints(url = "ftp://example.com") } }.isInstanceOf(ValidationException::class.java)
+        assertThat(mock.callCount()).isEqualTo(2)
+    }
 }

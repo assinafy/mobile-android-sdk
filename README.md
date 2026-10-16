@@ -35,7 +35,7 @@ kotlinx-coroutines — nada além disso.
 | Compilado contra | Android 17 estável / API 37.0 |
 | Bytecode do consumidor | Java 17 |
 | JDK de build | JDK 25 LTS, com toolchain Java 17 para compilação |
-| Linguagem | Kotlin 2.4.20 com coroutines |
+| Linguagem | Kotlin 2.4.21 com coroutines |
 | TLS | 1.2 ou superior; o cliente padrão recusa TLS 1.0 e 1.1 |
 
 A aplicação consumidora é dona do `targetSdk`. O AAR declara a permissão Android `INTERNET` e carrega
@@ -59,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.6.1")
+    implementation("com.assinafy:assinafy-android-sdk:2.7.0")
 }
 ```
 
@@ -68,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.6.1-local-SNAPSHOT \
+  -Pversion=2.7.0-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -671,12 +671,14 @@ val endpoint = client.webhooks.createEndpoint(
         signingEnabled = true,
     ),
 )
-val secret = client.webhooks.getEndpointSecret(endpoint.id).secret // "whsec_...", guarde no back-end
+val secret = requireNotNull(endpoint.secret) // "whsec_...", guarde no back-end
 ```
 
 | Método | Operação |
 |---|---|
 | `webhooks.listEndpoints()` | Todos os endpoints, do mais antigo ao mais novo |
+| `webhooks.listEndpoints(url = url)` | Apenas a URL cadastrada exatamente |
+| `webhooks.deleteEndpointByUrl(url)` | Apaga o endpoint pela URL exata e libera a vaga |
 | `webhooks.getEndpoint(id)` | Um endpoint, ou `null` se não existir |
 | `webhooks.updateEndpoint(id, UpdateWebhookEndpointRequest(...))` | Altera só os campos informados; `isActive = false` pausa, `signingEnabled = false` descarta o segredo |
 | `webhooks.deleteEndpoint(id)` | Para as entregas e libera a vaga |
@@ -767,7 +769,8 @@ ou nenhum — o lado que faltar é inferido. Sem nenhum dos dois, ambos assumem 
 | --- | --- | --- | --- |
 | `VerificationMethod.EMAIL` *(padrão)* | Código de uso único (OTP) por e-mail, exigido antes de assinar | `NotificationMethod.EMAIL` | Gratuito |
 | `VerificationMethod.WHATSAPP` | Código de uso único (OTP) por WhatsApp | `NotificationMethod.WHATSAPP` | 0,45 crédito, só em planos pagos |
-| `VerificationMethod.DIGITAL_CERTIFICATE` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | `EMAIL` **ou** `WHATSAPP` | 2 créditos + a notificação |
+| `VerificationMethod.DIGITAL_CERTIFICATE` | O signatário assina com o **próprio certificado ICP-Brasil (A1 ou A3)**, pela extensão de navegador Web PKI, gerando uma assinatura **PAdES qualificada** | `EMAIL` **ou** `WHATSAPP` | 0,5 crédito + a notificação |
+| `VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC` | Captura hospedada de documento e rosto com consentimento biométrico explícito | `EMAIL` ou `WHATSAPP` | Tarifa por signatário + notificação; consulte a estimativa |
 
 Apenas um método de notificação por signatário. O SDK valida o par localmente, então uma combinação
 inválida falha com `ValidationException` antes de a requisição sair.
@@ -780,10 +783,10 @@ SignerReference.over(signer.id, NotificationMethod.WHATSAPP)
 SignerReference.withDigitalCertificate(signer.id, notifyBy = NotificationMethod.EMAIL, step = 2)
 ```
 
-Nenhum método de verificação tem preço próprio: o que se cobra é a **notificação** com a qual ele
+A verificação por OTP de e-mail ou WhatsApp não tem preço próprio: o que se cobra é a **notificação** com a qual ele
 anda junto. Como escolher verificação por WhatsApp escolhe também a notificação por WhatsApp, esse
 signatário custa 0,45 crédito contra 0 de um verificado por e-mail. O certificado digital é a
-exceção: a assinatura em si custa 2 créditos por signatário, além da notificação, cobrados na criação
+exceção: a assinatura em si custa 0,5 crédito por signatário, além da notificação, cobrados na criação
 do assignment e visíveis no `breakdown` da estimativa sob o código `SignatureDigitalCertificate`.
 
 O certificado digital exige o recurso na conta (planos Standard e Pro), CPF ou CNPJ em
@@ -792,6 +795,78 @@ daquela pessoa (e-CPF, ou e-CNPJ que a nomeie como representante legal); um CNPJ
 daquela empresa, de qualquer representante. Como a assinatura por certificado acontece por um
 handshake com a extensão de navegador Web PKI, ela não é concluída pelo fluxo de assinatura nativo
 deste SDK — encaminhe o signatário à página web de assinatura.
+
+### Verificação biométrica de documento e rosto
+
+Use `VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC` quando a conta tiver o recurso habilitado.
+O signatário precisa de um CPF válido em `government_id`; CPF/CNPJ para certificado digital são uma
+regra diferente. A biometria aceita convite por e-mail ou WhatsApp e tem custo por signatário.
+Consulte `assignments.estimateCost` antes de enviar; o custo vem do servidor.
+
+No back-end, após criar o signatário e enviar o PDF:
+
+```kotlin
+val assignment = client.assignments.create(
+    documentId,
+    CreateAssignmentRequest(
+        signers = listOf(
+            SignerReference(
+                id = signer.id,
+                verificationMethod = VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC,
+                notificationMethods = listOf(NotificationMethod.EMAIL),
+            ),
+        ),
+    ),
+)
+```
+
+No aplicativo do signatário, `self(accessCode).verificationMethod` identifica o fluxo. Use o código
+recebido pelo canal de convite e o transporte público de `signerDocuments`:
+
+```kotlin
+val state = client.signerDocuments.getIdentityVerification(accessCode)
+if (state.canStart && consentGrantedBySigner) {
+    val session = client.signerDocuments.startIdentityVerification(accessCode, consent = consentGrantedBySigner)
+    abrirNoNavegador(session.url)
+}
+val current = client.signerDocuments.getIdentityVerification(accessCode)
+```
+
+Solicite o consentimento explícito da pessoa para processamento biométrico antes de iniciar. Não
+registre `session.url`, pois ela contém um token. Abra a URL hospedada no navegador para capturar o
+documento e o rosto; depois consulte o estado novamente. `canStart` só é verdadeiro antes da primeira
+sessão ou quando ela está `Expired`. Uma sessão `Pending`, `InReview`, `Approved`, `Declined` ou
+`Abandoned` não pode ser substituída. Reiniciar após expiração não cobra novamente; reenviar um
+convite não substitui a sessão. `Declined` e `Abandoned` exigem um novo documento e assignment.
+
+Com `Approved` ou `InReview`, a pessoa continua o fluxo de visualizar, confirmar os dados, aceitar
+os termos e assinar. A biometria substitui o OTP. `InReview` permite assinar, mas a certificação
+aguarda a decisão da conta; após todas as assinaturas, o documento fica `pending_identity_review`.
+No back-end, apresente as evidências a um revisor autorizado:
+
+```kotlin
+val review = client.assignments.getIdentityVerification(documentId, assignment.id, signer.id)
+val image = if (IdentityReviewImage.FACE in review.images) {
+    client.assignments.downloadIdentityVerificationImage(
+        documentId, assignment.id, signer.id, IdentityReviewImage.FACE,
+    )
+} else null // somente se FACE estiver em review.images; não armazene em cache
+val decided = client.assignments.reviewIdentityVerification(
+    documentId, assignment.id, signer.id,
+    decision = IdentityReviewDecision.APPROVED,
+    note = "Identidade conferida pelo revisor",
+)
+```
+
+A aprovação permite certificar quando todas as assinaturas e revisões terminarem. `REJECTED`
+cancela o documento e avisa signatários e destinatários de cópia. A nota interna tem até 2000
+caracteres e não é mostrada ao signatário. Imagens só ficam disponíveis enquanto a revisão está
+aberta; após a decisão, retornam 404. O resumo contém motivos, identidade esperada e lida,
+correspondências, verificações, versão das regras, hash da evidência e dados da decisão.
+
+Acompanhe `WebhookEvent.SIGNER_IDENTITY_VERIFIED`, `SIGNER_IDENTITY_VERIFICATION_FAILED`,
+`SIGNER_IDENTITY_REVIEW_REQUIRED`, `SIGNER_IDENTITY_REVIEW_APPROVED` e
+`SIGNER_IDENTITY_REVIEW_REJECTED`. O signatário em um assignment expõe `identityVerificationStatus`.
 
 ## O atalho de uma chamada
 
