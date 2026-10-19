@@ -54,6 +54,9 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 | `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}` | `assignments.downloadIdentityVerificationImage(...)` | Account | Covered |
 | `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review` | `assignments.reviewIdentityVerification(...)` | Account | Covered |
 
+Assignment creation and estimation reject `DigitalCertificate` with `method=collect` locally under
+the stable `digital_certificate_requires_virtual_assignment` validation code.
+
 ## Authentication (15/15)
 
 | Operation | SDK method | Auth | Status |
@@ -100,6 +103,9 @@ session.
 | `GET /v1/documents/{documentId}/pages/{pageId}/download` | `documents.downloadPage(documentId, pageId)` | Account | Covered |
 | `POST /v1/accounts/{accountId}/templates/{templateId}/documents` | `documents.createFromTemplate(...)` | Account | Covered |
 | `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `documents.estimateCostFromTemplate(...)` | Account | Covered |
+
+For certificate signers, both template POST methods read the template detail first and reject placed
+fields because they produce an unsupported collect assignment.
 
 ## Fields (8/8)
 

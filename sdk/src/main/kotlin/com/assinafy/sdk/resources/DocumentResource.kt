@@ -1,10 +1,12 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.DocumentArtifact
 import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.SdkConstants
+import com.assinafy.sdk.VerificationMethod
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.AccessTokenDelivery
@@ -19,6 +21,7 @@ import com.assinafy.sdk.models.PublicDocumentInfo
 import com.assinafy.sdk.models.Signer
 import com.assinafy.sdk.models.SigningProgress
 import com.assinafy.sdk.models.Tag
+import com.assinafy.sdk.models.Template
 import com.assinafy.sdk.request.ConfirmSignerDataRequest
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.ListParams
@@ -624,6 +627,8 @@ class DocumentResource internal constructor(
      * Request body maps one signer to each template role and carries the optional document
      * settings:
      * Response `data` is the document payload documented on this class, already carrying its assignment.
+     * When a digital-certificate signer is present, the SDK first reads the template detail and
+     * rejects any placed field because it would create an unsupported collect assignment.
      *
      * Wire operation: `POST /v1/accounts/{accountId}/templates/{templateId}/documents`.
      *
@@ -666,7 +671,9 @@ class DocumentResource internal constructor(
      * @param options Optional generated name, message, expiration, editor fields, and tags.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Created document with its generated assignment.
-     * @throws ValidationException for blank IDs, missing signers, missing signer IDs, or invalid steps.
+     * @throws ValidationException for blank IDs, missing signers, missing signer IDs, invalid steps,
+     * or a digital-certificate signer mapped to a template with placed fields; that combination
+     * exposes [com.assinafy.sdk.ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT].
      */
     suspend fun createFromTemplate(
         templateId: String,
@@ -684,6 +691,7 @@ class DocumentResource internal constructor(
         }
         ApiValidator.requireValidSigningSteps(signers.map(TemplateSigner::step))
         ApiValidator.requireDigitalCertificateStepIsolation(signers.map { it.verificationMethod to it.step })
+        requireTemplateCertificateCompatibility(accId, tmplId, signers)
         logger.info("Creating document from template", mapOf("templateId" to tmplId, "accountId" to accId))
         val body = toJson(options.copy(signers = signers))
         return call("Failed to create document from template", DocumentDetails::class.java) {
@@ -697,6 +705,8 @@ class DocumentResource internal constructor(
      *
      * Request body carries only what affects pricing — each role mapping's verification and
      * notification channels — so signer IDs and steps are omitted. Response `data`:
+     * When a digital-certificate signer is present, the SDK first reads the template detail and
+     * rejects any placed field because it would create an unsupported collect assignment.
      *
      * Wire operation: `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost`.
      *
@@ -728,7 +738,9 @@ class DocumentResource internal constructor(
      * @param signers Non-empty role mappings; signer IDs and signing steps are not sent for pricing.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Typed credit, balance, resource-sufficiency, and pricing-breakdown response.
-     * @throws ValidationException for a blank account/template/role ID or an empty signer list.
+     * @throws ValidationException for a blank account/template/role ID, an empty signer list, or a
+     * digital-certificate signer mapped to a template with placed fields; that combination exposes
+     * [com.assinafy.sdk.ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT].
      */
     suspend fun estimateCostFromTemplate(
         templateId: String,
@@ -746,10 +758,33 @@ class DocumentResource internal constructor(
                 signer.notificationMethods?.let { put("notification_methods", it) }
             }
         }
+        requireTemplateCertificateCompatibility(accId, tmplId, signers)
         val body = toJson(mapOf("signers" to costSigners))
         return call("Failed to estimate cost from template", com.assinafy.sdk.models.CostEstimate::class.java) {
             http.post("/accounts/${pathSegment(accId)}/templates/${pathSegment(tmplId)}/documents/estimate-cost", body)
         }
+    }
+
+    private suspend fun requireTemplateCertificateCompatibility(
+        accountId: String,
+        templateId: String,
+        signers: List<TemplateSigner>,
+    ) {
+        if (signers.none { it.verificationMethod == VerificationMethod.DIGITAL_CERTIFICATE }) return
+        // shortcut: Template creation omits its derived method, remove this preflight when the API rejects the combination.
+        val template = call("Failed to inspect template assignment method", Template::class.java) {
+            http.get("/accounts/${pathSegment(accountId)}/templates/${pathSegment(templateId)}")
+        }
+        val method =
+            if (template.pages.orEmpty().any { !it.fields.isNullOrEmpty() }) {
+                AssignmentMethod.COLLECT
+            } else {
+                AssignmentMethod.VIRTUAL
+            }
+        ApiValidator.requireDigitalCertificateVirtualAssignment(
+            method,
+            signers.map(TemplateSigner::verificationMethod),
+        )
     }
 
     /**

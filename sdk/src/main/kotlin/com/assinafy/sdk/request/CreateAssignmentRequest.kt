@@ -51,7 +51,8 @@ data class AssignmentEntry(
 /**
  * Request for creating or estimating a virtual or collect assignment.
  *
- * @property method [AssignmentMethod.VIRTUAL] or [AssignmentMethod.COLLECT].
+ * @property method [AssignmentMethod.VIRTUAL] or [AssignmentMethod.COLLECT]. Digital-certificate
+ * signers require [AssignmentMethod.VIRTUAL].
  * @property signers Non-empty signer references; IDs may be omitted only for cost estimation.
  * @property message Optional message shown to signers.
  * @property expiresAt Optional ISO-8601 signature deadline.

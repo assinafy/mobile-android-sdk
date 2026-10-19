@@ -61,6 +61,13 @@ object AssignmentMethod {
     const val COLLECT = "collect"
 }
 
+/** Stable machine-readable codes exposed through `ValidationException.errors["code"]`. */
+object ValidationCode {
+    /** A digital-certificate signer was supplied for a non-virtual assignment. */
+    const val DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT =
+        "digital_certificate_requires_virtual_assignment"
+}
+
 /**
  * How a signer proves their identity before signing, set per signer through
  * [com.assinafy.sdk.request.SignerReference.verificationMethod].
@@ -84,10 +91,10 @@ object VerificationMethod {
      * browser extension, producing a qualified PAdES signature.
      *
      * Requires the account's Digital Certificate feature (Standard and Pro plans) and a CPF or CNPJ
-     * in the signer's `government_id`; the signer must be alone in their signing step, and the
-     * signature costs 0.5 credits on top of the notification. The certificate handshake itself runs in
-     * the browser extension, so send the signer to the web signing page rather than signing through
-     * this SDK's native flow.
+     * in the signer's `government_id`; the assignment method must be [AssignmentMethod.VIRTUAL],
+     * the signer must be alone in their signing step, and the signature costs 0.5 credits on top of
+     * the notification. The certificate handshake itself runs in the browser extension, so send the
+     * signer to the web signing page rather than signing through this SDK's native flow.
      */
     const val DIGITAL_CERTIFICATE = "DigitalCertificate"
 

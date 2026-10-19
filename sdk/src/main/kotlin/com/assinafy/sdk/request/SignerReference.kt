@@ -22,7 +22,7 @@ import com.google.gson.annotations.SerializedName
  * @property verificationMethod One of [VerificationMethod]. Omit to let the API infer it.
  *   [VerificationMethod.DIGITAL_CERTIFICATE] (ICP-Brasil A1/A3) additionally requires an entitled
  *   account, the signer's CPF or CNPJ in `government_id` (set through `signers.update` after
- *   creation), and costs 0.5 credits plus the selected notification.
+ *   creation), a virtual assignment, and costs 0.5 credits plus the selected notification.
  *   Biometric verification requires the account feature and a valid CPF in the existing signer's `government_id`.
  * @property notificationMethods Exactly one channel from [NotificationMethod]. Email and WhatsApp
  *   OTP verification must use their matching channel; biometric and certificate verification accept either. Omit to use the API's Email default.

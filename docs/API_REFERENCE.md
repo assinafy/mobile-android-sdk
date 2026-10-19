@@ -122,6 +122,10 @@ explicitly after deciding that deletion is safe.
 `SignerReference.ofId(signerId)` is shorthand for `SignerReference(id = signerId)`;
 `SignerReference.over(signerId, channel, step)` pairs a verification and notification channel, and
 `SignerReference.withDigitalCertificate(signerId, notifyBy, step)` requests ICP-Brasil A1/A3 signing.
+Digital-certificate signers require a `virtual` assignment. A rejected collect combination throws
+`ValidationException` with `errors["code"]` equal to
+`ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT`
+(`digital_certificate_requires_virtual_assignment`).
 `ListParams.toQueryMap()` returns its non-null values using the API's exact query names and joins tag
 IDs with commas. A custom `Logger` receives `debug`, `info`, `warn`, and `error` calls as
 `(message, context)`; the SDK does not include credential values in its contexts.
@@ -301,6 +305,11 @@ and deletes the workspace immediately.
 | `replaceTags(documentId, tagNames, accountId)` | `PUT /v1/accounts/{accountId}/documents/{documentId}/tags` | `{"tags":["tag_id",...]}`; parameter name is retained for source compatibility | `List<Tag>` |
 | `addTags(documentId, tagNames, accountId)` | `POST /v1/accounts/{accountId}/documents/{documentId}/tags` | `{"tags":["tag_id",...]}`; parameter name is retained for source compatibility | `List<Tag>` |
 | `detachTag(documentId, tagId, accountId)` | `DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}` | none | `Unit` |
+
+For a digital-certificate signer, both template operations first call
+`GET /v1/accounts/{accountId}/templates/{templateId}`. Any placed template field makes the generated
+assignment `collect`, so the SDK raises the stable validation code above before the create or
+estimate POST. A template without placed fields remains `virtual` and is allowed.
 
 Uploads must be non-empty PDF content, have a `.pdf` name, begin with `%PDF-`, and be no larger than
 25 MiB; the service accepts at most 2,000 pages. Artifact names are `original`, `certificated`,
@@ -488,7 +497,9 @@ an invalid pairing raises `ValidationException` instead of costing a round trip.
 requires a paid subscription and costs 0.45 credits per signer. A digital-certificate signer must be
 alone in its signing step, requires account entitlement and a CPF/CNPJ in the signer's
 `government_id` (set through `signers.update` after signer creation), costs 0.5 credits in addition
-to its notification, and completes through certificate-specific signing.
+to its notification, requires `method = "virtual"`, and completes through certificate-specific
+signing. `assignments.create` and `assignments.estimateCost` reject `collect` with
+`ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT` before sending a request.
 
 `method` is `virtual` or `collect`. Create requires an ID for every signer. Steps, if present, form a
 contiguous positive sequence; signers on a shared step act in parallel. A digital-certificate signer
@@ -807,6 +818,8 @@ Hosted capture URLs are credentials; both capture response types redact them in 
 - `DocumentArtifact`: `original`, `certificated`, `certificate-page`, `pades`, `bundle`.
 - `SignatureType`: `signature`, `initial`.
 - `AssignmentMethod`: `virtual`, `collect`.
+- `ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT`:
+  `digital_certificate_requires_virtual_assignment` in `ValidationException.errors["code"]`.
 - `VerificationMethod`: `Email`, `Whatsapp`, `DigitalCertificate` (ICP-Brasil A1/A3), `IdDocumentFaceMatchBasic`, plus `ALL`.
 - `NotificationMethod`: `Email`, `Whatsapp`, plus `ALL`. Exactly one per signer, paired with the
   verification method.

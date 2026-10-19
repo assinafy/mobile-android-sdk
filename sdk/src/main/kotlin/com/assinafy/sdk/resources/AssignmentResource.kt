@@ -123,7 +123,9 @@ class AssignmentResource internal constructor(
      * @param request Assignment method, signers, optional field placements, and delivery settings.
      * @return Created assignment, including signer state, summary, items, and generated signing URLs.
      * @throws ValidationException for blank IDs, missing required signers/entries, unsupported methods
-     * or channels, invalid signing steps, or invalid collect-field placement.
+     * or channels, invalid signing steps, invalid collect-field placement, or a digital-certificate
+     * signer on a non-virtual assignment; that combination exposes
+     * [com.assinafy.sdk.ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT].
      */
     suspend fun create(documentId: String, request: CreateAssignmentRequest): Assignment {
         val docId = requireId(documentId, "Document ID")
@@ -176,7 +178,9 @@ class AssignmentResource internal constructor(
      * @param request Proposed method, signer channels, and optional collect placements.
      * @return Credit/document estimate and resource-sufficiency result.
      * @throws ValidationException for blank IDs, missing required signers/entries, unsupported methods
-     * or channels, or invalid collect requirements.
+     * or channels, invalid collect requirements, or a digital-certificate signer on a non-virtual
+     * assignment; that combination exposes
+     * [com.assinafy.sdk.ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT].
      */
     suspend fun estimateCost(documentId: String, request: CreateAssignmentRequest): CostEstimate {
         val docId = requireId(documentId, "Document ID")
@@ -635,6 +639,10 @@ class AssignmentResource internal constructor(
         if (request.signers.isEmpty()) {
             throw ValidationException("At least one signer is required")
         }
+        ApiValidator.requireDigitalCertificateVirtualAssignment(
+            method,
+            request.signers.map(SignerReference::verificationMethod),
+        )
         if (method == AssignmentMethod.COLLECT && request.entries.isNullOrEmpty()) {
             throw ValidationException("At least one field-placement entry is required for a collect assignment")
         }

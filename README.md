@@ -59,7 +59,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.7.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.7.1")
 }
 ```
 
@@ -68,7 +68,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.7.0-local-SNAPSHOT \
+  -Pversion=2.7.1-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -790,7 +790,10 @@ exceção: a assinatura em si custa 0,5 crédito por signatário, além da notif
 do assignment e visíveis no `breakdown` da estimativa sob o código `SignatureDigitalCertificate`.
 
 O certificado digital exige o recurso na conta (planos Standard e Pro), CPF ou CNPJ em
-`government_id`, e que o signatário esteja **sozinho no seu passo**. Um CPF exige o certificado
+`government_id`, `method = AssignmentMethod.VIRTUAL` e que o signatário esteja **sozinho no seu
+passo**. O SDK rejeita assignments collect antes da criação ou estimativa de custo com
+`ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT`. Um template usado com certificado
+não pode ter campos posicionados, pois eles geram um assignment collect. Um CPF exige o certificado
 daquela pessoa (e-CPF, ou e-CNPJ que a nomeie como representante legal); um CNPJ exige um e-CNPJ
 daquela empresa, de qualquer representante. Como a assinatura por certificado acontece por um
 handshake com a extensão de navegador Web PKI, ela não é concluída pelo fluxo de assinatura nativo

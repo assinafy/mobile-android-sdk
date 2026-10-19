@@ -2,6 +2,15 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.7.1] - 2026-10-19
+
+### Fixed
+
+- Assignment creation and cost estimation reject digital-certificate signers unless the assignment
+  is virtual, using the stable `digital_certificate_requires_virtual_assignment` validation code.
+- Template creation and estimation reject digital-certificate signers when placed fields would
+  produce a collect assignment.
+
 ## [2.7.0] - 2026-10-16
 
 ### Added

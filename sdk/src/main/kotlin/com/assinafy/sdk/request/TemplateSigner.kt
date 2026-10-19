@@ -8,8 +8,9 @@ import com.google.gson.annotations.SerializedName
  * @property roleId Template role identifier from [com.assinafy.sdk.models.Template.roles].
  * @property id Existing account signer identifier; required for document creation and omitted from estimates.
  * @property verificationMethod A value from [com.assinafy.sdk.VerificationMethod], including identity-document/face verification. Digital certificate
- * requires an entitled account and the existing signer's CPF/CNPJ in `government_id` (set through
- * `signers.update`), and costs 0.5 credits plus the selected notification.
+ * requires an entitled account, the existing signer's CPF/CNPJ in `government_id` (set through
+ * `signers.update`), and a template without placed fields so the generated assignment is virtual;
+ * it costs 0.5 credits plus the selected notification.
  * @property notificationMethods Exactly one Email or WhatsApp channel when supplied; it must match
  * Email/WhatsApp OTP verification; biometric verification accepts either and needs an entitled account and signer CPF. Omit to use the Email default.
  * @property step Optional one-based sequential-signing step; if any signer has a step, all must.

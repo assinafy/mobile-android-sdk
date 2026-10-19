@@ -1,6 +1,7 @@
 package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.AssignmentMethod
+import com.assinafy.sdk.ValidationCode
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
@@ -123,24 +124,31 @@ class AssignmentResourceTest {
     }
 
     @Test
-    fun `collect estimate sends signers alongside entries`() = runTest {
+    fun `collect assignments reject certificate signers with a stable code before network`() {
         val mock = MockApiHttpClient()
-        mock.enqueue(HttpRawResponse(200, """{"status":200,"data":{"total_credits":2}}""", emptyMap()))
-
-        AssignmentResource(mock, "acc").estimateCost(
-            "doc-1",
-            CreateAssignmentRequest(
-                method = AssignmentMethod.COLLECT,
-                signers = listOf(SignerReference(verificationMethod = "DigitalCertificate")),
-                entries = listOf(AssignmentEntry(pageId = "p1", fields = listOf(AssignmentFieldPlacement(signerId = "s1", fieldId = "f1")))),
-            ),
+        val resource = AssignmentResource(mock, "acc")
+        val request = CreateAssignmentRequest(
+            method = AssignmentMethod.COLLECT,
+            signers = listOf(SignerReference(id = "s1", verificationMethod = "DigitalCertificate")),
+            entries = listOf(AssignmentEntry(pageId = "p1", fields = listOf(AssignmentFieldPlacement(signerId = "s1", fieldId = "f1")))),
         )
 
-        @Suppress("UNCHECKED_CAST")
-        val body = gson.fromJson(mock.lastCall().body, Map::class.java) as Map<String, Any>
-        // collect is priced per signer too, so the channels must reach the API.
-        assertThat(body.containsKey("signers")).isTrue
-        assertThat(body.containsKey("entries")).isTrue
+        listOf<suspend () -> Unit>(
+            { resource.create("doc-1", request) },
+            { resource.estimateCost("doc-1", request) },
+        ).forEach { action ->
+            assertThatThrownBy { runBlocking { action() } }
+                .isInstanceOf(ValidationException::class.java)
+                .hasMessage("DigitalCertificate signers require a virtual assignment")
+                .hasFieldOrPropertyWithValue(
+                    "errors",
+                    mapOf(
+                        "code" to ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT,
+                        "method" to AssignmentMethod.COLLECT,
+                    ),
+                )
+        }
+        assertThat(mock.calls).isEmpty()
     }
 
     @Test

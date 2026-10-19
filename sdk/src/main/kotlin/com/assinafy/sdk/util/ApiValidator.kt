@@ -1,6 +1,8 @@
 package com.assinafy.sdk.util
 
+import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.NotificationMethod
+import com.assinafy.sdk.ValidationCode
 import com.assinafy.sdk.VerificationMethod
 import com.assinafy.sdk.exceptions.ValidationException
 
@@ -73,6 +75,18 @@ internal object ApiValidator {
             }
         ) {
             throw ValidationException("A DigitalCertificate signer must be alone in its signing step")
+        }
+    }
+
+    fun requireDigitalCertificateVirtualAssignment(method: String, verificationMethods: List<String?>) {
+        if (method != AssignmentMethod.VIRTUAL && VerificationMethod.DIGITAL_CERTIFICATE in verificationMethods) {
+            throw ValidationException(
+                "DigitalCertificate signers require a virtual assignment",
+                mapOf(
+                    "code" to ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT,
+                    "method" to method,
+                ),
+            )
         }
     }
 }

@@ -1,6 +1,8 @@
 package com.assinafy.sdk.resources
 
+import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.DocumentArtifact
+import com.assinafy.sdk.ValidationCode
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
@@ -520,5 +522,48 @@ class DocumentResourceTest {
             }
         }.isInstanceOf(ValidationException::class.java)
         assertThat(mock.calls).isEmpty()
+    }
+
+    @Test
+    fun `template creation and estimate reject certificate signers when fields make it collect`() {
+        val template =
+            """{"id":"template","name":"Placed","status":"ready","created_at":"2026-10-19","pages":[{"id":"page","fields":[{"id":"placement"}]}]}"""
+        val signer = TemplateSigner("role", "signer", verificationMethod = "DigitalCertificate")
+
+        listOf<suspend (DocumentResource) -> Unit>(
+            { it.createFromTemplate("template", listOf(signer)) },
+            { it.estimateCostFromTemplate("template", listOf(signer)) },
+        ).forEach { action ->
+            val mock = MockApiHttpClient(defaultResponse = successResponse(template))
+            assertThatThrownBy { runBlocking { action(DocumentResource(mock, "acc")) } }
+                .isInstanceOf(ValidationException::class.java)
+                .hasFieldOrPropertyWithValue(
+                    "errors",
+                    mapOf(
+                        "code" to ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT,
+                        "method" to AssignmentMethod.COLLECT,
+                    ),
+                )
+            assertThat(mock.calls.map { it.method to it.path }).containsExactly(
+                "GET" to "/accounts/acc/templates/template",
+            )
+        }
+    }
+
+    @Test
+    fun `template creation permits a certificate signer when there are no placed fields`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(successResponse("""{"id":"template","name":"Virtual","status":"ready","created_at":"2026-10-19","pages":[{"id":"page","fields":[]}]}"""))
+        mock.enqueue(successResponse(docDetailsJson))
+
+        DocumentResource(mock, "acc").createFromTemplate(
+            "template",
+            listOf(TemplateSigner("role", "signer", verificationMethod = "DigitalCertificate")),
+        )
+
+        assertThat(mock.calls.map { it.method to it.path }).containsExactly(
+            "GET" to "/accounts/acc/templates/template",
+            "POST" to "/accounts/acc/templates/template/documents",
+        )
     }
 }

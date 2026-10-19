@@ -65,7 +65,7 @@ To build against a checkout, publish it to Maven Local first:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.7.0-local-SNAPSHOT \
+  -Pversion=2.7.1-local-SNAPSHOT \
   --no-daemon
 ```
 
@@ -81,7 +81,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.7.0-local-SNAPSHOT")
+    implementation("com.assinafy:assinafy-android-sdk:2.7.1-local-SNAPSHOT")
 }
 ```
 
@@ -96,7 +96,7 @@ dependencyResolutionManagement {
 }
 
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.7.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.7.1")
 }
 ```
 
@@ -813,7 +813,10 @@ signature itself costs 0.5 credits per signer on top of the notification, charge
 is created and shown in the estimate `breakdown` under the `SignatureDigitalCertificate` code.
 
 Digital certificate requires the account feature (Standard and Pro plans), a CPF or CNPJ in
-`government_id`, and the signer to be **alone in their step**. A CPF requires that person's
+`government_id`, `method = AssignmentMethod.VIRTUAL`, and the signer to be **alone in their step**.
+The SDK rejects collect assignments before create or cost estimation with
+`ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT`. A template used with a certificate
+signer must have no placed fields, because placed fields produce a collect assignment. A CPF requires that person's
 certificate (an e-CPF, or an e-CNPJ naming them as legal representative); a CNPJ requires an e-CNPJ
 for that company, from any of its representatives. Because certificate signing runs through a
 handshake with the Web PKI browser extension, it is not completed by this SDK's native signing flow —
