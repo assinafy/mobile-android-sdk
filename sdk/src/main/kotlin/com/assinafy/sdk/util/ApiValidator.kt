@@ -32,7 +32,7 @@ internal object ApiValidator {
     }
 
     fun requireDeclineReason(value: String): String = requireNonBlank(value, "Decline reason").also {
-        if (it.length > 2_000) throw ValidationException("Decline reason must not exceed 2000 characters")
+        if (it.codePointCount(0, it.length) > 2_000) throw ValidationException("Decline reason must not exceed 2000 characters")
     }
 
     /** Validates the API's optional, contiguous, one-based sequential-signing steps. */

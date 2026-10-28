@@ -81,17 +81,17 @@ class UserResource internal constructor(
      * ```json
      * [
      *   {
-     *     "period": "example",
+     *     "period": "2026-10",
      *     "documents_uploaded": 1,
      *     "documents_sent": 1,
      *     "signature_requests": 1,
      *     "signature_requests_notification_email": 1,
-     *     "signature_requests_notification_whatsapp": 1,
-     *     "signature_requests_notification_bypass": 1,
+     *     "signature_requests_notification_whatsapp": 0,
+     *     "signature_requests_notification_bypass": 0,
      *     "signature_requests_verification_email": 1,
-     *     "signature_requests_verification_whatsapp": 1,
-     *     "signature_requests_verification_bypass": 1,
-     *     "signature_requests_verification_digital_certificate": 1,
+     *     "signature_requests_verification_whatsapp": 0,
+     *     "signature_requests_verification_bypass": 0,
+     *     "signature_requests_verification_digital_certificate": 0,
      *     "signature_requests_viewed": 1,
      *     "signature_requests_completed": 1,
      *     "documents_certified": 1
@@ -139,7 +139,11 @@ class UserResource internal constructor(
      *   "DocumentExpirationReset": true,
      *   "DocumentProcessingFailed": true,
      *   "TemplateProcessingFailed": true,
-     *   "SignerWhatsappFailed": true
+     *   "SignerWhatsappFailed": true,
+     *   "ContractRenewalNotice": true,
+     *   "ContractExpiring": true,
+     *   "ContractExpired": true,
+     *   "ContractRenewed": true
      * }
      * ```
      *
@@ -170,7 +174,11 @@ class UserResource internal constructor(
      *   "DocumentExpirationReset": true,
      *   "DocumentProcessingFailed": true,
      *   "TemplateProcessingFailed": true,
-     *   "SignerWhatsappFailed": true
+     *   "SignerWhatsappFailed": true,
+     *   "ContractRenewalNotice": true,
+     *   "ContractExpiring": true,
+     *   "ContractExpired": true,
+     *   "ContractRenewed": true
      * }
      * ```
      *
@@ -185,7 +193,11 @@ class UserResource internal constructor(
      *   "DocumentExpirationReset": true,
      *   "DocumentProcessingFailed": true,
      *   "TemplateProcessingFailed": true,
-     *   "SignerWhatsappFailed": true
+     *   "SignerWhatsappFailed": true,
+     *   "ContractRenewalNotice": true,
+     *   "ContractExpiring": true,
+     *   "ContractExpired": true,
+     *   "ContractRenewed": true
      * }
      * ```
      *

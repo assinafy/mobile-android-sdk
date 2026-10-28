@@ -57,7 +57,7 @@ class OkHttpApiClient private constructor(
      * @param token Optional Bearer token.
      * @param timeoutMs Positive connect, read, and write timeout in milliseconds.
      * @throws IllegalArgumentException for ambiguous credentials, an invalid URL or timeout, or
-     * credentials over non-loopback HTTP.
+     * non-loopback HTTP.
      */
     constructor(
         baseUrl: String,
@@ -151,13 +151,24 @@ class OkHttpApiClient private constructor(
 
     override suspend fun getAbsolute(url: String): HttpRawResponse {
         val parsed = requireNotNull(url.trim().toHttpUrlOrNull()) { "Discovery URL must be an absolute HTTP(S) URL" }
+        require(parsed.isHttps || parsed.host in LOOPBACK_HOSTS) { "Non-loopback discovery URLs require HTTPS" }
+        require(parsed.username.isEmpty() && parsed.password.isEmpty() && parsed.fragment == null) {
+            "Discovery URL must not contain user info or a fragment"
+        }
         return execute(Request.Builder().url(parsed).get().build())
     }
 
     private fun url(path: String, queryParams: Map<String, Any?> = emptyMap()): HttpUrl {
-        val builder = requireNotNull(baseUrl.resolve(path.removePrefix("/"))) {
+        val resolved = requireNotNull(baseUrl.resolve(path.removePrefix("/"))) {
             "Path must be relative to the configured API root"
-        }.newBuilder()
+        }
+        require(
+            resolved.scheme == baseUrl.scheme &&
+                resolved.host == baseUrl.host &&
+                resolved.port == baseUrl.port &&
+                resolved.encodedPath.startsWith(baseUrl.encodedPath),
+        ) { "Path must stay inside the configured API root" }
+        val builder = resolved.newBuilder()
         queryParams.forEach { (name, value) ->
             if (value != null) builder.addQueryParameter(name, value.toString())
         }
@@ -270,12 +281,11 @@ class OkHttpApiClient private constructor(
             }
             require(timeoutMs > 0) { "Timeout must be greater than zero" }
             require(
-                (apiKey.isNullOrBlank() && token.isNullOrBlank()) ||
-                    origin.isHttps ||
-                    origin.host in LOOPBACK_HOSTS,
-            ) { "Credentials require an HTTPS base URL" }
+                origin.isHttps || origin.host in LOOPBACK_HOSTS,
+            ) { "Non-loopback API URLs require HTTPS" }
             return OkHttpClient.Builder()
                 .connectionSpecs(CONNECTION_SPECS)
+                .followSslRedirects(false)
                 .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .writeTimeout(timeoutMs, TimeUnit.MILLISECONDS)

@@ -15,6 +15,10 @@ import com.google.gson.annotations.SerializedName
  * @property documentProcessingFailed Receive email when an uploaded document could not be processed.
  * @property templateProcessingFailed Receive email when a template could not be processed.
  * @property signerWhatsappFailed Receive email when a signer WhatsApp notification failed.
+ * @property contractRenewalNotice The contract notice period starts.
+ * @property contractExpiring A contract end date approaches.
+ * @property contractExpired A contract expires.
+ * @property contractRenewed A contract begins another term.
  */
 data class UpdateNotificationPreferencesRequest(
     @SerializedName("DocumentCompleted") val documentCompleted: Boolean? = null,
@@ -26,6 +30,10 @@ data class UpdateNotificationPreferencesRequest(
     @SerializedName("DocumentProcessingFailed") val documentProcessingFailed: Boolean? = null,
     @SerializedName("TemplateProcessingFailed") val templateProcessingFailed: Boolean? = null,
     @SerializedName("SignerWhatsappFailed") val signerWhatsappFailed: Boolean? = null,
+    @SerializedName("ContractRenewalNotice") val contractRenewalNotice: Boolean? = null,
+    @SerializedName("ContractExpiring") val contractExpiring: Boolean? = null,
+    @SerializedName("ContractExpired") val contractExpired: Boolean? = null,
+    @SerializedName("ContractRenewed") val contractRenewed: Boolean? = null,
 ) {
     internal fun hasChanges(): Boolean = listOf(
         documentCompleted,
@@ -37,5 +45,9 @@ data class UpdateNotificationPreferencesRequest(
         documentProcessingFailed,
         templateProcessingFailed,
         signerWhatsappFailed,
+        contractRenewalNotice,
+        contractExpiring,
+        contractExpired,
+        contractRenewed,
     ).any { it != null }
 }

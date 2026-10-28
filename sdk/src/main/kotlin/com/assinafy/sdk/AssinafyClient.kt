@@ -11,6 +11,7 @@ import com.assinafy.sdk.request.SignerReference
 import com.assinafy.sdk.request.UploadAndRequestSignaturesRequest
 import com.assinafy.sdk.resources.AssignmentResource
 import com.assinafy.sdk.resources.AuthenticationResource
+import com.assinafy.sdk.resources.ContractResource
 import com.assinafy.sdk.resources.DocumentResource
 import com.assinafy.sdk.resources.FieldResource
 import com.assinafy.sdk.resources.OAuthResource
@@ -47,6 +48,7 @@ data class UploadAndRequestSignaturesResult(
  *
  * @property authentication Human-user authentication and API-key operations.
  * @property documents Account and public document operations.
+ * @property contracts Document contract terms, amendments, renewal and termination.
  * @property signers Account signer management and legacy signer-facing operations.
  * @property signerDocuments Signer-facing document and signing operations.
  * @property workspaces Account/workspace operations.
@@ -62,6 +64,7 @@ data class UploadAndRequestSignaturesResult(
 class AssinafyClient internal constructor(
     val authentication: AuthenticationResource,
     val documents: DocumentResource,
+    val contracts: ContractResource,
     val signers: SignerResource,
     val signerDocuments: SignerDocumentResource,
     val workspaces: WorkspaceResource,
@@ -150,7 +153,7 @@ class AssinafyClient internal constructor(
          * @param apiKey API key sent only to the configured API origin.
          * @param accountId Default account used by account-scoped resource methods.
          * @param baseUrl Full API prefix, including `/v1` on Assinafy hosts. A trailing slash is
-         * accepted; user info, query, and fragment components are rejected. Credentials require
+         * accepted; user info, query, and fragment components are rejected. All requests require
          * HTTPS except on loopback.
          * @param webhookSecret Optional secret used only by [WebhookVerifier].
          * @param timeoutMs Positive per-request connect, read, and write timeout in milliseconds.
@@ -219,6 +222,7 @@ class AssinafyClient internal constructor(
                     publicHttpClient,
                 ),
                 documents = DocumentResource(httpClient, config.accountId, logger, publicHttpClient),
+                contracts = ContractResource(httpClient, config.accountId, logger),
                 signers = SignerResource(httpClient, config.accountId, logger, publicHttpClient),
                 signerDocuments = SignerDocumentResource(publicHttpClient),
                 workspaces = WorkspaceResource(httpClient, logger),
@@ -255,11 +259,12 @@ class AssinafyClient internal constructor(
             if (scheme !in setOf("http", "https") || host.isNullOrBlank()) {
                 throw ValidationException("Base URL must be an absolute HTTP(S) URL")
             }
+            if (uri.port != -1 && uri.port !in 1..65535) throw ValidationException("Base URL port must be 1..65535")
             if (uri.rawUserInfo != null || uri.rawQuery != null || uri.rawFragment != null) {
                 throw ValidationException("Base URL must not contain user info, a query, or a fragment")
             }
-            if ((hasApiKey || hasToken) && scheme != "https" && host !in LOOPBACK_HOSTS) {
-                throw ValidationException("Credentials require an HTTPS base URL")
+            if (scheme != "https" && host !in LOOPBACK_HOSTS) {
+                throw ValidationException("Non-loopback API URLs require HTTPS")
             }
             if (config.timeoutMs <= 0) {
                 throw ValidationException("Timeout must be greater than zero")

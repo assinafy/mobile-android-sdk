@@ -92,8 +92,7 @@ a fragment. Credentials require HTTPS except on `localhost`, `127.0.0.1`, and `:
 
 `AssinafyClient.create(config)` validates the full API prefix and positive timeout. Assinafy-hosted
 prefixes include `/v1`; reverse proxies may use another path. A trailing slash is accepted, while
-user information, a query, or a fragment is rejected. Credentials require HTTPS except for loopback
-loopback development hosts. `apiKey` and `token` are mutually exclusive. The convenience
+user information, a query, or a fragment is rejected. All clients require HTTPS except for loopback development hosts. `apiKey` and `token` are mutually exclusive. The convenience
 `create(apiKey, accountId, baseUrl, webhookSecret, timeoutMs, logger)` builds the same client.
 
 | Property | Operations |
@@ -102,6 +101,7 @@ loopback development hosts. `apiKey` and `token` are mutually exclusive. The con
 | `oauth` | OAuth 2.1 authorization-code flow with PKCE, refresh, revocation, userinfo, discovery |
 | `workspaces` | Accounts, themes, logos, account statistics |
 | `documents` | Documents, artifacts, public document access, template instantiation, document tags |
+| `contracts` | Contract terms, filters, amendments, family reads, renewal and termination |
 | `signers` | Account-scoped signer CRUD and compatibility signer-flow aliases |
 | `signerDocuments` | Complete credentialless signer-facing signing flow |
 | `assignments` | Assignment creation, pricing, expiration, resend, notification history |
@@ -273,6 +273,34 @@ Without `force`, deleting a workspace with an active paid subscription returns `
 `PendingDocuments` appears only with `ActivePaidSubscription`. `force=true` cancels the subscription
 and deletes the workspace immediately.
 
+## ContractResource
+
+| Kotlin function | Exact request | JSON body | Return (`data`) |
+|---|---|---|---|
+| `list(ContractListParams, accountId)` | `GET /v1/accounts/{accountId}/contracts` | none; filters in query | `PaginatedResult<DocumentContract>` |
+| `get(documentId, accountId)` | `GET /v1/accounts/{accountId}/documents/{documentId}/contract` | none | `ContractRecord` |
+| `update(documentId, UpdateContractRequest, accountId)` | `PUT /v1/accounts/{accountId}/documents/{documentId}/contract` | Supplied terms/link/delta fields; `clearFields` sends explicit null | `ContractRecord` |
+| `related(documentId, accountId)` | `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related` | none | `DocumentContract` with amendments |
+| `renew(documentId, RenewContractRequest, accountId)` | `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew` | `term`, `end_date`, `value`, `updated_at`; term or end date required | `DocumentContract` |
+| `terminate(documentId, TerminateContractRequest, accountId)` | `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate` | Optional `reason`, `updated_at` | `DocumentContract` |
+
+OAuth reads require `documents:read`; writes require `documents:write` and the account's contract-tracking entitlement.
+Contract reads and updates return `ContractRecord`, either root terms or an amendment link.
+
+Contract lists accept page/per-page, comma-separated statuses, counterparty, document-name search,
+inclusive end-date bounds, ending-within-days (0..3650), external-system/ID, sort (end_date/updated_at,
+optionally descending) and document expansion. Root terms use exact BigDecimal values. Get/update
+return ContractRecord; related/renew/terminate return DocumentContract. Amendment terms and changes
+remain JSON objects to preserve their varying field types and exact numbers.
+
+UpdateContractRequest omits nulls and uses clearFields for explicit null. A pending amendment's null
+removes a key from its delta; clearing PARENT_DOCUMENT_ID unlinks it. External references replace the
+list. Counterparty-name emoji limits follow the server's stored representation. RenewContractRequest
+requires the current term or a later endDate; clearValue sends value:null. TerminateContractRequest
+accepts a reason up to 500 Unicode characters. Each write accepts the last-read updatedAt; a changed
+record returns 409 with code ContractChanged. ApiException.responseData preserves all field/code/message
+validation entries. Membership, CPF/CNPJ, plan and existing-state rules are enforced by the API.
+
 ## DocumentResource
 
 | Kotlin function | Exact request | Query/body | Return (`data`) |
@@ -280,6 +308,7 @@ and deletes the workspace immediately.
 | `upload(fileData, fileName, metadata, accountId)` | `POST /v1/accounts/{accountId}/documents` | Multipart `file` (`application/pdf`). Only when `metadata` is non-null, opt in to live compatibility `name` and JSON-string `metadata` parts | `DocumentUploadResponse` |
 | `list(ListParams, accountId)` | `GET /v1/accounts/{accountId}/documents` | Optional `status`, `method`, `search`, comma-separated tag IDs in `tags`, `sort`, `page`, `per-page` | `PaginatedResult<DocumentListItem>`; alias of full `DocumentDetails` |
 | `search(query, status, page, perPage, accountId)` | `GET /v1/accounts/{accountId}/documents/search` | Optional `search`, `status`, `page`, `per-page` | `PaginatedResult<DocumentListItem>`; alias of full `DocumentDetails` |
+| `search(ListParams, accountId)` | Same search route | `search`, `status`, `sort`, `page`, `per-page` | `PaginatedResult<DocumentListItem>` |
 | `details(documentId)` | `GET /v1/documents/{documentId}` | none | `DocumentDetails` |
 | `get(documentId)` | Same as `details` | none | `DocumentDetails` |
 | `waitUntilReady(documentId, maxWaitMs, pollIntervalMs)` | Repeats `GET /v1/documents/{documentId}` | Local timing arguments only | First `DocumentDetails` whose status is in `DocumentStatus.READY` |
@@ -287,13 +316,13 @@ and deletes the workspace immediately.
 | `thumbnail(documentId)` | `GET /v1/documents/{documentId}/thumbnail` | none | Raw image `ByteArray` |
 | `downloadPage(documentId, pageId)` | `GET /v1/documents/{documentId}/pages/{pageId}/download` | none | Raw page image `ByteArray` |
 | `activities(documentId)` | `GET /v1/documents/{documentId}/activities` | none | `List<DocumentActivity>` |
+| `activities(documentId, ListParams)` | Same activity route | `page`, `per-page`, `sort=id` or `-id` | `PaginatedResult<DocumentActivity>` |
 | `delete(documentId)` | `DELETE /v1/documents/{documentId}` | none; allowed only when the status catalog reports `deletable=true` | `Unit` |
 | `rename(documentId, name)` | `PATCH /v1/documents/{documentId}` | `{"name":string}`; maximum 255 characters; only before assignment in `uploaded`/`metadata_ready` | `DocumentDetails` |
 | `createFromTemplate(templateId, signers, options, accountId)` | `POST /v1/accounts/{accountId}/templates/{templateId}/documents` | `CreateDocumentFromTemplateRequest`; function `signers` replaces `options.signers` | `DocumentDetails` |
 | `estimateCostFromTemplate(templateId, signers, accountId)` | `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `{"signers":[{"role_id":string,"verification_method":string?,"notification_methods":[string]?}]}` | `CostEstimate` |
 | `verify(hash)` | `GET /v1/documents/{documentSignatureHash}/verify` (public) | none | `DocumentVerification` |
-| `getPublic(documentId)` | `GET /v1/public/documents/{documentId}` (public) | none | `AccessTokenDelivery` | `document:PublicDocumentInfo`, `channel:String`, `recipient:String` |
-| `PublicDocumentInfo` |
+| `getPublic(documentId)` | `GET /v1/public/documents/{documentId}` (public) | none | `PublicDocumentInfo` |
 | `sendAccessToken(documentId, email)` | `PUT /v1/public/documents/{documentId}/send-token` (public) | `{"channel":"email","recipient":string}`; both required; `recipient` is the signer's email | `AccessTokenDelivery` (`document`, `channel`, `recipient`) |
 | `sendToken(documentId, email?, channel?)` | Same request; deprecated | `email` required; `channel` must be `null` or `email` | `Unit` |
 | `isFullySigned(documentId)` | Calls `details` | local derivation | `true` when every signer is complete or status is `certificated`; does not guarantee the certificated artifact is ready during `certificating` |
@@ -306,10 +335,8 @@ and deletes the workspace immediately.
 | `addTags(documentId, tagNames, accountId)` | `POST /v1/accounts/{accountId}/documents/{documentId}/tags` | `{"tags":["tag_id",...]}`; parameter name is retained for source compatibility | `List<Tag>` |
 | `detachTag(documentId, tagId, accountId)` | `DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}` | none | `Unit` |
 
-For a digital-certificate signer, both template operations first call
-`GET /v1/accounts/{accountId}/templates/{templateId}`. Any placed template field makes the generated
-assignment `collect`, so the SDK raises the stable validation code above before the create or
-estimate POST. A template without placed fields remains `virtual` and is allowed.
+Template methods require only their documented POST permission. The API checks actual Signer-role
+fields and steps, while Editor fields are rendered before signing and CopyReceiver roles do not sign.
 
 Uploads must be non-empty PDF content, have a `.pdf` name, begin with `%PDF-`, and be no larger than
 25 MiB; the service accepts at most 2,000 pages. Artifact names are `original`, `certificated`,
@@ -360,6 +387,10 @@ Template creation body:
 }
 ```
 
+The `search(ListParams, accountId)` overload also sends `sort`. The activity overload
+`activities(documentId, ListParams)` returns `PaginatedResult<DocumentActivity>` and accepts page,
+per-page and sort (`id` or `-id`); the original activity method returns the first page.
+
 ## SignerResource
 
 Account CRUD is the preferred use of this resource. The last five methods are compatibility aliases
@@ -390,6 +421,8 @@ the two `AsWorkspace` methods above.
 
 The service locks signer updates while verification is in progress. Changing an unverified email or
 WhatsApp number rotates the signer access and OTP codes; resend the notification before continuing.
+
+To clear a signer email, WhatsApp number or government ID, pass an empty string; null omits it.
 
 ## SignerDocumentResource
 
@@ -442,7 +475,7 @@ paths, authentication, requests, or responses; the SDK therefore does not expose
 
 | Kotlin function | Exact request | Query/body | Return (`data`) |
 |---|---|---|---|
-| `list(ListParams, accountId)` | `GET /v1/assignments` | Optional `page`, `per-page`; explicitly passing `accountId` opts into the deployed-service compatibility `accountId` query | `PaginatedResult<Assignment>` |
+| `list(ListParams, accountId)` | `GET /v1/assignments` | Optional `page`, `per-page`, `sort`; sends the explicit or configured `accountId` when present (required for API keys, inferred for OAuth) | `PaginatedResult<Assignment>` |
 | `create(documentId, CreateAssignmentRequest)` | `POST /v1/documents/{documentId}/assignments` | Full assignment request below | `Assignment` |
 | `estimateCost(documentId, CreateAssignmentRequest)` | `POST /v1/documents/{documentId}/assignments/estimate-cost` | Projected `method`, `signers`, and `entries`; signer IDs/steps omitted | `CostEstimate` |
 | `resetExpiration(documentId, assignmentId, expiresAt)` | `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration` | `{"expires_at":string}`, or `{"expires_at":null}` for `null` to remove the expiration; a blank string is rejected | `Assignment` |
@@ -587,7 +620,10 @@ The list method deliberately ignores document-only `status`, `method`, `tags`, a
 Template status is `uploading` while the upload is in progress, `uploaded` once transferred,
 `processing` while metadata is prepared, `ready` when the template can be used, or `failed` when
 processing fails. Creating a document from a template requires one signer entry for every template
-role, and each signer must already exist in the account.
+Signer role; CopyReceiver roles are optional and Editor roles use editor fields only. An entry
+uses an existing `id` or inline `email`, `name` and `whatsapp_phone_number`. Creation returns
+`uploaded` with `assignment: null`; completion produces `pending_signature` / `assignment_created`,
+or `failed` / `document_processing_failed` without a charge.
 
 ## WebhookResource
 
@@ -607,7 +643,7 @@ role, and each signer must already exist in the account.
 | `deleteEndpointByUrl(url, accountId)` | `DELETE /v1/accounts/{accountId}/webhooks/endpoints` | Required exact `url` query | `Unit`; 404 if absent |
 | `deleteEndpoint(endpointId, accountId)` | `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | none | `Unit` |
 | `getEndpointSecret(endpointId, accountId)` | `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` (API key only) | none | `WebhookEndpointSecret`; 400 when signing is disabled |
-| `rotateEndpointSecret(endpointId, accountId)` | `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key only) | none | `WebhookEndpointSecret`; the old secret stops working at once |
+| `rotateEndpointSecret(endpointId, accountId)` | `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key or OAuth `webhooks:write`) | none | `WebhookEndpointSecret`; the old secret stops working at once |
 
 An account has 1 endpoint, or up to 3 on paid plans, and every active endpoint subscribed to an event
 receives it independently. `register`, `get` and `inactivate` act on the account's oldest endpoint;
@@ -619,9 +655,10 @@ empty list is sent unchanged. Retrieve the server's current event catalog with `
 offering a selection to users.
 
 Assinafy delivers each event as an `application/json` HTTP `POST`; any `2xx` response succeeds. A
-failed event is attempted at most twice (the initial request and one retry after 3 seconds). After 10
-consecutive failed events, the circuit breaker pauses normal delivery and probes about 5% of events
-until one succeeds; `retryDispatch` forces another delivery. Dispatch history stores only the first
+retryable failure receives up to six attempts, about ten minutes apart. Connection errors, timeouts,
+408, 429 and 5xx are retryable; other statuses are final. Ten consecutive failures hold the endpoint;
+probes run after 3, 15 and 60 minutes, then every six hours. Recovery sends missed events oldest first.
+`retryDispatch`, changing the URL or setting is_active:true can lift the hold. Dispatch history stores only the first
 2,000 characters of the endpoint response body. Deduplicate with the `webhook-id` header, identical
 on every attempt of the same event to the same endpoint.
 `subject` and `object` are polymorphic resource objects, and receivers should accept unknown fields as
@@ -659,6 +696,9 @@ The deprecated `verify(payload, signature)` checks a hex HMAC that Assinafy deli
 `event` then legacy `type`; `getEventData(event)` returns `payload` or an empty map. Never embed a
 webhook shared secret in an Android application.
 
+OAuth can rotate endpoint secrets with `webhooks:write`; only existing-secret reads require an API key.
+Enabling signing on update returns a new `secret` once, just as creation does.
+
 ## Request types
 
 `?` means nullable/omittable. Wire names are shown exactly.
@@ -666,6 +706,10 @@ webhook shared secret in an Android application.
 | Kotlin type | Complete fields |
 |---|---|
 | `AssinafyClientConfig` | `apiKey:String?`, `token:String?`, `accountId:String?`, `baseUrl:String`, `webhookSecret:String?`, `timeoutMs:Long`, `logger:Logger?` |
+| `UpdateContractRequest` | `status:String?`, `counterparty_name→counterpartyName:String?`, `counterparty_taxpayer_id→counterpartyTaxpayerId:String?`, `value:BigDecimal?`, `currency:String?`, `start_date→startDate:String?`, `end_date→endDate:String?`, `auto_renew→autoRenew:Boolean?`, `renewal_term_months→renewalTermMonths:Int?`, `notice_period_days→noticePeriodDays:Int?`, `owner_id→ownerId:String?`, `metadata:Map<String, String>?`, `external_references→externalReferences:List<ContractExternalReference>?`, `parent_document_id→parentDocumentId:String?`, `relation_type→relationType:String?`, `updated_at→updatedAt:String?`, `clearFields:Set<ContractField>` |
+| `RenewContractRequest` | `term:Int?`, `end_date→endDate:String?`, `value:BigDecimal?`, `clearValue:Boolean`, `updated_at→updatedAt:String?` |
+| `TerminateContractRequest` | `reason:String?`, `updated_at→updatedAt:String?` |
+| `ContractListParams` | `page:Int?`, `perPage:Int?`, `statuses:List<String>?`, `counterparty:String?`, `search:String?`, `endDateFrom:String?`, `endDateTo:String?`, `endingWithinDays:Int?`, `externalSystem:String?`, `externalId:String?`, `sort:String?`, `expandDocument:Boolean` |
 | `ListParams` | query `page:Int?`, `per-page:Int?`, `search:String?`, `sort:String?`, `status:String?`, `method:String?`, `tags:List<String>?` (comma-separated tag IDs) |
 | `LoginRequest` | `email:String`, `password:String` |
 | `RequestPasswordResetRequest` | `email:String` |
@@ -679,12 +723,12 @@ webhook shared secret in an Android application.
 | `CreateSignerRequest` | `full_name:String`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?` (CPF or CNPJ; formatting accepted, normalized by the API); deprecated `cpf:String?` (sent as `government_id` when `governmentId` is null), `metadata:Map?` |
 | `UpdateSignerRequest` | `full_name:String?`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?`; deprecated compatibility `cpf:String?` |
 | `ConfirmSignerDataRequest` | `full_name:String?`, `email:String?`, `government_id:String?`; deprecated `whatsapp_phone_number` and `has_accepted_terms` are not sent by `signerDocuments.confirmData` |
-| `SignerReference` | `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?` (exactly one: Email or WhatsApp), `step:Int?` |
+| `SignerReference` | `id:String?` (required for creation, omitted for pricing), `verification_method:String?`, `notification_methods:List<String>?` (exactly one: Email or WhatsApp), `step:Int?` |
 | `CreateAssignmentRequest` | `method:String`, `signers:List<SignerReference>`, `message:String?`, `expires_at:String?`, `copy_receivers:List<String>?` (signer IDs), `entries:List<AssignmentEntry>?` |
 | `AssignmentEntry` | `page_id:String`, `fields:List<AssignmentFieldPlacement>` |
 | `AssignmentFieldPlacement` | `signer_id:String`, `field_id:String`, `display_settings:DisplaySettings?` |
 | `DisplaySettings` | `left:Float`, `top:Float`, `width:Float`, `height:Float`, `fontSize:Float`, `fontFamily:String?`, `backgroundColor:String?` |
-| `TemplateSigner` | `role_id:String`, `id:String?` (required for create), `verification_method:String?`, `notification_methods:List<String>?` (exactly one when supplied), `step:Int?` |
+| `TemplateSigner` | `role_id:String`, `id:String?` or `email:String?` for creation, `name:String?`, `whatsapp_phone_number:String?`, `verification_method:String?`, `notification_methods:List<String>?` (exactly one when supplied), `step:Int?` |
 | `CreateDocumentFromTemplateRequest` | `signers:List<TemplateSigner>`, `name:String?`, `message:String?`, `expires_at:String?`, `editor_fields:List<TemplateEditorField>?`, `tags:List<String>?` (tag names; missing names are created and merged with template defaults) |
 | `TemplateEditorField` | `field_id:String`, `value:String` |
 | `CreateFieldRequest` | `name:String`, `type:String`, `regex:String?`, `is_required:Boolean?` |
@@ -693,7 +737,7 @@ webhook shared secret in an Android application.
 | `SignAssignmentItemRequest` | `itemId:String`, `fieldId:String`, `pageId:String`, `value:String` |
 | `VerifySignerEmailRequest` | `verification-code:String` |
 | `DocumentStatsQuery` | query `granularity:DocumentStatsGranularity?` (`monthly` or `daily`), `month:String?` (`YYYY-MM`, required for daily) |
-| `UpdateNotificationPreferencesRequest` | Nullable booleans: `DocumentCompleted`, `SignerDeclined`, `DocumentCancelled`, `DocumentAboutToExpire`, `DocumentExpired`, `DocumentExpirationReset`, `DocumentProcessingFailed`, `TemplateProcessingFailed`, `SignerWhatsappFailed` |
+| `UpdateNotificationPreferencesRequest` | Nullable booleans: `DocumentCompleted`, `SignerDeclined`, `DocumentCancelled`, `DocumentAboutToExpire`, `DocumentExpired`, `DocumentExpirationReset`, `DocumentProcessingFailed`, `TemplateProcessingFailed`, `SignerWhatsappFailed`; optional `Boolean?`: `ContractRenewalNotice`, `ContractExpiring`, `ContractExpired`, `ContractRenewed` |
 | `RegisterWebhookRequest` | `url:String`, `email:String`, `events:List<String>?`, `is_active:Boolean` |
 | `CreateWebhookEndpointRequest` | `url:String`, `email:String`, `events:List<String>` (nonempty), `name:String?`, `is_active:Boolean?`, `signing_enabled:Boolean?` |
 | `UpdateWebhookEndpointRequest` | `url:String?`, `email:String?`, `events:List<String>?`, `name:String?`, `is_active:Boolean?`, `signing_enabled:Boolean?`; only non-null members are sent |
@@ -762,7 +806,12 @@ because their JSON shapes vary by assignment and field type.
 
 | Kotlin type | Complete wire fields and Kotlin types |
 |---|---|
-| `CostEstimate` | `documents:Int?`, `credits:Double?`, `needs_extra_document→needsExtraDocument:Boolean?`, `extra_document_cost→extraDocumentCost:Double?`, `total_credits→totalCredits:Double?`, `breakdown:List<CostEstimateBreakdownItem>`, `document_balance→documentBalance:Double?`, `credit_balance→creditBalance:Double?`, `has_sufficient_resources→hasSufficientResources:Boolean?`, `blocking_reason→blockingReason:String?`, `message:String?`; compatibility `total→legacyTotal:Double?`, `has_sufficient_credits→legacyHasSufficientCredits:Boolean?` |
+| `ContractExternalReference` | `system:String`, `id:String` |
+| `DocumentContract` | `document_id→documentId:String`, `status:String`, `resource:String?`, `counterparty_name→counterpartyName:String?`, `counterparty_taxpayer_id→counterpartyTaxpayerId:String?`, `value:BigDecimal?`, `currency:String?`, `start_date→startDate:String?`, `end_date→endDate:String?`, `auto_renew→autoRenew:Boolean?`, `renewal_term_months→renewalTermMonths:Int?`, `notice_period_days→noticePeriodDays:Int?`, `term:Int?`, `owner_id→ownerId:String?`, `metadata:Map<String, String>?`, `external_references→externalReferences:List<ContractExternalReference>?`, `document:DocumentDetails?`, `amendments:List<DocumentContractAmendment>?`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?` |
+| `DocumentContractAmendment` | `document_id→documentId:String`, `status:String`, `parent_document_id→parentDocumentId:String`, `relation_type→relationType:String`, `resource:String?`, `document_name→documentName:String?`, `number:Int?`, `document_status→documentStatus:String?`, `apply_error→applyError:String?`, `currency:String?`, `terms:JsonObject?`, `changes:JsonObject?`, `applied_at→appliedAt:String?`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?` |
+| `WorkspaceLimits` | `webhook_endpoints→webhookEndpoints:Int?` |
+| `ContractRecord` | Sealed interface: `documentId:String`, `status:String`, `updatedAt:String?`; implemented by DocumentContract or DocumentContractAmendment |
+| `CostEstimate` | `documents:Int?`, `credits:Double?`, `needs_extra_document→needsExtraDocument:Boolean?`, `extra_document_cost→extraDocumentCost:Double?`, `total_credits→totalCredits:Double?`, `breakdown:List<CostEstimateBreakdownItem>`, `document_balance→documentBalance:Double?`, `credit_balance→creditBalance:Double?`, `has_sufficient_resources→hasSufficientResources:Boolean?`, `blocking_reason→blockingReason:String?`, `message:String?`; resend-cost fields `total→legacyTotal:Double?`, `has_sufficient_credits→legacyHasSufficientCredits:Boolean?` |
 | `CostEstimateBreakdownItem` | `code:String`, `name:String`, `cost:Double`, `quantity:Int?`, `unit_cost→unitCost:Double?` |
 | `FieldDefinition` | `resource:String?`, `id:String`, `name:String`, `type:String`, `regex:String?`, `is_pre_defined→isPreDefined:Boolean?`, `is_active→isActive:Boolean`, `is_required→isRequired:Boolean?`, `is_standard→isStandard:Boolean?`, `is_read_only→isReadOnly:Boolean?`, `is_visible→isVisible:Boolean?` |
 | `FieldType` | `type:String`, `name:String` |
@@ -778,7 +827,7 @@ because their JSON shapes vary by assignment and field type.
 | Kotlin type | Complete wire fields and Kotlin types |
 |---|---|
 | `DocumentStatsRow` | `period:String`, then `Long`: `documents_uploaded`, `documents_sent`, `signature_requests`, `signature_requests_notification_email`, `signature_requests_notification_whatsapp`, `signature_requests_notification_bypass`, `signature_requests_verification_email`, `signature_requests_verification_whatsapp`, `signature_requests_verification_bypass`, `signature_requests_verification_digital_certificate`, `signature_requests_viewed`, `signature_requests_completed`, `documents_certified` |
-| `NotificationPreferences` | Nine required `Boolean` fields: `DocumentCompleted`, `SignerDeclined`, `DocumentCancelled`, `DocumentAboutToExpire`, `DocumentExpired`, `DocumentExpirationReset`, `DocumentProcessingFailed`, `TemplateProcessingFailed`, `SignerWhatsappFailed` |
+| `NotificationPreferences` | Required `Boolean` fields: `DocumentCompleted`, `SignerDeclined`, `DocumentCancelled`, `DocumentAboutToExpire`, `DocumentExpired`, `DocumentExpirationReset`, `DocumentProcessingFailed`, `TemplateProcessingFailed`, `SignerWhatsappFailed`; optional `Boolean?`: `ContractRenewalNotice`, `ContractExpiring`, `ContractExpired`, `ContractRenewed` |
 | `WebhookSubscription` | `url:String?`, `email:String?`, `events:List<String>`, `is_active→isActive:Boolean`, `updated_at→updatedAt:String?` |
 | `WebhookEventTypeInfo` | `id:String`, `description:String?` |
 | `WebhookEndpoint` | `id:String`, `name:String?`, `url:String`, `email:String?`, `events:List<String>`, `is_active→isActive:Boolean`, `signing_enabled→signingEnabled:Boolean`, `created_at→createdAt:String?`, `updated_at→updatedAt:String?`, `secret:String?` (one-time creation secret; redacted in `toString()`) |
@@ -809,6 +858,13 @@ channel. The verification counters partition `signature_requests` and therefore 
 
 Hosted capture URLs are credentials; both capture response types redact them in `toString()`.
 
+Additional response fields: DocumentDetails exposes workspace-detail-only `hasContract`; both it and
+PublicDocumentInfo expose `verificationCode` and `verificationUrl`; Assignment exposes `documentId` and `createdAt`; Workspace exposes
+`limits.webhookEndpoints`; WebhookSubscription and WebhookEndpoint expose `isHeld` and epoch-second
+`heldSince`; WebhookEndpoint also exposes `resource`. WebhookDispatch exposes `webhookId`, `attempt`,
+`kind` and `willRetry`. `WhatsappNotification.sentAt` remains epoch seconds and accepts both current
+ISO-8601 wire dates and older numeric timestamps.
+
 ## Constants
 
 - `SdkConstants`: `VERSION`/`USER_AGENT`, production `DEFAULT_BASE_URL`, 30-second
@@ -831,6 +887,7 @@ Hosted capture URLs are credentials; both capture response types redact them in 
 - `IdentityReviewDecision`: `Approved`, `Rejected`.
 - `IdentityReviewImage`: `document_front`, `document_back`, `document_pdf`, `face`, plus `ALL`.
 - `DocumentStatus.PENDING_IDENTITY_REVIEW`: `pending_identity_review`.
+- `DocumentStatus.METADATA_READY`: `metadata_ready`, ready for a new assignment.
 - `DocumentStatus.CERTIFICATED`: `certificated`.
 - `DocumentStatus.READY`: `metadata_ready`, `pending_signature`, `pending_identity_review`, `certificating`, `certificated`.
 - `DocumentStatus.FAILED`: `failed`, `rejected_by_signer`, `rejected_by_user`, `expired`.
@@ -853,6 +910,11 @@ Hosted capture URLs are credentials; both capture response types redact them in 
   `signer_identity_verification_failed`, `signer_identity_review_required`,
   `signer_identity_review_approved`, and `signer_identity_review_rejected`. Use `webhooks.listEventTypes()` to accept
   future server events without an SDK update.
+
+Contract constants: `ContractStatus` (draft, active, expired, terminated), `ContractRelationType`
+(amendment, renewal, termination), `ContractAmendmentStatus` (pending, applied), and `ContractField`
+for explicit null updates. `WebhookEvent.DOCUMENT_CONTRACT_*` supplies all eight contract event IDs.
+`TemplateRoleType` supplies Editor/Signer/CopyReceiver; `WebhookAttemptKind` supplies scheduled/probe/manual.
 
 ## Complete method payloads
 
@@ -878,9 +940,10 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "primary_color": null,
   "secondary_color": null,
   "notification_sender_type": "User",
-  "roles": ["example"],
+  "roles": ["owner"],
   "is_delete_allowed": true,
-  "created_at": "2026-01-01T00:00:00Z"
+  "created_at": "2026-01-01T00:00:00Z",
+  "limits": {"webhook_endpoints": 3}
 }
 ```
 
@@ -907,7 +970,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "primary_color": null,
   "secondary_color": null,
   "notification_sender_type": "User",
-  "roles": ["example"],
+  "roles": ["owner"],
   "is_delete_allowed": true,
   "created_at": "2026-01-01T00:00:00Z"
 }
@@ -1014,7 +1077,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "primary_color": null,
     "secondary_color": null,
     "notification_sender_type": "User",
-    "roles": ["example"],
+    "roles": ["owner"],
     "is_delete_allowed": true,
     "created_at": "2026-01-01T00:00:00Z"
   }
@@ -1044,7 +1107,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "primary_color": null,
   "secondary_color": null,
   "notification_sender_type": "User",
-  "roles": ["example"],
+  "roles": ["owner"],
   "is_delete_allowed": true,
   "created_at": "2026-01-01T00:00:00Z"
 }
@@ -1062,17 +1125,17 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 [
   {
-    "period": "example",
+    "period": "2026-10",
     "documents_uploaded": 1,
     "documents_sent": 1,
     "signature_requests": 1,
     "signature_requests_notification_email": 1,
-    "signature_requests_notification_whatsapp": 1,
-    "signature_requests_notification_bypass": 1,
+    "signature_requests_notification_whatsapp": 0,
+    "signature_requests_notification_bypass": 0,
     "signature_requests_verification_email": 1,
-    "signature_requests_verification_whatsapp": 1,
-    "signature_requests_verification_bypass": 1,
-    "signature_requests_verification_digital_certificate": 1,
+    "signature_requests_verification_whatsapp": 0,
+    "signature_requests_verification_bypass": 0,
+    "signature_requests_verification_digital_certificate": 0,
     "signature_requests_viewed": 1,
     "signature_requests_completed": 1,
     "documents_certified": 1
@@ -1084,7 +1147,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 
 `GET /v1/assignments`
 
-Parameters: `page` (query, optional), `per-page` (query, optional).
+Parameters: `accountId` (query, optional), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
 
 Request body: none.
 
@@ -1098,11 +1161,13 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "method": "virtual",
     "expires_at": null,
     "message": null,
-    "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-    "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
-    "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-    "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
-    "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+    "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
+    "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
+    "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
+    "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
+    "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
+    "document_id": "document-placeholder",
+    "created_at": "2026-01-01T00:00:00Z"
   }
 ]
 ```
@@ -1134,11 +1199,13 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "method": "virtual",
   "expires_at": null,
   "message": null,
-  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
-  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
-  "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+  "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
+  "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
+  "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
+  "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
+  "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
+  "document_id": "document-placeholder",
+  "created_at": "2026-01-01T00:00:00Z"
 }
 ```
 
@@ -1152,8 +1219,8 @@ Request body (`application/json`; optional members may be omitted):
 ```json
 {
   "method": "collect",
-  "signers": [{"verification_method": "Email","notification_methods": ["Email"]}],
-  "entries": [{"page_id":"page-placeholder","fields":[{"signer_id":"signer-placeholder","field_id":"field-placeholder","display_settings":{"left":72,"top":640,"width":180,"height":40,"fontSize":12}}]}]
+  "signers": [{"verification_method": "Whatsapp", "notification_methods": ["Whatsapp"]}],
+  "entries": [{"page_id": "page-placeholder", "fields": [{"signer_id": "signer-placeholder", "field_id": "field-placeholder", "display_settings": {"left": 72, "top": 640, "width": 180, "height": 40, "fontSize": 12}}]}]
 }
 ```
 
@@ -1161,15 +1228,15 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 {
   "documents": 1,
-  "credits": 1,
+  "credits": 0.45,
   "needs_extra_document": true,
   "extra_document_cost": 1,
-  "total_credits": 1,
-  "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
-  "document_balance": 1,
-  "credit_balance": 1,
+  "total_credits": 1.45,
+  "breakdown": [{"code": "NotificationWhatsapp", "name": "WhatsApp notification", "cost": 0.45, "quantity": 1, "unit_cost": 0.45}],
+  "document_balance": 0,
+  "credit_balance": 10,
   "has_sufficient_resources": true,
-  "blocking_reason": "PendingPayment",
+  "blocking_reason": null,
   "message": null
 }
 ```
@@ -1202,17 +1269,10 @@ Request body: none.
 Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
 ```json
 {
-  "documents": 1,
-  "credits": 1,
-  "needs_extra_document": true,
-  "extra_document_cost": 1,
-  "total_credits": 1,
-  "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
-  "document_balance": 1,
-  "credit_balance": 1,
-  "has_sufficient_resources": true,
-  "blocking_reason": "PendingPayment",
-  "message": null
+  "total": 0.45,
+  "breakdown": [{"code": "NotificationWhatsappResend", "name": "WhatsApp notification resend", "cost": 0.45}],
+  "credit_balance": 10,
+  "has_sufficient_credits": true
 }
 ```
 
@@ -1238,11 +1298,13 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "method": "virtual",
   "expires_at": null,
   "message": null,
-  "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-  "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
-  "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-  "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
-  "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+  "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
+  "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
+  "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
+  "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
+  "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
+  "document_id": "document-placeholder",
+  "created_at": "2026-01-01T00:00:00Z"
 }
 ```
 
@@ -1258,7 +1320,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 [
   {
-    "sent_at": 1,
+    "sent_at": "2026-10-28T12:00:00Z",
     "header": "example",
     "body": "example",
     "buttons": [{"text": "example"}],
@@ -1286,8 +1348,8 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 {
   "access_token": "<redacted-value>",
-  "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
-  "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+  "user": {"id": "id-placeholder", "name": "Example", "email": "person@example.com", "telephone": null, "government_id": null, "is_email_verified": true, "has_accepted_terms": true, "created_at": "2026-01-01T00:00:00Z", "to_be_deleted_at": null},
+  "accounts": [{"id": "id-placeholder", "name": "Example", "roles": ["owner"], "is_delete_allowed": true, "created_at": "2026-01-01T00:00:00Z"}]
 }
 ```
 
@@ -1377,8 +1439,8 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 {
   "access_token": "<redacted-value>",
-  "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
-  "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+  "user": {"id": "id-placeholder", "name": "Example", "email": "person@example.com", "telephone": null, "government_id": null, "is_email_verified": true, "has_accepted_terms": true, "created_at": "2026-01-01T00:00:00Z", "to_be_deleted_at": null},
+  "accounts": [{"id": "id-placeholder", "name": "Example", "roles": ["owner"], "is_delete_allowed": true, "created_at": "2026-01-01T00:00:00Z"}]
 }
 ```
 
@@ -1470,8 +1532,8 @@ Response 200 `data` payload (inside `{status,message,data}`):
 ```json
 {
   "access_token": "<redacted-value>",
-  "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
-  "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+  "user": {"id": "id-placeholder", "name": "Example", "email": "person@example.com", "telephone": null, "government_id": null, "is_email_verified": true, "has_accepted_terms": true, "created_at": "2026-01-01T00:00:00Z", "to_be_deleted_at": null},
+  "accounts": [{"id": "id-placeholder", "name": "Example", "roles": ["owner"], "is_delete_allowed": true, "created_at": "2026-01-01T00:00:00Z"}]
 }
 ```
 
@@ -1565,7 +1627,7 @@ Response 200 `data` payload (inside `{status,message,data}`):
 
 `DELETE /v1/users/self/mfa/{customId}`
 
-Parameters: `customId` (path, required; the `methodId` argument).
+Parameters: `customId` (path, required).
 
 Request body (`application/json`; send `password` or `code`):
 ```json
@@ -1586,7 +1648,7 @@ Response 200 `data` payload (inside `{status,message,data}`):
 
 `GET /v1/documents/{documentId}/activities`
 
-Parameters: `documentId` (path, required).
+Parameters: `documentId` (path, required), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
 
 Request body: none.
 
@@ -1595,10 +1657,10 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 [
   {
     "id": 1,
-    "event": "example",
+    "event": "assignment_created",
     "message": "example",
     "payload": {},
-    "origin": {"ip": "example","user-agent": "example"},
+    "origin": {"ip": "203.0.113.7", "user-agent": "example"},
     "created_at": "2026-01-01T00:00:00Z"
   }
 ]
@@ -1621,17 +1683,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "account_id": "account-id-placeholder",
     "template_id": null,
     "name": "Example",
-    "status": "example",
+    "status": "certificated",
     "artifacts": {},
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-    "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
+    "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
     "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
   }
 ]
 ```
@@ -1657,17 +1721,18 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "account_id": "account-id-placeholder",
   "template_id": null,
   "name": "Example",
-  "status": "example",
+  "status": "uploaded",
   "artifacts": {},
-  "is_closed": true,
+  "is_closed": false,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
 }
 ```
 
@@ -1675,7 +1740,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 
 `GET /v1/accounts/{accountId}/documents/search`
 
-Parameters: `accountId` (path, required), `search` (query, optional), `status` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Parameters: `accountId` (path, required), `search` (query, optional), `status` (query, optional), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
 
 Request body: none.
 
@@ -1688,17 +1753,17 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "account_id": "account-id-placeholder",
     "template_id": null,
     "name": "Example",
-    "status": "example",
+    "status": "certificated",
     "artifacts": {},
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-    "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
     "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
   }
 ]
 ```
@@ -1715,7 +1780,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 [
   {
-    "code": "example",
+    "code": "metadata_ready",
     "deletable": true
   }
 ]
@@ -1737,17 +1802,20 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "account_id": "account-id-placeholder",
   "template_id": null,
   "name": "Example",
-  "status": "example",
+  "status": "certificated",
   "artifacts": {},
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null,
+  "has_contract": true
 }
 ```
 
@@ -1785,17 +1853,17 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "account_id": "account-id-placeholder",
   "template_id": null,
   "name": "Example",
-  "status": "example",
+  "status": "metadata_ready",
   "artifacts": {},
-  "is_closed": true,
+  "is_closed": false,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
 }
 ```
 
@@ -1971,17 +2039,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "account_id": "account-id-placeholder",
   "template_id": null,
   "name": "Example",
-  "status": "example",
+  "status": "uploaded",
   "artifacts": {},
-  "is_closed": true,
+  "is_closed": false,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "assignment": null,
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
 }
 ```
 
@@ -1994,7 +2064,7 @@ Parameters: `accountId` (path, required), `templateId` (path, required).
 Request body (`application/json`; optional members may be omitted):
 ```json
 {
-  "signers": [{"role_id": "role-id-placeholder","verification_method": "Email","notification_methods": ["Email"]}]
+  "signers": [{"role_id": "role-id-placeholder", "verification_method": "Whatsapp", "notification_methods": ["Whatsapp"]}]
 }
 ```
 
@@ -2002,15 +2072,15 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 {
   "documents": 1,
-  "credits": 1,
+  "credits": 0.45,
   "needs_extra_document": true,
   "extra_document_cost": 1,
-  "total_credits": 1,
-  "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
-  "document_balance": 1,
-  "credit_balance": 1,
+  "total_credits": 1.45,
+  "breakdown": [{"code": "NotificationWhatsapp", "name": "WhatsApp notification", "cost": 0.45, "quantity": 1, "unit_cost": 0.45}],
+  "document_balance": 0,
+  "credit_balance": 10,
   "has_sufficient_resources": true,
-  "blocking_reason": "PendingPayment",
+  "blocking_reason": null,
   "message": null
 }
 ```
@@ -2369,17 +2439,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "account_id": "account-id-placeholder",
   "template_id": null,
   "name": "Example",
-  "status": "example",
+  "status": "certificated",
   "artifacts": {},
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
 }
 ```
 
@@ -2399,17 +2471,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "account_id": "account-id-placeholder",
   "template_id": null,
   "name": "Example",
-  "status": "example",
+  "status": "certificated",
   "artifacts": {},
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
 }
 ```
 
@@ -2502,7 +2576,7 @@ Parameters: none.
 Request body (`application/json`; optional members may be omitted):
 ```json
 {
-  "verification-code": "example"
+  "verification-code": "123456"
 }
 ```
 
@@ -2604,17 +2678,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "account_id": "account-id-placeholder",
     "template_id": null,
     "name": "Example",
-    "status": "example",
+    "status": "certificated",
     "artifacts": {},
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-    "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
+    "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
     "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
   }
 ]
 ```
@@ -2636,17 +2712,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "account_id": "account-id-placeholder",
     "template_id": null,
     "name": "Example",
-    "status": "example",
+    "status": "certificated",
     "artifacts": {},
     "is_closed": true,
     "signing_url": "https://example.com/resource",
     "decline_reason": null,
-    "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-    "tags": [{"id": "id-placeholder","name": "Example"}],
-    "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
+    "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
     "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
   }
 ]
 ```
@@ -2677,17 +2755,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "account_id": "account-id-placeholder",
   "template_id": null,
   "name": "Example",
-  "status": "example",
+  "status": "certificated",
   "artifacts": {},
   "is_closed": true,
   "signing_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder","name": "Example"}],
-  "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-  "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
 }
 ```
 
@@ -2820,11 +2900,10 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "name": "Example",
     "document_name": null,
     "message": null,
-    "status": "example",
-    "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource","fields": [{"id": "id-placeholder","field_id": "field-id-placeholder","role_id": "role-id-placeholder","label": "example","display_settings": null,"created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}]}],
-    "roles": [{"id": "id-placeholder","name": "Example","assignment_type": "example","created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}],
-    "tags": [{"id": "id-placeholder","name": "Example"}],
-    "default_document_tags": [{"id": "id-placeholder","name": "Example"}],
+    "status": "ready",
+    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource", "fields": [{"id": "id-placeholder", "field_id": "field-id-placeholder", "role_id": "role-id-placeholder", "label": "example", "display_settings": null, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}]}],
+    "roles": [{"id": "id-placeholder", "name": "Example", "assignment_type": "Signer", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}],
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
     "created_at": "2026-01-01T00:00:00Z",
     "updated_at": "2026-01-01T00:00:00Z"
   }
@@ -2866,17 +2945,17 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 [
   {
-    "period": "example",
+    "period": "2026-10",
     "documents_uploaded": 1,
     "documents_sent": 1,
     "signature_requests": 1,
     "signature_requests_notification_email": 1,
-    "signature_requests_notification_whatsapp": 1,
-    "signature_requests_notification_bypass": 1,
+    "signature_requests_notification_whatsapp": 0,
+    "signature_requests_notification_bypass": 0,
     "signature_requests_verification_email": 1,
-    "signature_requests_verification_whatsapp": 1,
-    "signature_requests_verification_bypass": 1,
-    "signature_requests_verification_digital_certificate": 1,
+    "signature_requests_verification_whatsapp": 0,
+    "signature_requests_verification_bypass": 0,
+    "signature_requests_verification_digital_certificate": 0,
     "signature_requests_viewed": 1,
     "signature_requests_completed": 1,
     "documents_certified": 1
@@ -2903,7 +2982,11 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "DocumentExpirationReset": true,
   "DocumentProcessingFailed": true,
   "TemplateProcessingFailed": true,
-  "SignerWhatsappFailed": true
+  "SignerWhatsappFailed": true,
+  "ContractRenewalNotice": true,
+  "ContractExpiring": true,
+  "ContractExpired": true,
+  "ContractRenewed": true
 }
 ```
 
@@ -2924,7 +3007,11 @@ Request body (`application/json`; optional members may be omitted):
   "DocumentExpirationReset": true,
   "DocumentProcessingFailed": true,
   "TemplateProcessingFailed": true,
-  "SignerWhatsappFailed": true
+  "SignerWhatsappFailed": true,
+  "ContractRenewalNotice": true,
+  "ContractExpiring": true,
+  "ContractExpired": true,
+  "ContractRenewed": true
 }
 ```
 
@@ -2939,7 +3026,11 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "DocumentExpirationReset": true,
   "DocumentProcessingFailed": true,
   "TemplateProcessingFailed": true,
-  "SignerWhatsappFailed": true
+  "SignerWhatsappFailed": true,
+  "ContractRenewalNotice": true,
+  "ContractExpiring": true,
+  "ContractExpired": true,
+  "ContractRenewed": true
 }
 ```
 
@@ -2954,11 +3045,13 @@ Request body: none.
 Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
 ```json
 {
-  "events": ["example"],
+  "events": ["document_ready"],
   "is_active": true,
   "url": null,
   "email": null,
-  "updated_at": null
+  "updated_at": null,
+  "is_held": false,
+  "held_since": null
 }
 ```
 
@@ -2971,7 +3064,7 @@ Parameters: `accountId` (path, required).
 Request body (`application/json`; optional members may be omitted):
 ```json
 {
-  "events": ["example"],
+  "events": ["document_ready"],
   "is_active": true,
   "url": "https://example.com/resource",
   "email": "person@example.com"
@@ -2981,11 +3074,13 @@ Request body (`application/json`; optional members may be omitted):
 Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
 ```json
 {
-  "events": ["example"],
+  "events": ["document_ready"],
   "is_active": true,
   "url": null,
   "email": null,
-  "updated_at": null
+  "updated_at": null,
+  "is_held": false,
+  "held_since": null
 }
 ```
 
@@ -3000,11 +3095,13 @@ Request body: none.
 Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
 ```json
 {
-  "events": ["example"],
+  "events": ["document_ready"],
   "is_active": true,
   "url": null,
   "email": null,
-  "updated_at": null
+  "updated_at": null,
+  "is_held": false,
+  "held_since": null
 }
 ```
 
@@ -3020,8 +3117,8 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 [
   {
-    "id": "id-placeholder",
-    "description": "example"
+    "id": "document_ready",
+    "description": "Document ready"
   }
 ]
 ```
@@ -3040,7 +3137,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   {
     "resource": "activity_dispatching_history",
     "id": "id-placeholder",
-    "event": "example",
+    "event": "document_ready",
     "activity_id": 1,
     "endpoint_id": "id-placeholder",
     "endpoint": "https://example.com/webhooks/assinafy",
@@ -3050,7 +3147,11 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
     "response_body": null,
     "error": null,
     "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
+    "updated_at": "2026-01-01T00:00:00Z",
+    "webhook_id": "delivery-placeholder",
+    "attempt": 1,
+    "kind": "scheduled",
+    "will_retry": false
   }
 ]
 ```
@@ -3068,7 +3169,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 {
   "resource": "activity_dispatching_history",
   "id": "id-placeholder",
-  "event": "example",
+  "event": "document_ready",
   "activity_id": 1,
   "endpoint_id": "id-placeholder",
   "endpoint": "https://example.com/webhooks/assinafy",
@@ -3078,7 +3179,11 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "response_body": null,
   "error": null,
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "webhook_id": "delivery-placeholder",
+  "attempt": 1,
+  "kind": "scheduled",
+  "will_retry": false
 }
 ```
 
@@ -3086,7 +3191,7 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 
 `GET /v1/accounts/{accountId}/webhooks/endpoints`
 
-Parameters: `accountId` (path, required); optional `url` query matches the exact registered URL.
+Parameters: `accountId` (path, required), `url` (query, optional).
 
 Request body: none.
 
@@ -3102,7 +3207,10 @@ Response 200 `data` payload (inside `{status,message,data}`) is an array of endp
     "is_active": true,
     "signing_enabled": true,
     "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
+    "updated_at": "2026-01-01T00:00:00Z",
+    "is_held": false,
+    "held_since": null,
+    "resource": "webhook_endpoint"
   }
 ]
 ```
@@ -3118,7 +3226,10 @@ Request body (`application/json`; `name`, `is_active` and `signing_enabled` are 
 {
   "url": "https://example.com/webhooks/assinafy",
   "email": "ops@example.com",
-  "events": ["document_ready", "signer_signed_document"],
+  "events": [
+    "document_ready",
+    "signer_signed_document"
+  ],
   "name": "ERP",
   "is_active": true,
   "signing_enabled": true
@@ -3137,7 +3248,10 @@ Response 200 `data` payload (inside `{status,message,data}`):
   "signing_enabled": true,
   "created_at": "2026-01-01T00:00:00Z",
   "updated_at": "2026-01-01T00:00:00Z",
-  "secret": "whsec_redacted"
+  "secret": "whsec_redacted",
+  "is_held": false,
+  "held_since": null,
+  "resource": "webhook_endpoint"
 }
 ```
 
@@ -3164,7 +3278,10 @@ Response 200 `data` payload (inside `{status,message,data}`):
   "is_active": true,
   "signing_enabled": true,
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "is_held": false,
+  "held_since": null,
+  "resource": "webhook_endpoint"
 }
 ```
 
@@ -3179,7 +3296,9 @@ Request body (`application/json`; every member optional, at least one required):
 {
   "url": "https://example.com/webhooks/assinafy",
   "email": "ops@example.com",
-  "events": ["document_ready"],
+  "events": [
+    "document_ready"
+  ],
   "name": "ERP",
   "is_active": false,
   "signing_enabled": true
@@ -3193,11 +3312,15 @@ Response 200 `data` payload (inside `{status,message,data}`):
   "name": "ERP",
   "url": "https://example.com/webhooks/assinafy",
   "email": "ops@example.com",
-  "events": ["document_ready", "signer_signed_document"],
-  "is_active": true,
+  "events": ["document_ready"],
+  "is_active": false,
   "signing_enabled": true,
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "updated_at": "2026-01-01T00:00:00Z",
+  "is_held": false,
+  "held_since": null,
+  "resource": "webhook_endpoint",
+  "secret": "whsec_redacted"
 }
 ```
 
@@ -3235,7 +3358,7 @@ Answers `400` when signing is disabled.
 
 ### `webhooks.rotateEndpointSecret`
 
-`POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key; not available to OAuth applications)
+`POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key or OAuth `webhooks:write`)
 
 Parameters: `accountId` (path, required), `endpointId` (path, required).
 
@@ -3687,3 +3810,471 @@ Response 200 `data` payload (inside `{status,message,data}`):
 `accountId`: Explicit account or the client's configured default.
 
 Raises `com.assinafy.sdk.exceptions.ApiException` if no endpoint uses the URL (404).
+
+## Contract request and response payloads
+
+### `contracts.list`
+
+Lists contracts, most recently updated first by default.
+
+Filters include status (comma-separated), counterparty, search, end_date_from/to, ending_within_days,
+external_system/id, sort, expand=document, page and per-page. X-Pagination-* headers supply metadata.
+For reconciliation, page by updated_at until records predate the last sync.
+
+Wire operation: `GET /v1/accounts/{accountId}/contracts`.
+
+Request body: none.
+
+Response 200 `data`, with optional document expansion (inside `{status,message,data}`):
+```json
+[
+  {
+    "resource": "document_contract",
+    "document_id": "document-placeholder",
+    "status": "active",
+    "counterparty_name": "Acme Ltda",
+    "counterparty_taxpayer_id": "11222333000181",
+    "value": 120000.5,
+    "currency": "BRL",
+    "start_date": "2026-11-01",
+    "end_date": "2027-10-31",
+    "auto_renew": true,
+    "renewal_term_months": 12,
+    "notice_period_days": 30,
+    "term": 1,
+    "owner_id": "owner-placeholder",
+    "metadata": {
+      "crm_stage": "won"
+    },
+    "external_references": [
+      {
+        "system": "hubspot",
+        "id": "98765"
+      }
+    ],
+    "created_at": "2026-10-23T12:00:00Z",
+    "updated_at": "2026-10-23T12:00:00Z",
+    "document": {
+      "id": "document-placeholder",
+      "account_id": "document-placeholder",
+      "template_id": null,
+      "name": "Contrato de prestação de serviços.pdf",
+      "status": "certificated",
+      "artifacts": {
+        "original": "https://example.com/resource"
+      },
+      "is_closed": true,
+      "signing_url": "https://example.com/resource",
+      "verification_code": "document-placeholder",
+      "verification_url": "https://example.com/resource",
+      "decline_reason": null,
+      "declined_by": null,
+      "tags": [],
+      "created_at": "2026-10-20T14:00:00Z",
+      "updated_at": "2026-10-22T09:00:00Z"
+    }
+  }
+]
+```
+
+
+### `contracts.get`
+
+Reads a document's own contract terms or its amendment link.
+
+The concrete ContractRecord type distinguishes terms from an instrument. A missing contract returns
+HTTP 404; reads remain available when the workspace plan lapses.
+
+Wire operation: `GET /v1/accounts/{accountId}/documents/{documentId}/contract`.
+
+Request body: none.
+
+Response 200 `data` for a root contract (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 130000,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2028-06-30",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 2,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-05-12T18:20:00Z",
+  "amendments": [
+    {
+      "document_id": "document-placeholder",
+      "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+      "parent_document_id": "document-placeholder",
+      "relation_type": "amendment",
+      "number": 1,
+      "status": "applied",
+      "document_status": "certificated",
+      "apply_error": null,
+      "currency": "BRL",
+      "terms": {
+        "value": 130000,
+        "end_date": "2028-06-30"
+      },
+      "changes": {
+        "value": {
+          "from": 120000.5,
+          "to": 130000
+        },
+        "end_date": {
+          "from": "2027-10-31",
+          "to": "2028-06-30"
+        },
+        "term": {
+          "from": 1,
+          "to": 2
+        }
+      },
+      "applied_at": "2027-05-12T18:20:00Z",
+      "created_at": "2027-05-10T15:00:00Z",
+      "updated_at": "2027-05-12T18:20:00Z"
+    }
+  ]
+}
+```
+
+Alternative response 200 `data` for an instrument (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract_amendment",
+  "document_id": "document-placeholder",
+  "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+  "parent_document_id": "document-placeholder",
+  "relation_type": "amendment",
+  "number": null,
+  "status": "pending",
+  "document_status": "pending_signature",
+  "apply_error": null,
+  "currency": "BRL",
+  "terms": {
+    "value": 130000,
+    "end_date": "2028-06-30"
+  },
+  "changes": {
+    "value": {
+      "from": 120000.5,
+      "to": 130000
+    },
+    "end_date": {
+      "from": "2027-10-31",
+      "to": "2028-06-30"
+    },
+    "term": {
+      "from": 1,
+      "to": 2
+    }
+  },
+  "applied_at": null,
+  "created_at": "2027-05-10T15:00:00Z",
+  "updated_at": "2027-05-10T15:00:00Z"
+}
+```
+
+
+### `contracts.update`
+
+Creates terms or changes only the supplied attributes.
+
+Use clearFields for explicit nulls and externalReferences for whole-list replacement. A pending
+instrument null removes that term from its delta. Send parent_document_id and relation_type to link;
+clear parent_document_id to unlink a pending instrument. Applied instruments cannot change.
+An amendment may change the value, currency, dates, auto-renew, renewal/notice periods, counterparty
+and metadata; a renewal only end_date/value; a termination only end_date. The API applies signed
+instruments in certification order. Send the last-read updated_at to refuse stale writes with 409.
+Link request example: {"parent_document_id":"parent-placeholder","relation_type":"amendment","value":130000}.
+
+Wire operation: `PUT /v1/accounts/{accountId}/documents/{documentId}/contract`.
+
+Request body (`application/json`; omit unchanged fields):
+```json
+{
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11.222.333/0001-81",
+  "value": 120000.5,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2027-10-31",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Response 200 `data` for contract terms (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 120000.5,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2027-10-31",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 1,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Alternative response 200 `data` for an instrument (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract_amendment",
+  "document_id": "document-placeholder",
+  "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+  "parent_document_id": "document-placeholder",
+  "relation_type": "amendment",
+  "number": null,
+  "status": "pending",
+  "document_status": "pending_signature",
+  "apply_error": null,
+  "currency": "BRL",
+  "terms": {
+    "value": 130000,
+    "end_date": "2028-06-30"
+  },
+  "changes": {
+    "value": {
+      "from": 120000.5,
+      "to": 130000
+    },
+    "end_date": {
+      "from": "2027-10-31",
+      "to": "2028-06-30"
+    },
+    "term": {
+      "from": 1,
+      "to": 2
+    }
+  },
+  "applied_at": null,
+  "created_at": "2027-05-10T15:00:00Z",
+  "updated_at": "2027-05-10T15:00:00Z"
+}
+```
+
+
+### `contracts.related`
+
+Reads the root contract and every linked instrument from any document in its family.
+
+Applied instruments are ordered by number, followed by pending instruments. A missing family returns 404.
+
+Wire operation: `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related`.
+
+Request body: none.
+
+Response 200 `data` (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 130000,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2028-06-30",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 2,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-05-12T18:20:00Z",
+  "amendments": [
+    {
+      "document_id": "document-placeholder",
+      "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+      "parent_document_id": "document-placeholder",
+      "relation_type": "amendment",
+      "number": 1,
+      "status": "applied",
+      "document_status": "certificated",
+      "apply_error": null,
+      "currency": "BRL",
+      "terms": {
+        "value": 130000,
+        "end_date": "2028-06-30"
+      },
+      "changes": {
+        "value": {
+          "from": 120000.5,
+          "to": 130000
+        },
+        "end_date": {
+          "from": "2027-10-31",
+          "to": "2028-06-30"
+        },
+        "term": {
+          "from": 1,
+          "to": 2
+        }
+      },
+      "applied_at": "2027-05-12T18:20:00Z",
+      "created_at": "2027-05-10T15:00:00Z",
+      "updated_at": "2027-05-12T18:20:00Z"
+    }
+  ]
+}
+```
+
+
+### `contracts.renew`
+
+Starts the next term and reopens an expired contract.
+
+Supply the current term or an explicit end date later than the current one. With no end date the
+server advances by renewal_term_months (12 when unset), until the date is in the future. Repeated
+preconditions are refused, so a renewal cannot advance twice. Terminated contracts cannot renew.
+Omit value to retain it; clearValue sends null. A stale updated_at returns 409.
+
+Wire operation: `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew`.
+
+Request body (`application/json`; omit unchanged fields):
+```json
+{
+  "term": 1,
+  "end_date": "2029-06-30",
+  "value": 130000,
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Response 200 `data` (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 130000,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2029-06-30",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 2,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-10-15T09:30:00Z"
+}
+```
+
+
+### `contracts.terminate`
+
+Closes a contract and stops its lifecycle alerts.
+
+The reason is recorded in document_contract_terminated. The server strips HTML. A contract already
+terminated is refused; stale updated_at returns 409. The signed document itself is preserved.
+
+Wire operation: `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate`.
+
+Request body (`application/json`; omit unchanged fields):
+```json
+{
+  "reason": "Supplier replaced",
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Response 200 `data` (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "terminated",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 120000.5,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2027-10-31",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 1,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-03-02T14:00:00Z"
+}
+```

@@ -74,6 +74,10 @@ data class DocumentStatsRow(
  * @property documentProcessingFailed An uploaded document could not be processed.
  * @property templateProcessingFailed A template could not be processed.
  * @property signerWhatsappFailed A WhatsApp notification could not be delivered to a signer.
+ * @property contractRenewalNotice The contract notice period starts.
+ * @property contractExpiring A contract end date approaches.
+ * @property contractExpired A contract expires.
+ * @property contractRenewed A contract begins another term.
  */
 data class NotificationPreferences(
     @SerializedName("DocumentCompleted") val documentCompleted: Boolean,
@@ -85,4 +89,8 @@ data class NotificationPreferences(
     @SerializedName("DocumentProcessingFailed") val documentProcessingFailed: Boolean,
     @SerializedName("TemplateProcessingFailed") val templateProcessingFailed: Boolean,
     @SerializedName("SignerWhatsappFailed") val signerWhatsappFailed: Boolean,
+    @SerializedName("ContractRenewalNotice") val contractRenewalNotice: Boolean? = null,
+    @SerializedName("ContractExpiring") val contractExpiring: Boolean? = null,
+    @SerializedName("ContractExpired") val contractExpired: Boolean? = null,
+    @SerializedName("ContractRenewed") val contractRenewed: Boolean? = null,
 )

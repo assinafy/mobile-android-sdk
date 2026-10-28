@@ -214,7 +214,7 @@ class OAuthResource internal constructor(
         }
         val issuer = params["iss"]
         val expectedIssuer = app.authorizationServerUrl.trimEnd('/')
-        if (issuer?.trimEnd('/') != expectedIssuer) {
+        if (issuer != expectedIssuer) {
             throw ValidationException("OAuth callback issuer does not match the authorization server")
         }
         params["error"]?.let { throw OAuthException(it, params["error_description"]) }
@@ -528,6 +528,7 @@ class OAuthResource internal constructor(
      */
     suspend fun authorizationServerMetadata(issuer: String? = null): AuthorizationServerMetadata {
         val origin = (issuer ?: config?.authorizationServerUrl ?: OAuthConfig.DEFAULT_AUTHORIZATION_SERVER).trimEnd('/')
+        requireHttpsUri(origin, "OAuth authorization server", allowQuery = false)
         return discover(origin + AUTHORIZATION_SERVER_METADATA_PATH, AuthorizationServerMetadata::class.java)
     }
 
@@ -584,7 +585,7 @@ class OAuthResource internal constructor(
         }
         val error = json?.get("error")?.takeIf { it.isJsonPrimitive }?.asString
         val description = json?.get("error_description")?.takeIf { it.isJsonPrimitive }?.asString
-        val challenge = OAuthChallenge.parse(headers["www-authenticate"])
+        val challenge = OAuthChallenge.parse(headers.entries.firstOrNull { it.key.equals("www-authenticate", ignoreCase = true) }?.value)
         return OAuthException(
             error = error ?: challenge?.error ?: defaultErrorFor(statusCode),
             errorDescription = description ?: challenge?.errorDescription

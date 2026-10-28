@@ -3,8 +3,8 @@
 This SDK covers every operation in the Assinafy v1 OpenAPI document published at
 [`https://api.assinafy.com.br/v1/docs/openapi.json`](https://api.assinafy.com.br/v1/docs/openapi.json).
 
-- Paths: 85
-- Operations: **112 covered / 112 documented**
+- Paths: 90
+- Operations: **118 covered / 118 documented**
 - API base URL: `https://api.assinafy.com.br/v1`
 
 Authentication modes below are:
@@ -54,6 +54,9 @@ social-login, OTP, or signer-state success path is run against a shared live acc
 | `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}` | `assignments.downloadIdentityVerificationImage(...)` | Account | Covered |
 | `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review` | `assignments.reviewIdentityVerification(...)` | Account | Covered |
 
+Assignment listing sends `page`, `per-page`, `sort` and the explicit or configured `accountId`.
+API keys need the workspace query; OAuth can infer its authorized workspace.
+
 Assignment creation and estimation reject `DigitalCertificate` with `method=collect` locally under
 the stable `digital_certificate_requires_virtual_assignment` validation code.
 
@@ -81,11 +84,25 @@ the stable `digital_certificate_requires_virtual_assignment` validation code.
 has two-factor authentication enabled; its `mfaToken` is the challenge `verifyMfa` exchanges for a
 session.
 
+## Contracts (6/6)
+
+| Operation | SDK method | Auth | Status |
+|---|---|---|---|
+| `GET /v1/accounts/{accountId}/contracts` | `contracts.list(params, accountId)` | Account | Covered |
+| `GET /v1/accounts/{accountId}/documents/{documentId}/contract` | `contracts.get(documentId, accountId)` | Account | Covered |
+| `PUT /v1/accounts/{accountId}/documents/{documentId}/contract` | `contracts.update(documentId, request, accountId)` | Account | Covered |
+| `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related` | `contracts.related(documentId, accountId)` | Account | Covered |
+| `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew` | `contracts.renew(documentId, request, accountId)` | Account | Covered |
+| `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate` | `contracts.terminate(documentId, request, accountId)` | Account | Covered |
+
+OAuth reads require `documents:read`; writes require `documents:write` and the account's contract-tracking entitlement.
+Contract reads and updates return `ContractRecord`, either root terms or an amendment link.
+
 ## Documents (18/18)
 
 | Operation | SDK method | Auth | Status |
 |---|---|---|---|
-| `GET /v1/documents/{documentId}/activities` | `documents.activities(documentId)` | Account | Covered |
+| `GET /v1/documents/{documentId}/activities` | `documents.activities(documentId, params)` | Account | Covered |
 | `GET /v1/accounts/{accountId}/documents` | `documents.list(params, accountId)` | Account | Covered |
 | `POST /v1/accounts/{accountId}/documents` | `documents.upload(...)` | Account | Covered |
 | `GET /v1/accounts/{accountId}/documents/search` | `documents.search(...)` | Account | Covered |
@@ -104,8 +121,8 @@ session.
 | `POST /v1/accounts/{accountId}/templates/{templateId}/documents` | `documents.createFromTemplate(...)` | Account | Covered |
 | `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `documents.estimateCostFromTemplate(...)` | Account | Covered |
 
-For certificate signers, both template POST methods read the template detail first and reject placed
-fields because they produce an unsupported collect assignment.
+Template creation and estimates call only their POST endpoint. The API validates Signer-role fields
+and signing steps; Editor fields do not force collect signing and CopyReceiver roles do not sign.
 
 ## Fields (8/8)
 
@@ -135,7 +152,7 @@ a request, so neither maps to an operation above.
 
 `oauth.authorizationServerMetadata(issuer)` reads the RFC 8414 document from the authorization
 server (`https://auth.assinafy.com.br/.well-known/oauth-authorization-server`). That document is
-served by the issuer, not by this API, so it is likewise not one of the 112 operations.
+served by the issuer, not by this API, so it is likewise not one of the 118 operations.
 
 These four endpoints are the only ones that do not use the `{status, message, data}` envelope: they
 answer with flat RFC 6749, OpenID Connect, and RFC 9728 objects, and the SDK raises `OAuthException`
@@ -216,21 +233,23 @@ carrying the standard `error` code rather than `ApiException`.
 | `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.updateEndpoint(endpointId, request, accountId)` | Account | Covered |
 | `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.deleteEndpoint(endpointId, accountId)` | Account | Covered |
 | `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` | `webhooks.getEndpointSecret(endpointId, accountId)` | API key | Covered |
-| `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` | `webhooks.rotateEndpointSecret(endpointId, accountId)` | API key | Covered |
+| `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` | `webhooks.rotateEndpointSecret(endpointId, accountId)` | Account (`webhooks:write` for OAuth) | Covered |
 
 An account has 1 webhook endpoint, or up to 3 on paid plans; `createEndpoint` past the limit answers
 `403`. The subscription operations (`get`, `register`, `inactivate`) act on the account's oldest
 endpoint. `listDispatches(WebhookDispatchParams(...))` sends the `endpoint_id`, `event`,
-`delivered`, `from`, `to`, `page` and `per-page` filters. The two secret operations are not
-available to OAuth applications, so they need an API key. Signed deliveries follow Standard
+`delivered`, `from`, `to`, `page` and `per-page` filters. Reading an existing secret requires an API key; rotation accepts OAuth with `webhooks:write`. Signed deliveries follow Standard
 Webhooks and are checked locally by `WebhookVerifier.verifySignature`, which performs no request.
+
+The internal-service RFC 8693 token-exchange grant requires a confidential client secret and is not
+an Android Public-client flow. The OAuth token operation maps authorization-code and refresh grants.
 
 ## Retained compatibility route
 
 `templates.get(templateId, accountId)` calls
 `GET /v1/accounts/{accountId}/templates/{templateId}`. The route is absent from the OpenAPI document
 but answers `200` with the complete template — pages, roles, and tags — on the deployed service, so
-it is retained. It is not counted among the 112 OpenAPI operations. No other undocumented HTTP route
+it is retained. It is not counted among the 118 OpenAPI operations. No other undocumented HTTP route
 is added by the SDK.
 
 `POST /v1/signers/certificate/start` and `/complete` also answer on the deployed service and are
@@ -264,8 +283,6 @@ the default request path:
 
 - document upload adds multipart `name` and JSON-string `metadata` beside the OpenAPI `file` part
   only when the caller explicitly supplies metadata;
-- assignment listing adds the deployed API's `accountId` query to OpenAPI's `page`/`per-page` only
-  when the caller explicitly passes that override;
 - notification resend adds the deployed API's `channel` JSON body only when the caller explicitly
   passes that compatibility parameter;
 - document tag mutations pass the supplied strings unchanged. IDs attach existing tags; a supplied tag name creates the tag if it does not exist yet;

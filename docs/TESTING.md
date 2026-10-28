@@ -3,7 +3,7 @@
 ## Supported build environment
 
 - Gradle Wrapper 9.5; use `./gradlew`, not a machine-wide Gradle installation.
-- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.2 with built-in Kotlin support and Kotlin compiler 2.4.21.
+- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.3 with built-in Kotlin support and Kotlin compiler 2.4.21.
 - Java 17 toolchain and bytecode for the published library.
 - Android SDK platform 37.0 and Build Tools 36.0.0.
 - Android API 21 minimum at runtime. The consuming application owns `targetSdk`.
@@ -38,7 +38,7 @@ Useful focused checks:
 ./gradlew :sdk:assembleRelease --no-daemon
 ```
 
-AGP 9.3.2 exposes the library's configured debug unit-test variant; `:sdk:test` is the aggregate
+AGP 9.3.3 exposes the library's configured debug unit-test variant; `:sdk:test` is the aggregate
 task and runs every configured unit-test variant.
 
 Test reports are written below `sdk/build/reports/tests/` and
@@ -241,3 +241,20 @@ Before tagging:
 5. Run read-only live checks; enable disposable writes only when the live account is confirmed.
 6. Confirm the tag version is new; Maven Central versions cannot be replaced or deleted.
 7. Push a protected `vMAJOR.MINOR.PATCH` tag and require both release jobs to pass.
+
+## Contract tracking and production reads
+
+ContractResourceTest covers all six operations, every request field, omitted versus explicit null,
+root/amendment responses, exact amounts, pagination, invalid input, version conflicts and cancellation.
+The live suite reads contract lists and, when an existing fixture is available, contract/family details.
+It never creates, renews or terminates production contracts with ASSINAFY_LIVE_WRITES=false.
+Pricing checks cover Email, WhatsApp, biometric verification and certificates without creating an
+assignment or sending invitations; they require an existing unassigned `metadata_ready` document.
+Biometric/certificate checks include both notification channels.
+
+A local .env may hold ASSINAFY_BASE_URL, ASSINAFY_API_KEY and ASSINAFY_ACCOUNT_ID; keep it mode 0600.
+It is excluded from Git and Docker build contexts. Pass it explicitly with Docker's --env-file option;
+the ordinary build does not load it. Use the read-only live gate against production when its features
+are not yet deployed to sandbox. Recipient-dependent OTP, hosted biometric capture, A1/A3 completion
+and a fresh interactive Public OAuth consent require their separate fixtures; skipped tests are not
+successful live coverage. Android API/R8 compilation does not replace execution on a physical device.

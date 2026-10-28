@@ -19,6 +19,12 @@ class SmokeApplication : Application() {
     private suspend fun compilePublicApi(client: AssinafyClient) {
         client.documents.list(ListParams(perPage = 1))
         client.users.getCurrent()
+        client.contracts.list(com.assinafy.sdk.request.ContractListParams(endingWithinDays = 30))
+        client.contracts.get("document")
+        client.contracts.update("document", com.assinafy.sdk.request.UpdateContractRequest(status = com.assinafy.sdk.ContractStatus.ACTIVE))
+        client.contracts.related("document")
+        client.contracts.renew("document", com.assinafy.sdk.request.RenewContractRequest(term = 1))
+        client.contracts.terminate("document")
         client.webhooks.listEventTypes()
         client.webhooks.listEndpoints(url = "https://example.com/hook")
         client.signerDocuments.getIdentityVerification("signer-code")

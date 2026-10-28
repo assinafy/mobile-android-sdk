@@ -4,7 +4,7 @@ import com.assinafy.sdk.oauth.OAuthConfig
 
 /**
  * Client configuration. [apiKey] and [token] are mutually exclusive; both may be omitted for login
- * and public signing operations. Use HTTPS whenever credentials are supplied.
+ * and public signing operations. All non-loopback API URLs require HTTPS.
  *
  * @property apiKey API key sent as `X-Api-Key` only to the configured API origin.
  * @property token Bearer token sent as `Authorization` only to the configured API origin.

@@ -19,7 +19,10 @@ data class DocumentArtifacts(
     @SerializedName("certificate-page") val certificatePage: String? = null,
     @SerializedName("bundle") val bundle: String? = null,
     @SerializedName("pades") val pades: String? = null,
-)
+) {
+    /** Returns diagnostics without capability-bearing URLs. */
+    override fun toString(): String = "DocumentArtifacts(urls=***)"
+}
 
 /**
  * Result of the public document signature-hash verification endpoint.
@@ -71,6 +74,8 @@ data class DocumentVerification(
  * @property updatedAt Last-update timestamp.
  * @property pageCount Page count in the public projection.
  * @property createdBy Identifier of the user who created the document.
+ * @property verificationCode Code for public document authenticity verification.
+ * @property verificationUrl Public authenticity-verification URL.
  */
 data class PublicDocumentInfo(
     @SerializedName("id") val id: String,
@@ -91,7 +96,12 @@ data class PublicDocumentInfo(
     @SerializedName("updated_at") val updatedAt: String? = null,
     @SerializedName("page_count") val pageCount: Number? = null,
     @SerializedName("created_by") val createdBy: String? = null,
-)
+    @SerializedName("verification_code") val verificationCode: String? = null,
+    @SerializedName("verification_url") val verificationUrl: String? = null,
+) {
+    /** Returns diagnostics without capability-bearing URLs. */
+    override fun toString(): String = "PublicDocumentInfo(id=$id, name=$name, status=$status, urls=***)"
+}
 
 /**
  * One rendered page of a document.
@@ -108,7 +118,10 @@ data class DocumentPage(
     @SerializedName("height") val height: Int? = null,
     @SerializedName("width") val width: Int? = null,
     @SerializedName("download_url") val downloadUrl: String? = null,
-)
+) {
+    /** Returns diagnostics without capability-bearing URLs. */
+    override fun toString(): String = "DocumentPage(id=$id, number=$number, downloadUrl=***)"
+}
 
 /**
  * Activity event recorded for a document.
@@ -157,6 +170,9 @@ typealias DocumentUploadResponse = DocumentDetails
  * @property declineReason Reason supplied when the document was declined.
  * @property declinedBy Signer who declined the document.
  * @property activities Document activity events when expanded by the API.
+ * @property hasContract Whether workspace details include tracked contract terms; absent from other projections.
+ * @property verificationCode Code for public document authenticity verification.
+ * @property verificationUrl Public authenticity-verification URL.
  */
 data class DocumentDetails(
     @SerializedName("resource") val resource: String? = null,
@@ -178,7 +194,13 @@ data class DocumentDetails(
     @SerializedName("decline_reason") val declineReason: String? = null,
     @SerializedName("declined_by") val declinedBy: Signer? = null,
     @SerializedName("activities") val activities: List<DocumentActivity>? = null,
-)
+    @SerializedName("has_contract") val hasContract: Boolean? = null,
+    @SerializedName("verification_code") val verificationCode: String? = null,
+    @SerializedName("verification_url") val verificationUrl: String? = null,
+) {
+    /** Returns diagnostics without capability-bearing URLs. */
+    override fun toString(): String = "DocumentDetails(id=$id, name=$name, status=$status, urls=***)"
+}
 
 /**
  * Derived completion progress for a document.

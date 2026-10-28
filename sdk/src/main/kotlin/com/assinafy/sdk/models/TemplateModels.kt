@@ -7,7 +7,7 @@ import com.google.gson.annotations.SerializedName
  *
  * @property id Stable role identifier supplied in [com.assinafy.sdk.request.TemplateSigner].
  * @property name Human-readable role name.
- * @property assignmentType Verification or assignment type configured for the role.
+ * @property assignmentType TemplateRoleType: Editor, Signer or CopyReceiver.
  * @property createdAt ISO-8601 creation timestamp.
  * @property updatedAt ISO-8601 last-update timestamp.
  */
@@ -57,7 +57,10 @@ data class TemplatePage(
     @SerializedName("width") val width: Int? = null,
     @SerializedName("download_url") val downloadUrl: String? = null,
     @SerializedName("fields") val fields: List<TemplateFieldPlacement>? = null,
-)
+) {
+    /** Returns diagnostics without capability-bearing URLs. */
+    override fun toString(): String = "TemplatePage(id=$id, number=$number, downloadUrl=***)"
+}
 
 /**
  * Complete template shape used by list and single-template compatibility endpoints.

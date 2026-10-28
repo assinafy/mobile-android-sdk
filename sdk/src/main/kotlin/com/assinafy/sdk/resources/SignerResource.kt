@@ -210,7 +210,8 @@ class SignerResource internal constructor(
      * ```
      *
      * @param signerId Stable signer identifier.
-     * @param request Mutable identity/contact fields; null fields are omitted.
+     * @param request Mutable identity/contact fields; null omits a field, an empty contact string clears it.
+     * Verified in-flight contact channels cannot change; unverified links/OTPs rotate and need a resend.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Complete updated signer record.
      * @throws ValidationException if an ID is blank or a supplied email is invalid.
@@ -220,7 +221,7 @@ class SignerResource internal constructor(
         val sid = requireId(signerId, "Signer ID")
         val normalizedRequest = request.copy(
             fullName = request.fullName?.let { requireId(it, "Signer full name") },
-            email = request.email?.let { requireValidEmail(it) },
+            email = request.email?.trim()?.let { if (it.isEmpty()) it else requireValidEmail(it) },
         )
         val body = normaliseUpdate(normalizedRequest)
         if (body.isEmpty()) throw ValidationException("At least one signer field must be supplied")
@@ -321,12 +322,24 @@ class SignerResource internal constructor(
      * ```json
      * [
      *   {
-     *     "resource": "document", "id": "doc-id", "account_id": "account-id", "template_id": null,
-     *     "name": "Agreement.pdf", "status": "pending_signature",
+     *     "resource": "document",
+     *     "id": "doc-id",
+     *     "account_id": "account-id",
+     *     "template_id": null,
+     *     "name": "Agreement.pdf",
+     *     "status": "pending_signature",
      *     "artifacts": {"original": "https://api.assinafy.com.br/v1/documents/doc-id/download/original"},
-     *     "is_closed": false, "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
-     *     "decline_reason": null, "declined_by": null, "tags": [], "assignment": null, "pages": [],
-     *     "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [],
+     *     "assignment": null,
+     *     "pages": [],
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "verification_code": null,
+     *     "verification_url": null
      *   }
      * ]
      * ```
@@ -359,12 +372,24 @@ class SignerResource internal constructor(
      * ```json
      * [
      *   {
-     *     "resource": "document", "id": "doc-id", "account_id": "account-id", "template_id": null,
-     *     "name": "Agreement.pdf", "status": "pending_signature",
+     *     "resource": "document",
+     *     "id": "doc-id",
+     *     "account_id": "account-id",
+     *     "template_id": null,
+     *     "name": "Agreement.pdf",
+     *     "status": "pending_signature",
      *     "artifacts": {"original": "https://api.assinafy.com.br/v1/documents/doc-id/download/original"},
-     *     "is_closed": false, "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
-     *     "decline_reason": null, "declined_by": null, "tags": [], "assignment": null, "pages": [],
-     *     "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"
+     *     "is_closed": false,
+     *     "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
+     *     "decline_reason": null,
+     *     "declined_by": null,
+     *     "tags": [],
+     *     "assignment": null,
+     *     "pages": [],
+     *     "created_at": "2026-01-01T00:00:00Z",
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "verification_code": null,
+     *     "verification_url": null
      *   }
      * ]
      * ```
@@ -472,7 +497,7 @@ class SignerResource internal constructor(
      * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "verification-code": "example"
+     *   "verification-code": "123456"
      * }
      * ```
      *
@@ -593,9 +618,9 @@ class SignerResource internal constructor(
 
     private fun normaliseUpdate(request: UpdateSignerRequest): Map<String, Any?> = buildMap {
         request.fullName?.trim()?.takeIf { it.isNotEmpty() }?.let { put("full_name", it) }
-        request.email?.trim()?.takeIf { it.isNotEmpty() }?.let { put("email", it) }
-        request.whatsappPhoneNumber?.trim()?.takeIf { it.isNotEmpty() }?.let { put("whatsapp_phone_number", it) }
+        request.email?.trim()?.let { put("email", it) }
+        request.whatsappPhoneNumber?.trim()?.let { put("whatsapp_phone_number", it) }
         @Suppress("DEPRECATION")
-        (request.governmentId ?: request.cpf)?.trim()?.takeIf { it.isNotEmpty() }?.let { put("government_id", it) }
+        (request.governmentId ?: request.cpf)?.trim()?.let { put("government_id", it) }
     }
 }

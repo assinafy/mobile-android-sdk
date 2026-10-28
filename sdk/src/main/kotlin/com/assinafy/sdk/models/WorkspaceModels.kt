@@ -14,6 +14,7 @@ import com.google.gson.annotations.SerializedName
  * @property isDeleteAllowed Whether the authenticated user may delete the account when included.
  * @property roles Authenticated user's roles when included by the endpoint projection.
  * @property createdAt ISO-8601 creation timestamp.
+ * @property limits Current plan limits returned by the API.
  */
 data class Workspace(
     @SerializedName("resource") val resource: String? = null,
@@ -25,6 +26,7 @@ data class Workspace(
     @SerializedName("is_delete_allowed") val isDeleteAllowed: Boolean? = null,
     @SerializedName("roles") val roles: List<String>? = null,
     @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("limits") val limits: WorkspaceLimits? = null,
 )
 
 /** List and single-account endpoints return the same account shape. */
@@ -44,4 +46,12 @@ data class AccountTheme(
     @SerializedName("primary_color") val primaryColor: String? = null,
     @SerializedName("secondary_color") val secondaryColor: String? = null,
     @SerializedName("logo") val logo: String? = null,
+)
+
+/**
+ * Workspace plan limits.
+ * @property webhookEndpoints Maximum webhook endpoints the workspace can register.
+ */
+data class WorkspaceLimits(
+    @SerializedName("webhook_endpoints") val webhookEndpoints: Int? = null,
 )
