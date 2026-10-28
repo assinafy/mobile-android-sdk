@@ -4,11 +4,14 @@ import com.assinafy.sdk.AssinafyClient
 import com.assinafy.sdk.AssinafyClientConfig
 import com.assinafy.sdk.DocumentArtifact
 import com.assinafy.sdk.DocumentStatus
+import com.assinafy.sdk.NotificationMethod
 import com.assinafy.sdk.SdkConstants
+import com.assinafy.sdk.VerificationMethod
 import com.assinafy.sdk.WebhookEvent
 import com.assinafy.sdk.exceptions.ApiException
 import com.assinafy.sdk.models.DocumentDetails
 import com.assinafy.sdk.oauth.OAuthScope
+import com.assinafy.sdk.request.ContractListParams
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
 import com.assinafy.sdk.request.CreateFieldRequest
@@ -162,6 +165,68 @@ class LiveIntegrationTest {
     }
 
     @Test
+    fun `contract lists and lifecycle catalogs are readable`() = runBlocking<Unit> {
+        val sdk = client()
+        val contracts = sdk.contracts.list(ContractListParams(perPage = 5, expandDocument = true, sort = "-updated_at"))
+        assertThat(contracts.data.all { it.documentId.isNotBlank() && it.status.isNotBlank() }).isTrue()
+        val events = sdk.webhooks.listEventTypes().map { it.id }
+        assertThat(events).contains(WebhookEvent.DOCUMENT_CONTRACT_UPDATED, WebhookEvent.DOCUMENT_CONTRACT_RENEWED)
+        val preferences = sdk.users.getNotificationPreferences()
+        assertThat(preferences.contractRenewalNotice).isNotNull()
+        assertThat(preferences.contractExpiring).isNotNull()
+        assertThat(preferences.contractExpired).isNotNull()
+        assertThat(preferences.contractRenewed).isNotNull()
+    }
+
+    @Test
+    fun `existing contract details and family are readable when present`() = runBlocking<Unit> {
+        val sdk = client()
+        val contract = sdk.contracts.list(ContractListParams(perPage = 1)).data.firstOrNull()
+        assumeTrue(contract != null, "Account needs an existing contract fixture")
+        assertThat(sdk.contracts.get(contract!!.documentId).documentId.isNotBlank()).isTrue()
+        assertThat(sdk.contracts.related(contract.documentId).documentId.isNotBlank()).isTrue()
+    }
+
+    @Test
+    fun `email pricing is readable without sending invitations`() = runBlocking<Unit> {
+        checkPricing(VerificationMethod.EMAIL, NotificationMethod.EMAIL)
+    }
+
+    @Test
+    fun `whatsapp pricing is readable without sending invitations`() = runBlocking<Unit> {
+        checkPricing(VerificationMethod.WHATSAPP, NotificationMethod.WHATSAPP)
+    }
+
+    @Test
+    fun `biometric pricing is readable for both notification channels`() = runBlocking<Unit> {
+        checkPricing(VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC, NotificationMethod.EMAIL)
+        checkPricing(VerificationMethod.ID_DOCUMENT_FACE_MATCH_BASIC, NotificationMethod.WHATSAPP)
+    }
+
+    @Test
+    fun `certificate pricing is readable for both notification channels`() = runBlocking<Unit> {
+        checkPricing(VerificationMethod.DIGITAL_CERTIFICATE, NotificationMethod.EMAIL)
+        checkPricing(VerificationMethod.DIGITAL_CERTIFICATE, NotificationMethod.WHATSAPP)
+    }
+
+    private suspend fun checkPricing(verification: String, notification: String) {
+        val sdk = client()
+        val document = sdk.documents.list(ListParams(status = DocumentStatus.METADATA_READY, perPage = 1)).data.firstOrNull()
+        assumeTrue(document != null, "Account needs an unassigned metadata_ready document for pricing")
+        val estimate = planLimited("Verification method is not enabled for this workspace") {
+            sdk.assignments.estimateCost(
+                document!!.id,
+                CreateAssignmentRequest(
+                    method = com.assinafy.sdk.AssignmentMethod.VIRTUAL,
+                    signers = listOf(SignerReference(verificationMethod = verification, notificationMethods = listOf(notification))),
+                ),
+            )
+        }
+        assertThat(estimate.documents).isEqualTo(1)
+        assertThat(estimate.totalCredits).isGreaterThanOrEqualTo(0.0)
+    }
+
+    @Test
     fun `account statistics are readable when deployed`() = runBlocking<Unit> {
         val rows = optionalEndpoint("Account statistics") { client().workspaces.getStats(accountId) }
         assertThat(rows.all { it.period.isNotBlank() }).isTrue()
@@ -219,11 +284,11 @@ class LiveIntegrationTest {
                 }
                 endpointId = created.id
                 assertThat(created.signingEnabled).isTrue()
-                assertThat(created.secret).isNotBlank()
+                assertThat(!created.secret.isNullOrBlank()).isTrue()
                 val secret = sdk.webhooks.getEndpointSecret(created.id).secret
-                assertThat(secret).startsWith("whsec_")
+                assertThat(secret.startsWith("whsec_")).isTrue()
                 val rotated = sdk.webhooks.rotateEndpointSecret(created.id).secret
-                assertThat(rotated).startsWith("whsec_").isNotEqualTo(secret)
+                assertThat(rotated.startsWith("whsec_") && rotated != secret).isTrue()
                 val updated = sdk.webhooks.updateEndpoint(created.id, UpdateWebhookEndpointRequest(signingEnabled = false))
                 assertThat(updated.signingEnabled).isFalse()
             },
@@ -559,7 +624,7 @@ class LiveIntegrationTest {
                 sdk.assignments.resendNotification(document.id, assignment.id, workflow.signerIds.first())
                 val delivery = sdk.documents.sendAccessToken(document.id, testEmail)
                 assertThat(delivery.channel).isEqualTo("email")
-                assertThat(delivery.recipient).isEqualTo(testEmail)
+                assertThat(delivery.recipient == testEmail).isTrue()
                 assertThat(delivery.document.id).isEqualTo(document.id)
 
                 val signerId = workflow.signerIds.first()
@@ -711,7 +776,7 @@ class LiveIntegrationTest {
                     id,
                 )
                 val secret = sdk.webhooks.getEndpointSecret(endpoint.id, id).secret
-                assertThat(secret).startsWith("whsec_")
+                assertThat(secret.startsWith("whsec_")).isTrue()
                 endpoint.secret?.let { assertThat(it == secret).isTrue() }
                 assertThat(sdk.webhooks.getEndpoint(endpoint.id, id)?.id == endpoint.id).isTrue()
                 assertThat(sdk.webhooks.listEndpoints(accountId = id).size).isEqualTo(1)
@@ -796,7 +861,7 @@ class LiveIntegrationTest {
                 val unmatched = sdk.webhooks.listEndpoints(accountId = id, url = "https://example.com/not-registered")
                 assumeTrue(unmatched.isEmpty(), "This host does not deploy exact-URL webhook filtering/deletion and one-time creation secrets")
                 assertThat(sdk.webhooks.listEndpoints(accountId = id, url = url).size).isEqualTo(1)
-                assertThat(endpoint.secret).isNotBlank()
+                assertThat(!endpoint.secret.isNullOrBlank()).isTrue()
                 assertThat(sdk.webhooks.getEndpointSecret(endpoint.id, id).secret == endpoint.secret).isTrue()
                 sdk.webhooks.deleteEndpointByUrl(url, id)
                 assertThat(sdk.webhooks.listEndpoints(accountId = id, url = url)).isEmpty()

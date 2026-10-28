@@ -1,8 +1,6 @@
 package com.assinafy.sdk.resources
 
-import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.DocumentArtifact
-import com.assinafy.sdk.ValidationCode
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.helper.MockApiHttpClient
 import com.assinafy.sdk.http.HttpRawResponse
@@ -508,62 +506,36 @@ class DocumentResourceTest {
     }
 
     @Test
-    fun `template creation rejects a certificate signer sharing a signing step`() {
-        val mock = MockApiHttpClient()
-        assertThatThrownBy {
-            runBlocking {
-                DocumentResource(mock, "acc").createFromTemplate(
-                    "template",
-                    listOf(
-                        TemplateSigner("role-1", "signer-1", verificationMethod = "DigitalCertificate"),
-                        TemplateSigner("role-2", "signer-2"),
-                    ),
-                )
-            }
-        }.isInstanceOf(ValidationException::class.java)
-        assertThat(mock.calls).isEmpty()
-    }
-
-    @Test
-    fun `template creation and estimate reject certificate signers when fields make it collect`() {
-        val template =
-            """{"id":"template","name":"Placed","status":"ready","created_at":"2026-10-19","pages":[{"id":"page","fields":[{"id":"placement"}]}]}"""
+    fun `template role constraints use the server response without requiring template read scope`() {
         val signer = TemplateSigner("role", "signer", verificationMethod = "DigitalCertificate")
-
         listOf<suspend (DocumentResource) -> Unit>(
-            { it.createFromTemplate("template", listOf(signer)) },
+            { it.createFromTemplate("template", listOf(signer, TemplateSigner("copy-role", "copy-signer"))) },
             { it.estimateCostFromTemplate("template", listOf(signer)) },
         ).forEach { action ->
-            val mock = MockApiHttpClient(defaultResponse = successResponse(template))
+            val mock = MockApiHttpClient(HttpRawResponse(400, """{"status":400,"message":"Certificate requires a virtual assignment","code":"digital_certificate_requires_virtual_assignment"}""", emptyMap()))
             assertThatThrownBy { runBlocking { action(DocumentResource(mock, "acc")) } }
-                .isInstanceOf(ValidationException::class.java)
-                .hasFieldOrPropertyWithValue(
-                    "errors",
-                    mapOf(
-                        "code" to ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT,
-                        "method" to AssignmentMethod.COLLECT,
-                    ),
-                )
-            assertThat(mock.calls.map { it.method to it.path }).containsExactly(
-                "GET" to "/accounts/acc/templates/template",
-            )
+                .isInstanceOf(com.assinafy.sdk.exceptions.ApiException::class.java)
+                .hasFieldOrPropertyWithValue("statusCode", 400)
+            assertThat(mock.calls.map { it.method }).containsExactly("POST")
         }
     }
 
     @Test
-    fun `template creation permits a certificate signer when there are no placed fields`() = runTest {
-        val mock = MockApiHttpClient()
-        mock.enqueue(successResponse("""{"id":"template","name":"Virtual","status":"ready","created_at":"2026-10-19","pages":[{"id":"page","fields":[]}]}"""))
-        mock.enqueue(successResponse(docDetailsJson))
-
-        DocumentResource(mock, "acc").createFromTemplate(
+    fun `template creation accepts inline signers and copy receivers without local step assumptions`() = runTest {
+        val mock = MockApiHttpClient(successResponse("""{"id":"doc","name":"Generated.pdf","status":"uploaded","assignment":null}"""))
+        val result = DocumentResource(mock, "acc").createFromTemplate(
             "template",
-            listOf(TemplateSigner("role", "signer", verificationMethod = "DigitalCertificate")),
+            listOf(
+                TemplateSigner("signing-role", email = "signer@example.com", name = "Example Signer", whatsappPhoneNumber = "+5511999990000", step = 1, verificationMethod = "DigitalCertificate"),
+                TemplateSigner("copy-role", "copy-signer"),
+            ),
         )
-
-        assertThat(mock.calls.map { it.method to it.path }).containsExactly(
-            "GET" to "/accounts/acc/templates/template",
-            "POST" to "/accounts/acc/templates/template/documents",
+        assertThat(result.status).isEqualTo("uploaded")
+        assertThat(result.assignment).isNull()
+        assertThat(mock.calls.map { it.method }).containsExactly("POST")
+        assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/templates/template/documents")
+        assertThat(com.google.gson.JsonParser.parseString(mock.lastCall().body)).isEqualTo(
+            com.google.gson.JsonParser.parseString("""{"signers":[{"role_id":"signing-role","email":"signer@example.com","name":"Example Signer","whatsapp_phone_number":"+5511999990000","step":1,"verification_method":"DigitalCertificate"},{"role_id":"copy-role","id":"copy-signer"}]}"""),
         )
     }
 }

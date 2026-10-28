@@ -2,6 +2,28 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.8.0] - 2026-10-28
+
+### Added
+
+- Contract tracking: terms, filters, signed amendments, family reads, renewal and termination, with exact decimal values, explicit field clearing and optimistic concurrency.
+- Contract lifecycle webhook events and owner notification preferences.
+- Document-search sorting, paginated activities and the current workspace, assignment and webhook response fields.
+- Inline template signers by email, name and WhatsApp number.
+
+### Fixed
+
+- Accept ISO-8601 WhatsApp delivery timestamps while preserving the epoch-seconds property.
+- Allow clearing signer contact fields with empty strings and count Unicode characters in rename/decline limits.
+- Let the API apply template role and certificate rules without requiring an additional template-read scope.
+- Require HTTPS outside loopback for login, signer and OAuth clients; prevent transport paths from escaping the API root and disable HTTPS downgrade redirects.
+- Redact signing and download URLs in model diagnostics; enforce exact OAuth issuer matching and case-insensitive authentication challenges.
+
+### Changed
+
+- Document asynchronous template creation, OAuth webhook-secret rotation and webhook hold/retry behavior.
+- Use Android Gradle Plugin 9.3.3 and the published JDK 25 LTS container patch 25.0.4.1.
+
 ## [2.7.1] - 2026-10-19
 
 ### Fixed

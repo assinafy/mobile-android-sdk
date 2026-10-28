@@ -1,5 +1,7 @@
 package com.assinafy.sdk.models
 
+import com.assinafy.sdk.util.UnixSecondsAdapter
+import com.google.gson.annotations.JsonAdapter
 import com.google.gson.annotations.SerializedName
 
 /**
@@ -20,8 +22,7 @@ data class CostEstimateBreakdownItem(
 )
 
 /**
- * Credit/document estimate returned by assignment pricing endpoints. Legacy resend-only fields are
- * optional because older Assinafy deployments return the smaller `total` response shape.
+ * Credit/document estimate returned by assignment pricing endpoints. Resend-cost responses use the smaller `total` response shape, exposed by the compatibility-named fields.
  *
  * @property documents Number of document units used by the operation.
  * @property credits Credit units used by the operation.
@@ -34,8 +35,8 @@ data class CostEstimateBreakdownItem(
  * @property hasSufficientResources Whether the account can perform the operation.
  * @property blockingReason Machine-readable reason the operation cannot proceed; see [com.assinafy.sdk.CostBlockingReason].
  * @property message Human-readable pricing or resource message.
- * @property legacyTotal Total returned by older resend-cost responses.
- * @property legacyHasSufficientCredits Sufficiency flag returned by older resend-cost responses.
+ * @property legacyTotal Total credits returned by resend-cost responses; no document unit is charged.
+ * @property legacyHasSufficientCredits Sufficiency flag returned by resend-cost responses.
  */
 data class CostEstimate(
     @SerializedName("documents") val documents: Int? = null,
@@ -75,7 +76,10 @@ data class AssignmentSummary(
 data class SigningUrl(
     @SerializedName("signer_id") val signerId: String,
     @SerializedName("url") val url: String,
-)
+) {
+    /** Returns diagnostics without capability-bearing URLs. */
+    override fun toString(): String = "SigningUrl(signerId=$signerId, url=***)"
+}
 
 /**
  * A signer field embedded in an assignment response.
@@ -117,6 +121,8 @@ data class AssignmentItem(
  * @property items Signer fields placed in the assignment.
  * @property summary Aggregate signer completion state.
  * @property signingUrls Generated signing links, normally present on assignment creation.
+ * @property documentId Document associated with this assignment when included.
+ * @property createdAt Creation timestamp.
  */
 data class Assignment(
     @SerializedName("resource") val resource: String? = null,
@@ -131,6 +137,8 @@ data class Assignment(
     @SerializedName("items") val items: List<AssignmentItem>? = null,
     @SerializedName("summary") val summary: AssignmentSummary? = null,
     @SerializedName("signing_urls") val signingUrls: List<SigningUrl>? = null,
+    @SerializedName("document_id") val documentId: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null,
 )
 
 /**
@@ -155,12 +163,15 @@ data class ResendEmailResponse(
 data class WhatsappNotificationButton(
     @SerializedName("text") val text: String,
     @SerializedName("url") val url: String? = null,
-)
+) {
+    /** Returns diagnostics without capability-bearing URLs. */
+    override fun toString(): String = "WhatsappNotificationButton(text=$text, url=***)"
+}
 
 /**
  * A rendered WhatsApp message sent for an assignment.
  *
- * @property sentAt Delivery timestamp returned by the API.
+ * @property sentAt Unix seconds; current ISO-8601 responses and legacy numeric timestamps are accepted.
  * @property header Rendered message heading.
  * @property body Rendered message content.
  * @property buttons Actions included in the message.
@@ -168,6 +179,7 @@ data class WhatsappNotificationButton(
  * @property signerId Signer associated with the delivery.
  */
 data class WhatsappNotification(
+    @JsonAdapter(UnixSecondsAdapter::class)
     @SerializedName("sent_at") val sentAt: Long? = null,
     @SerializedName("header") val header: String? = null,
     @SerializedName("body") val body: String? = null,

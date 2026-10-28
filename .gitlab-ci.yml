@@ -1,4 +1,4 @@
-image: eclipse-temurin:25.0.4_7-jdk-noble@sha256:534968c051301957beae735e7ba1db54d99ddecf08746d3b9d4f318cc132dbc3
+image: eclipse-temurin:25.0.4.1_1-jdk-noble@sha256:a9c5ddd386f629518bd500ecfabf7d1e5d32d7ffed735d5c3b1604ae92c830f4
 
 stages:
   - verify
@@ -16,7 +16,7 @@ variables:
 default:
   interruptible: true
   cache:
-    key: gradle-9.5-agp-9.3.2-android-37.0
+    key: gradle-9.5-agp-9.3.3-android-37.0
     paths:
       - .gradle-ci-home/caches/
       - .gradle-ci-home/wrapper/

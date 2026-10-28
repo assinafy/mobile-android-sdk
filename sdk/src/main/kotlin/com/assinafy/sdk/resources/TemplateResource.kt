@@ -39,11 +39,10 @@ class TemplateResource internal constructor(
      *     "name": "Example",
      *     "document_name": null,
      *     "message": null,
-     *     "status": "example",
-     *     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource","fields": [{"id": "id-placeholder","field_id": "field-id-placeholder","role_id": "role-id-placeholder","label": "example","display_settings": null,"created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}]}],
-     *     "roles": [{"id": "id-placeholder","name": "Example","assignment_type": "example","created_at": "2026-01-01T00:00:00Z","updated_at": "2026-01-01T00:00:00Z"}],
-     *     "tags": [{"id": "id-placeholder","name": "Example"}],
-     *     "default_document_tags": [{"id": "id-placeholder","name": "Example"}],
+     *     "status": "ready",
+     *     "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource", "fields": [{"id": "id-placeholder", "field_id": "field-id-placeholder", "role_id": "role-id-placeholder", "label": "example", "display_settings": null, "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}]}],
+     *     "roles": [{"id": "id-placeholder", "name": "Example", "assignment_type": "Signer", "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"}],
+     *     "tags": [{"id": "id-placeholder", "name": "Example"}],
      *     "created_at": "2026-01-01T00:00:00Z",
      *     "updated_at": "2026-01-01T00:00:00Z"
      *   }
@@ -73,7 +72,7 @@ class TemplateResource internal constructor(
      * `data` is the complete template, including every page with its placed fields:
      * ```json
      * {
-     *   "resource": "template", "id": "fa88b732db84d01427d4cdd1092", "name": "template.pdf",
+     *   "resource": "template", "id": "template-placeholder", "name": "template.pdf",
      *   "document_name": "Service agreement", "message": "Please review and sign",
      *   "status": "ready",
      *   "pages": [{

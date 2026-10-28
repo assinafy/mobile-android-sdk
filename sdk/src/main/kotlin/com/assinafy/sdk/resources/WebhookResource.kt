@@ -46,7 +46,7 @@ class WebhookResource internal constructor(
      * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "events": ["example"],
+     *   "events": ["document_ready"],
      *   "is_active": true,
      *   "url": "https://example.com/resource",
      *   "email": "person@example.com"
@@ -56,11 +56,13 @@ class WebhookResource internal constructor(
      * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "events": ["example"],
+     *   "events": ["document_ready"],
      *   "is_active": true,
      *   "url": null,
      *   "email": null,
-     *   "updated_at": null
+     *   "updated_at": null,
+     *   "is_held": false,
+     *   "held_since": null
      * }
      * ```
      *
@@ -98,11 +100,13 @@ class WebhookResource internal constructor(
      * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "events": ["example"],
+     *   "events": ["document_ready"],
      *   "is_active": true,
      *   "url": null,
      *   "email": null,
-     *   "updated_at": null
+     *   "updated_at": null,
+     *   "is_held": false,
+     *   "held_since": null
      * }
      * ```
      *
@@ -131,11 +135,13 @@ class WebhookResource internal constructor(
      * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "events": ["example"],
+     *   "events": ["document_ready"],
      *   "is_active": true,
      *   "url": null,
      *   "email": null,
-     *   "updated_at": null
+     *   "updated_at": null,
+     *   "is_held": false,
+     *   "held_since": null
      * }
      * ```
      *
@@ -165,8 +171,8 @@ class WebhookResource internal constructor(
      * ```json
      * [
      *   {
-     *     "id": "id-placeholder",
-     *     "description": "example"
+     *     "id": "document_ready",
+     *     "description": "Document ready"
      *   }
      * ]
      * ```
@@ -199,7 +205,7 @@ class WebhookResource internal constructor(
      *   {
      *     "resource": "activity_dispatching_history",
      *     "id": "id-placeholder",
-     *     "event": "example",
+     *     "event": "document_ready",
      *     "activity_id": 1,
      *     "endpoint_id": "id-placeholder",
      *     "endpoint": "https://example.com/webhooks/assinafy",
@@ -209,7 +215,11 @@ class WebhookResource internal constructor(
      *     "response_body": null,
      *     "error": null,
      *     "created_at": "2026-01-01T00:00:00Z",
-     *     "updated_at": "2026-01-01T00:00:00Z"
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "webhook_id": "delivery-placeholder",
+     *     "attempt": 1,
+     *     "kind": "scheduled",
+     *     "will_retry": false
      *   }
      * ]
      * ```
@@ -248,7 +258,7 @@ class WebhookResource internal constructor(
      *   {
      *     "resource": "activity_dispatching_history",
      *     "id": "id-placeholder",
-     *     "event": "example",
+     *     "event": "document_ready",
      *     "activity_id": 1,
      *     "endpoint_id": "id-placeholder",
      *     "endpoint": "https://example.com/webhooks/assinafy",
@@ -258,7 +268,11 @@ class WebhookResource internal constructor(
      *     "response_body": null,
      *     "error": null,
      *     "created_at": "2026-01-01T00:00:00Z",
-     *     "updated_at": "2026-01-01T00:00:00Z"
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "webhook_id": "delivery-placeholder",
+     *     "attempt": 1,
+     *     "kind": "scheduled",
+     *     "will_retry": false
      *   }
      * ]
      * ```
@@ -293,7 +307,7 @@ class WebhookResource internal constructor(
      * {
      *   "resource": "activity_dispatching_history",
      *   "id": "id-placeholder",
-     *   "event": "example",
+     *   "event": "document_ready",
      *   "activity_id": 1,
      *   "endpoint_id": "id-placeholder",
      *   "endpoint": "https://example.com/webhooks/assinafy",
@@ -303,7 +317,11 @@ class WebhookResource internal constructor(
      *   "response_body": null,
      *   "error": null,
      *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z"
+     *   "updated_at": "2026-01-01T00:00:00Z",
+     *   "webhook_id": "delivery-placeholder",
+     *   "attempt": 1,
+     *   "kind": "scheduled",
+     *   "will_retry": false
      * }
      * ```
      *
@@ -338,7 +356,10 @@ class WebhookResource internal constructor(
      *     "is_active": true,
      *     "signing_enabled": true,
      *     "created_at": "2026-01-01T00:00:00Z",
-     *     "updated_at": "2026-01-01T00:00:00Z"
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "is_held": false,
+     *     "held_since": null,
+     *     "resource": "webhook_endpoint"
      *   }
      * ]
      * ```
@@ -367,7 +388,10 @@ class WebhookResource internal constructor(
      *     "is_active": true,
      *     "signing_enabled": true,
      *     "created_at": "2026-01-01T00:00:00Z",
-     *     "updated_at": "2026-01-01T00:00:00Z"
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "is_held": false,
+     *     "held_since": null,
+     *     "resource": "webhook_endpoint"
      *   }
      * ]
      * ```
@@ -396,7 +420,10 @@ class WebhookResource internal constructor(
      * {
      *   "url": "https://example.com/webhooks/assinafy",
      *   "email": "ops@example.com",
-     *   "events": ["document_ready", "signer_signed_document"],
+     *   "events": [
+     *     "document_ready",
+     *     "signer_signed_document"
+     *   ],
      *   "name": "ERP",
      *   "is_active": true,
      *   "signing_enabled": true
@@ -415,7 +442,10 @@ class WebhookResource internal constructor(
      *   "signing_enabled": true,
      *   "created_at": "2026-01-01T00:00:00Z",
      *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "secret": "whsec_redacted"
+     *   "secret": "whsec_redacted",
+     *   "is_held": false,
+     *   "held_since": null,
+     *   "resource": "webhook_endpoint"
      * }
      * ```
      *
@@ -458,7 +488,10 @@ class WebhookResource internal constructor(
      *   "is_active": true,
      *   "signing_enabled": true,
      *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z"
+     *   "updated_at": "2026-01-01T00:00:00Z",
+     *   "is_held": false,
+     *   "held_since": null,
+     *   "resource": "webhook_endpoint"
      * }
      * ```
      *
@@ -483,29 +516,35 @@ class WebhookResource internal constructor(
      * {
      *   "url": "https://example.com/webhooks/assinafy",
      *   "email": "ops@example.com",
-     *   "events": ["document_ready"],
+     *   "events": [
+     *     "document_ready"
+     *   ],
      *   "name": "ERP",
      *   "is_active": false,
      *   "signing_enabled": true
      * }
      * ```
      *
-     * Response 200 `data` payload (inside `{status,message,data}`) is the updated endpoint:
+     * Response 200 `data` payload (inside `{status,message,data}`) is the updated endpoint; `secret` appears only when this request turns signing on:
      * ```json
      * {
      *   "id": "id-placeholder",
      *   "name": "ERP",
      *   "url": "https://example.com/webhooks/assinafy",
      *   "email": "ops@example.com",
-     *   "events": ["document_ready", "signer_signed_document"],
-     *   "is_active": true,
+     *   "events": ["document_ready"],
+     *   "is_active": false,
      *   "signing_enabled": true,
      *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z"
+     *   "updated_at": "2026-01-01T00:00:00Z",
+     *   "is_held": false,
+     *   "held_since": null,
+     *   "resource": "webhook_endpoint",
+     *   "secret": "whsec_redacted"
      * }
      * ```
      *
-     * To obtain a one-time secret as an OAuth application, create the endpoint with signing enabled.
+     * Enabling signing returns a one-time secret when the endpoint has none; store it immediately.
      *
      * @param endpointId Endpoint identifier.
      * @param request Fields to change.
@@ -578,8 +617,8 @@ class WebhookResource internal constructor(
 
     /**
      * Replaces the endpoint's signing secret and returns the new one. The old secret stops working
-     * immediately, so update the receiver right away. Answers `400` when signing is disabled. Not
-     * available to OAuth applications, so call it with an API key.
+     * immediately, so update the receiver right away. Answers `400` when signing is disabled.
+     * OAuth applications need `webhooks:write`; an API key can also rotate it.
      *
      * Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate`.
      *

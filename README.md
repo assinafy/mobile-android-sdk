@@ -6,7 +6,7 @@ Cliente Kotlin coroutine-first para a [API Assinafy v1](https://api.assinafy.com
 plataforma brasileira de assinatura eletrônica. Cobre todas as operações publicadas da v1:
 administração de conta, upload e recuperação de documentos, signatários, assignments de assinatura,
 o fluxo de assinatura do signatário, autenticação por senha e por OAuth 2.1, definições de campo,
-tags, templates, usuários e webhooks.
+tags, templates, gestão de contratos, usuários e webhooks.
 
 Todo método de rede é uma `suspend function`. As dependências são OkHttp, Gson e
 kotlinx-coroutines — nada além disso.
@@ -20,8 +20,9 @@ kotlinx-coroutines — nada além disso.
 | [Onde cada credencial pertence](#onde-cada-credencial-pertence) | Escolher a credencial certa |
 | [OAuth 2.1](#oauth-21) | Agir no workspace de outra pessoa |
 | [O ciclo de vida do documento](#o-ciclo-de-vida-do-documento) | Os sete passos, do PDF ao certificado |
-| [Métodos de verificação e notificação](#métodos-de-verificação-e-notificação) | E-mail, WhatsApp e certificado A1/A3 |
+| [Métodos de verificação e notificação](#métodos-de-verificação-e-notificação) | E-mail, WhatsApp, biometria e certificado A1/A3 |
 | [O atalho de uma chamada](#o-atalho-de-uma-chamada) | Upload, signatários e assignment juntos |
+| [Gestão de contratos (CLM)](#gestão-de-contratos-clm) | Condições, aditivos, renovação e encerramento |
 | [Todo o resto no cliente](#todo-o-resto-no-cliente) | Templates, tags, webhooks, campos |
 | [Respostas, paginação e erros](#respostas-paginação-e-erros) | Envelope, páginas, exceções |
 | [Coroutines e ciclo de vida](#coroutines-e-ciclo-de-vida) | Cancelamento e timeouts |
@@ -59,7 +60,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.7.1")
+    implementation("com.assinafy:assinafy-android-sdk:2.8.0")
 }
 ```
 
@@ -68,9 +69,11 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.7.1-local-SNAPSHOT \
+  -Pversion=2.8.0-local-SNAPSHOT \
   --no-daemon
 ```
+
+Todas as URLs da API fora de loopback exigem HTTPS, inclusive clientes de login e assinatura sem credenciais.
 
 ## Criando um cliente
 
@@ -683,7 +686,10 @@ val secret = requireNotNull(endpoint.secret) // "whsec_...", guarde no back-end
 | `webhooks.updateEndpoint(id, UpdateWebhookEndpointRequest(...))` | Altera só os campos informados; `isActive = false` pausa, `signingEnabled = false` descarta o segredo |
 | `webhooks.deleteEndpoint(id)` | Para as entregas e libera a vaga |
 | `webhooks.getEndpointSecret(id)` | Segredo atual; exige chave de API (indisponível para aplicações OAuth) |
-| `webhooks.rotateEndpointSecret(id)` | Troca o segredo; o antigo deixa de valer na hora |
+| `webhooks.rotateEndpointSecret(id)` | Troca o segredo; OAuth exige `webhooks:write`; o antigo deixa de valer na hora |
+
+Ativar a assinatura com `updateEndpoint` também retorna o novo segredo uma única vez; guarde-o
+imediatamente. OAuth pode criar ou rotacionar segredos, mas não ler um segredo existente.
 
 `register`, `get` e `inactivate` continuam disponíveis e atuam sobre o endpoint mais antigo da conta.
 `WebhookEvent` lista todos os identificadores de evento, e `webhooks.listEventTypes()` devolve o
@@ -710,15 +716,18 @@ when (verifier.getEventType(event)) {
 }
 ```
 
-Responda `2xx` rapidamente. A Assinafy faz até 2 tentativas por evento, com o mesmo `webhook-id` —
-use-o para descartar duplicatas.
+Responda `2xx` rapidamente e descarte duplicatas por `webhook-id`. A Assinafy faz até seis tentativas,
+com cerca de dez minutos de intervalo, para falhas de conexão, timeout, 408, 429 e 5xx. Outros status
+são definitivos. Dez falhas consecutivas pausam o endpoint (`isHeld`, `heldSince`); sondagens ocorrem
+após 3, 15 e 60 minutos, depois a cada seis horas. A recuperação entrega os eventos pendentes do mais
+antigo ao mais novo. O histórico expõe `attempt`, `kind` e `willRetry`.
 
 Onde não houver webhook, consulte o lado da conta:
 
 ```kotlin
 val progress = client.documents.getSigningProgress(documentId) // assinados, total, pendentes, %
 val complete = client.documents.isFullySigned(documentId)
-val activity = client.documents.activities(documentId)         // log completo de atividades
+val activity = client.documents.activities(documentId, ListParams(page = 1, perPage = 100)) // pagine o histórico
 ```
 
 `isFullySigned` pode devolver `true` durante `certificating`, antes de o artefato imutável existir.
@@ -793,7 +802,7 @@ O certificado digital exige o recurso na conta (planos Standard e Pro), CPF ou C
 `government_id`, `method = AssignmentMethod.VIRTUAL` e que o signatário esteja **sozinho no seu
 passo**. O SDK rejeita assignments collect antes da criação ou estimativa de custo com
 `ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT`. Um template usado com certificado
-não pode ter campos posicionados, pois eles geram um assignment collect. Um CPF exige o certificado
+não pode ter campos de papéis Signer posicionados; campos Editor são renderizados antes da assinatura. Um CPF exige o certificado
 daquela pessoa (e-CPF, ou e-CNPJ que a nomeie como representante legal); um CNPJ exige um e-CNPJ
 daquela empresa, de qualquer representante. Como a assinatura por certificado acontece por um
 handshake com a extensão de navegador Web PKI, ela não é concluída pelo fluxo de assinatura nativo
@@ -908,6 +917,102 @@ os IDs de signatário resolvidos. Uma falha depois do upload deixa o documento n
 explicitamente se o seu fluxo exigir rollback. Use os recursos individuais para campos collect,
 assinatura sequencial, WhatsApp ou verificação por certificado digital.
 
+## Gestão de contratos (CLM)
+
+A gestão de contratos registra condições comerciais em um documento; ela não faz upload, envia ou
+assina o PDF. Primeiro envie o documento, depois grave as condições. Se a segunda chamada falhar,
+guarde o ID do documento enviado e repita apenas a atualização das condições. Leituras usam
+`documents:read`; escritas usam `documents:write` e exigem um plano com gestão de contratos.
+Use o cliente Public OAuth existente ou uma chave de API somente no backend confiável.
+
+```kotlin
+import com.assinafy.sdk.ContractField
+import com.assinafy.sdk.ContractRelationType
+import com.assinafy.sdk.ContractStatus
+import com.assinafy.sdk.models.ContractExternalReference
+import com.assinafy.sdk.models.DocumentContract
+import com.assinafy.sdk.models.DocumentContractAmendment
+import com.assinafy.sdk.request.ContractListParams
+import com.assinafy.sdk.request.UpdateContractRequest
+import com.assinafy.sdk.request.RenewContractRequest
+import com.assinafy.sdk.request.TerminateContractRequest
+import java.math.BigDecimal
+
+val uploaded = client.documents.upload(pdfBytes, "Contrato de serviços.pdf")
+val terms = client.contracts.update(
+    uploaded.id,
+    UpdateContractRequest(
+        status = ContractStatus.ACTIVE,
+        counterpartyName = "Empresa Exemplo",
+        value = BigDecimal("120000.50"),
+        currency = "BRL",
+        startDate = "2026-11-01",
+        endDate = "2027-10-31",
+        autoRenew = true,
+        renewalTermMonths = 12,
+        noticePeriodDays = 30,
+        metadata = mapOf("departamento" to "operacoes"),
+        externalReferences = listOf(ContractExternalReference("crm", "contrato-exemplo")),
+    ),
+) as DocumentContract
+
+val changed = client.contracts.update(
+    uploaded.id,
+    UpdateContractRequest(
+        noticePeriodDays = 60,
+        clearFields = setOf(ContractField.COUNTERPARTY_NAME),
+        updatedAt = terms.updatedAt,
+    ),
+)
+val due = client.contracts.list(
+    ContractListParams(statuses = listOf(ContractStatus.ACTIVE), endingWithinDays = 30,
+        perPage = 100, sort = "end_date", expandDocument = true),
+)
+```
+
+Propriedades nulas são omitidas; `clearFields` envia `null` explícito. Referências externas
+substituem a lista inteira. Envie o último `updatedAt` lido em cada alteração: HTTP `409` significa
+que outro cliente alterou o registro; leia novamente e concilie as mudanças.
+`ApiException.responseData` preserva `code` e a lista `errors` com `{field, code, message}`.
+Valores monetários usam `BigDecimal`, sem perda por ponto flutuante.
+
+Para registrar aditivo, renovação ou distrato por instrumento assinado, envie o PDF desse instrumento
+e vincule-o com `parentDocumentId` e `relationType` em `UpdateContractRequest`. Informe apenas as
+condições alteradas: aditivo aceita as condições permitidas; renovação altera `endDate`/`value`;
+distrato altera somente `endDate`. Use `ContractRelationType.AMENDMENT`, `RENEWAL` ou `TERMINATION`.
+`contracts.get(instrumentId)` retorna `DocumentContractAmendment`; `contracts.related(instrumentId)`
+retorna o `DocumentContract` raiz com seus aditivos. Use o fluxo de assignment e assinatura já
+apresentado para assinar o instrumento. As alterações são aplicadas na ordem de certificação,
+imediatamente se já estiver certificado; acompanhe `status` e `applyError`. Instrumentos aplicados
+não podem ser alterados. Em um instrumento pendente, limpar uma condição a remove do delta;
+limpar `PARENT_DOCUMENT_ID` desfaz o vínculo.
+
+A renovação e o encerramento diretos usam a versão atual do contrato:
+
+```kotlin
+val current = client.contracts.get(uploaded.id) as DocumentContract
+val renewed = client.contracts.renew(uploaded.id,
+    RenewContractRequest(term = requireNotNull(current.term), updatedAt = current.updatedAt))
+// Quando o contrato precisar ser encerrado:
+val ended = client.contracts.terminate(uploaded.id,
+    TerminateContractRequest(reason = "Contrato encerrado", updatedAt = renewed.updatedAt))
+```
+
+A renovação exige o período atual ou uma data final posterior explícita, impedindo que uma repetição
+renove duas vezes. Contratos expirados podem ser renovados; contratos encerrados não. O processamento
+horário segue o calendário de Brasília, envia o aviso prévio e alertas de 45/30 dias e renova ou
+expira o contrato após a data final. A perda do plano pausa o processamento; sua restauração retoma
+o ciclo sem enviar alertas cujo prazo já passou.
+
+Assine os eventos `WebhookEvent.DOCUMENT_CONTRACT_UPDATED`, `DOCUMENT_CONTRACT_RENEWAL_NOTICE`,
+`DOCUMENT_CONTRACT_EXPIRING`, `DOCUMENT_CONTRACT_EXPIRED`, `DOCUMENT_CONTRACT_RENEWED`,
+`DOCUMENT_CONTRACT_TERMINATED`, `DOCUMENT_CONTRACT_AMENDED` e `DOCUMENT_CONTRACT_AMENDMENT_UPDATED`.
+Verifique a assinatura e descarte duplicatas como explicado acima. Para recuperar eventos perdidos,
+pagine `contracts.list(ContractListParams(sort = "-updated_at"))` até a última sincronização;
+consulte o histórico paginado com `documents.activities(documentId, ListParams(page = 1, perPage = 100))`.
+Os emails do responsável são controlados por `contractRenewalNotice`, `contractExpiring`,
+`contractExpired` e `contractRenewed` em `UpdateNotificationPreferencesRequest`.
+
 ## Todo o resto no cliente
 
 | Recurso | O que faz |
@@ -916,6 +1021,7 @@ assinatura sequencial, WhatsApp ou verificação por certificado digital.
 | `client.oauth` | Fluxo OAuth 2.1 com PKCE, refresh, revogação, userinfo e descoberta |
 | `client.workspaces` | CRUD de conta, tema, upload/download/remoção de logo, KPIs por conta |
 | `client.documents` | Upload, listagem, busca, detalhes, renomear, apagar, artefatos, atividades, criação a partir de template, acesso público, tags do documento |
+| `client.contracts` | Condições, filtros, aditivos assinados, renovação e encerramento de contratos |
 | `client.signers` | CRUD de signatários da conta e `findByEmail` |
 | `client.signerDocuments` | O fluxo completo do signatário, sem credenciais |
 | `client.assignments` | Criar, estimar, redefinir prazo, reenviar, histórico de notificações WhatsApp |
@@ -926,12 +1032,17 @@ assinatura sequencial, WhatsApp ou verificação por certificado digital.
 | `client.webhooks` | Até 3 endpoints, segredos de assinatura, histórico de entregas, retry |
 | `client.webhookVerifier` | Verificação de assinatura Standard Webhooks e parsing do payload |
 
-Templates produzem um documento e seu assignment em uma chamada. Mapeie um signatário para cada papel
-do template; os signatários já precisam existir:
+A criação por template retorna `uploaded` com `assignment = null`; a geração é assíncrona.
+Mapeie cada papel Signer por `id` existente ou por `email`, `name` e `whatsappPhoneNumber` opcional.
+Papéis CopyReceiver são opcionais e ignoram configurações de assinatura; Editor usa apenas `editorFields`:
 
 ```kotlin
-val template = client.templates.list().data.first { it.status == "ready" }
-val role = requireNotNull(template.roles).first()
+val template = client.templates.list().data.first {
+    it.status == "ready" &&
+        it.roles?.count { role -> role.assignmentType == com.assinafy.sdk.TemplateRoleType.SIGNER } == 1 &&
+        it.roles.orEmpty().none { role -> role.assignmentType == com.assinafy.sdk.TemplateRoleType.EDITOR }
+}
+val role = requireNotNull(template.roles).single { it.assignmentType == com.assinafy.sdk.TemplateRoleType.SIGNER }
 
 val document = client.documents.createFromTemplate(
     templateId = template.id,
@@ -940,10 +1051,12 @@ val document = client.documents.createFromTemplate(
         signers = emptyList(), // substituído pelo argumento signers
         name = "Contrato para Ada.pdf",
         message = "Por favor, revise e assine",
-        editorFields = listOf(TemplateEditorField(fieldId = fieldId, value = "Valor de exemplo")),
     ),
 )
 ```
+
+Após a geração, consulte `documents.details(document.id)` até `pending_signature` com assignment,
+ou trate `assignment_created` / `document_processing_failed`. Geração que falha não é cobrada.
 
 Tags são rótulos do workspace, únicos por workspace e sem distinção de maiúsculas. Crie na conta e
 depois vincule por ID:
@@ -954,6 +1067,11 @@ client.documents.addTags(documentId, listOf(tag.id))
 client.documents.replaceTags(documentId, listOf(tag.id))  // substituição total
 client.documents.detachTag(documentId, tag.id)
 ```
+
+Atualizações de contato omitem propriedades nulas. Para limpar email, WhatsApp ou documento fiscal,
+envie uma string vazia em `UpdateSignerRequest`. Canais já verificados em assinaturas abertas não
+podem mudar; alterar um contato ainda não verificado troca os códigos do signatário/OTP, exigindo
+o reenvio da notificação antes de continuar.
 
 ## Respostas, paginação e erros
 

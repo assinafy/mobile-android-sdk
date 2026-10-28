@@ -245,7 +245,7 @@ class AssignmentResourceTest {
     }
 
     @Test
-    fun `list sends pagination and explicit legacy accountId query`() = runTest {
+    fun `list sends pagination and explicit accountId query`() = runTest {
         val mock = MockApiHttpClient(defaultResponse = successResponse("[]"))
 
         AssignmentResource(mock, "acc").list(
@@ -260,13 +260,12 @@ class AssignmentResourceTest {
     }
 
     @Test
-    fun `list default query is OpenAPI exact`() = runTest {
+    fun `list uses the configured workspace and accepts sorting`() = runTest {
         val mock = MockApiHttpClient(defaultResponse = successResponse("[]"))
 
-        AssignmentResource(mock, "acc").list(com.assinafy.sdk.request.ListParams(page = 1))
+        AssignmentResource(mock, "acc").list(com.assinafy.sdk.request.ListParams(page = 1, sort = "-created_at"))
 
-        assertThat(mock.lastCall().queryParams).containsOnlyKeys("page")
-        assertThat(mock.lastCall().queryParams["accountId"]).isNull()
+        assertThat(mock.lastCall().queryParams).containsExactlyInAnyOrderEntriesOf(mapOf("page" to 1, "accountId" to "acc", "sort" to "-created_at"))
     }
 
     @Test

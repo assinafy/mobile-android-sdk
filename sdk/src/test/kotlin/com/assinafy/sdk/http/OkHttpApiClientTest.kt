@@ -55,6 +55,11 @@ class OkHttpApiClientTest {
     private fun envelope(data: String = "{}") = MockResponse(body = """{"status":200,"data":$data}""")
 
     @Test
+    fun `read transport never follows HTTPS to HTTP downgrades`() {
+        assertThat(OkHttpApiClient("https://api.example.test/v1", null, null).client.followSslRedirects).isFalse()
+    }
+
+    @Test
     fun `https requires TLS 1_2 or later`() {
         val tls = OkHttpApiClient("https://api.assinafy.com.br/v1", apiKey = null, token = null)
             .client.connectionSpecs.filter { it.isTls }

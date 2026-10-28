@@ -11,6 +11,9 @@ local.properties
 .claude/
 AGENTS.md
 CLAUDE.md
+.env
+.env.*
+!.env.example
 *.iml
 .DS_Store
 out/

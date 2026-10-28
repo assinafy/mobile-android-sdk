@@ -34,6 +34,9 @@ object SdkConstants {
 
 /** Document status values and status groups used by readiness polling. */
 object DocumentStatus {
+    /** Metadata is ready and the document can receive a new assignment. */
+    const val METADATA_READY = "metadata_ready"
+
     /** Terminal state for a document whose signatures are complete and certificate is issued. */
     const val CERTIFICATED = "certificated"
 
@@ -46,7 +49,7 @@ object DocumentStatus {
      * `certificating` is included because the API reports it once every signer has finished and the
      * final artifact is being produced — further metadata polling would never advance from there.
      */
-    val READY = setOf("metadata_ready", "pending_signature", PENDING_IDENTITY_REVIEW, "certificating", CERTIFICATED)
+    val READY = setOf(METADATA_READY, "pending_signature", PENDING_IDENTITY_REVIEW, "certificating", CERTIFICATED)
 
     /** Terminal non-success statuses that stop a `DocumentResource.waitUntilReady` poll loop. */
     val FAILED = setOf("failed", "rejected_by_signer", "rejected_by_user", "expired")
@@ -156,6 +159,30 @@ object SignatureType {
  * [com.assinafy.sdk.request.RegisterWebhookRequest].
  */
 object WebhookEvent {
+    /** Terms changed. */
+    const val DOCUMENT_CONTRACT_UPDATED = "document_contract_updated"
+
+    /** The notice period started. */
+    const val DOCUMENT_CONTRACT_RENEWAL_NOTICE = "document_contract_renewal_notice"
+
+    /** The end date is approaching. */
+    const val DOCUMENT_CONTRACT_EXPIRING = "document_contract_expiring"
+
+    /** The contract expired. */
+    const val DOCUMENT_CONTRACT_EXPIRED = "document_contract_expired"
+
+    /** A new term started. */
+    const val DOCUMENT_CONTRACT_RENEWED = "document_contract_renewed"
+
+    /** The contract was closed. */
+    const val DOCUMENT_CONTRACT_TERMINATED = "document_contract_terminated"
+
+    /** A signed instrument changed the root contract. */
+    const val DOCUMENT_CONTRACT_AMENDED = "document_contract_amended"
+
+    /** An instrument link or pending delta changed. */
+    const val DOCUMENT_CONTRACT_AMENDMENT_UPDATED = "document_contract_amendment_updated"
+
     /** A document upload was accepted. */
     const val DOCUMENT_UPLOADED = "document_uploaded"
 
@@ -308,4 +335,124 @@ object IdentityReviewImage {
 
     /** Every evidence name accepted by the API. */
     val ALL = setOf(DOCUMENT_FRONT, DOCUMENT_BACK, DOCUMENT_PDF, FACE)
+}
+
+/** Contract lifecycle status values. */
+object ContractStatus {
+    /** Terms being prepared. */
+    const val DRAFT = "draft"
+
+    /** Contract currently in force. */
+    const val ACTIVE = "active"
+
+    /** Contract ended without renewal. */
+    const val EXPIRED = "expired"
+
+    /** Contract explicitly closed. */
+    const val TERMINATED = "terminated"
+
+    /** Every supported wire value. */
+    val ALL = setOf(DRAFT, ACTIVE, EXPIRED, TERMINATED)
+}
+
+/** Kinds of signed instruments linked to a contract. */
+object ContractRelationType {
+    /** Changes the allowed contract terms. */
+    const val AMENDMENT = "amendment"
+
+    /** Changes only the end date and value. */
+    const val RENEWAL = "renewal"
+
+    /** Closes the contract on its effective end date. */
+    const val TERMINATION = "termination"
+
+    /** Every supported wire value. */
+    val ALL = setOf(AMENDMENT, RENEWAL, TERMINATION)
+}
+
+/** Application state of a linked instrument. */
+object ContractAmendmentStatus {
+    /** Waiting for certification, entitlement or preceding instruments. */
+    const val PENDING = "pending"
+
+    /** The delta has been applied; the link is read-only. */
+    const val APPLIED = "applied"
+
+    /** Every supported wire value. */
+    val ALL = setOf(PENDING, APPLIED)
+}
+
+/** Template role assignment types. */
+object TemplateRoleType {
+    /** Fields filled before generating the document; omit from signers. */
+    const val EDITOR = "Editor"
+
+    /** Person required to sign the generated document. */
+    const val SIGNER = "Signer"
+
+    /** Recipient of the completed document; signing settings are ignored. */
+    const val COPY_RECEIVER = "CopyReceiver"
+
+    /** Every supported wire value. */
+    val ALL = setOf(EDITOR, SIGNER, COPY_RECEIVER)
+}
+
+/** Kinds of webhook delivery attempts. */
+object WebhookAttemptKind {
+    /** Automatic delivery or retry. */
+    const val SCHEDULED = "scheduled"
+
+    /** Recovery probe for a held endpoint. */
+    const val PROBE = "probe"
+
+    /** Explicit delivery retry. */
+    const val MANUAL = "manual"
+
+    /** Every supported wire value. */
+    val ALL = setOf(SCHEDULED, PROBE, MANUAL)
+}
+
+/** Nullable contract fields that can be explicitly cleared in a partial update. */
+enum class ContractField(internal val wireValue: String) {
+    /** Send JSON null for `counterparty_name`; see the update request for amendment semantics. */
+    COUNTERPARTY_NAME("counterparty_name"),
+
+    /** Send JSON null for `counterparty_taxpayer_id`; see the update request for amendment semantics. */
+    COUNTERPARTY_TAXPAYER_ID("counterparty_taxpayer_id"),
+
+    /** Send JSON null for `value`; see the update request for amendment semantics. */
+    VALUE("value"),
+
+    /** Send JSON null for `currency`; see the update request for amendment semantics. */
+    CURRENCY("currency"),
+
+    /** Send JSON null for `start_date`; see the update request for amendment semantics. */
+    START_DATE("start_date"),
+
+    /** Send JSON null for `end_date`; see the update request for amendment semantics. */
+    END_DATE("end_date"),
+
+    /** Send JSON null for `auto_renew`; see the update request for amendment semantics. */
+    AUTO_RENEW("auto_renew"),
+
+    /** Send JSON null for `renewal_term_months`; see the update request for amendment semantics. */
+    RENEWAL_TERM_MONTHS("renewal_term_months"),
+
+    /** Send JSON null for `notice_period_days`; see the update request for amendment semantics. */
+    NOTICE_PERIOD_DAYS("notice_period_days"),
+
+    /** Send JSON null for `owner_id`; see the update request for amendment semantics. */
+    OWNER_ID("owner_id"),
+
+    /** Send JSON null for `metadata`; see the update request for amendment semantics. */
+    METADATA("metadata"),
+
+    /** Send JSON null for `external_references`; see the update request for amendment semantics. */
+    EXTERNAL_REFERENCES("external_references"),
+
+    /** Send JSON null for `parent_document_id`; see the update request for amendment semantics. */
+    PARENT_DOCUMENT_ID("parent_document_id"),
+
+    /** Send JSON null for `updated_at`; see the update request for amendment semantics. */
+    UPDATED_AT("updated_at"),
 }

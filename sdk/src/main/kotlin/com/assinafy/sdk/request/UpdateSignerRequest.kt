@@ -3,6 +3,7 @@ package com.assinafy.sdk.request
 import com.google.gson.annotations.SerializedName
 
 /**
+ * Null properties are omitted; an empty email, WhatsApp number or government ID clears that field.
  * Mutable signer fields accepted by `PUT /accounts/{accountId}/signers/{signerId}`.
  *
  * @property fullName Replacement full name.

@@ -34,8 +34,8 @@ class AssignmentResource internal constructor(
     /**
      * Lists assignments with `GET /assignments` and no request body.
      *
-     * Only `page` and `per-page` are read from [params]. Supplying [accountId] adds the legacy
-     * `accountId` query used by older API-key deployments; omit it for the current OpenAPI request.
+     * Reads `page`, `per-page` and `sort` from [params]. Sends [accountId] or the configured account
+     * as `accountId`; OAuth can infer its workspace when neither is set. API-key calls need one.
      * Response `data` is an array of complete [Assignment] values and `X-Pagination-*` headers are
      * exposed through [PaginatedResult.meta].
      *
@@ -53,17 +53,19 @@ class AssignmentResource internal constructor(
      *     "method": "virtual",
      *     "expires_at": null,
      *     "message": null,
-     *     "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-     *     "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
-     *     "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-     *     "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
-     *     "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+     *     "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
+     *     "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
+     *     "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
+     *     "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
+     *     "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
+     *     "document_id": "document-placeholder",
+     *     "created_at": "2026-01-01T00:00:00Z"
      *   }
      * ]
      * ```
      *
      * @param params Optional one-based page and records-per-page values.
-     * @param accountId Optional compatibility scoping query; the client's default account is not sent.
+     * @param accountId Workspace query override; otherwise the configured default is sent when available.
      * @return Assignment page and optional pagination metadata.
      * @throws ValidationException if an explicitly supplied [accountId] is blank.
      */
@@ -71,9 +73,8 @@ class AssignmentResource internal constructor(
         val query = buildMap<String, Any?> {
             params.page?.let { put("page", it) }
             params.perPage?.let { put("per-page", it) }
-            // Older API-key deployments require this undocumented scoping query. It is only sent
-            // when the caller explicitly opts in, keeping the default request OpenAPI-exact.
-            accountId?.let { put("accountId", requireId(it, "Account ID")) }
+            params.sort?.let { put("sort", it) }
+            (accountId ?: defaultAccountId)?.let { put("accountId", requireId(it, "Account ID")) }
         }
         return callList("Failed to list assignments", Assignment::class.java) {
             http.get("/assignments", query)
@@ -111,11 +112,13 @@ class AssignmentResource internal constructor(
      *   "method": "virtual",
      *   "expires_at": null,
      *   "message": null,
-     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
-     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
-     *   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+     *   "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
+     *   "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
+     *   "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
+     *   "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
+     *   "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
+     *   "document_id": "document-placeholder",
+     *   "created_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *
@@ -152,8 +155,8 @@ class AssignmentResource internal constructor(
      * ```json
      * {
      *   "method": "collect",
-     *   "signers": [{"verification_method": "Email","notification_methods": ["Email"]}],
-     *   "entries": [{"page_id":"page-placeholder","fields":[{"signer_id":"signer-placeholder","field_id":"field-placeholder","display_settings":{"left":72,"top":640,"width":180,"height":40,"fontSize":12}}]}]
+     *   "signers": [{"verification_method": "Whatsapp", "notification_methods": ["Whatsapp"]}],
+     *   "entries": [{"page_id": "page-placeholder", "fields": [{"signer_id": "signer-placeholder", "field_id": "field-placeholder", "display_settings": {"left": 72, "top": 640, "width": 180, "height": 40, "fontSize": 12}}]}]
      * }
      * ```
      *
@@ -161,15 +164,15 @@ class AssignmentResource internal constructor(
      * ```json
      * {
      *   "documents": 1,
-     *   "credits": 1,
+     *   "credits": 0.45,
      *   "needs_extra_document": true,
      *   "extra_document_cost": 1,
-     *   "total_credits": 1,
-     *   "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
-     *   "document_balance": 1,
-     *   "credit_balance": 1,
+     *   "total_credits": 1.45,
+     *   "breakdown": [{"code": "NotificationWhatsapp", "name": "WhatsApp notification", "cost": 0.45, "quantity": 1, "unit_cost": 0.45}],
+     *   "document_balance": 0,
+     *   "credit_balance": 10,
      *   "has_sufficient_resources": true,
-     *   "blocking_reason": "PendingPayment",
+     *   "blocking_reason": null,
      *   "message": null
      * }
      * ```
@@ -219,11 +222,13 @@ class AssignmentResource internal constructor(
      *   "method": "virtual",
      *   "expires_at": null,
      *   "message": null,
-     *   "signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],
-     *   "copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],
-     *   "items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],
-     *   "summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},
-     *   "signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]
+     *   "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
+     *   "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
+     *   "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
+     *   "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
+     *   "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
+     *   "document_id": "document-placeholder",
+     *   "created_at": "2026-01-01T00:00:00Z"
      * }
      * ```
      *
@@ -291,7 +296,7 @@ class AssignmentResource internal constructor(
      * ```json
      * [
      *   {
-     *     "sent_at": 1,
+     *     "sent_at": "2026-10-28T12:00:00Z",
      *     "header": "example",
      *     "body": "example",
      *     "buttons": [{"text": "example"}],
@@ -379,17 +384,10 @@ class AssignmentResource internal constructor(
      * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
      * ```json
      * {
-     *   "documents": 1,
-     *   "credits": 1,
-     *   "needs_extra_document": true,
-     *   "extra_document_cost": 1,
-     *   "total_credits": 1,
-     *   "breakdown": [{"code": "example","name": "Example","cost": 1,"quantity": 1,"unit_cost": 1}],
-     *   "document_balance": 1,
-     *   "credit_balance": 1,
-     *   "has_sufficient_resources": true,
-     *   "blocking_reason": "PendingPayment",
-     *   "message": null
+     *   "total": 0.45,
+     *   "breakdown": [{"code": "NotificationWhatsappResend", "name": "WhatsApp notification resend", "cost": 0.45}],
+     *   "credit_balance": 10,
+     *   "has_sufficient_credits": true
      * }
      * ```
      *

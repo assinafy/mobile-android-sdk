@@ -16,7 +16,7 @@ data class TemplateEditorField(
 /**
  * Document and assignment values used when instantiating a template.
  *
- * @property signers Existing signers mapped to every required template role.
+ * @property signers Existing or inline email signers for every Signer role and optional CopyReceiver roles; omit Editor.
  * @property name Optional generated-document name.
  * @property message Optional message shown to signers.
  * @property expiresAt Optional ISO-8601 assignment deadline.

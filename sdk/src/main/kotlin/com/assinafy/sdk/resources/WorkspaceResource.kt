@@ -52,7 +52,7 @@ class WorkspaceResource internal constructor(
      *   "primary_color": null,
      *   "secondary_color": null,
      *   "notification_sender_type": "User",
-     *   "roles": ["example"],
+     *   "roles": ["owner"],
      *   "is_delete_allowed": true,
      *   "created_at": "2026-01-01T00:00:00Z"
      * }
@@ -105,7 +105,7 @@ class WorkspaceResource internal constructor(
      *     "primary_color": null,
      *     "secondary_color": null,
      *     "notification_sender_type": "User",
-     *     "roles": ["example"],
+     *     "roles": ["owner"],
      *     "is_delete_allowed": true,
      *     "created_at": "2026-01-01T00:00:00Z"
      *   }
@@ -136,9 +136,10 @@ class WorkspaceResource internal constructor(
      *   "primary_color": null,
      *   "secondary_color": null,
      *   "notification_sender_type": "User",
-     *   "roles": ["example"],
+     *   "roles": ["owner"],
      *   "is_delete_allowed": true,
-     *   "created_at": "2026-01-01T00:00:00Z"
+     *   "created_at": "2026-01-01T00:00:00Z",
+     *   "limits": {"webhook_endpoints": 3}
      * }
      * ```
      *
@@ -178,7 +179,7 @@ class WorkspaceResource internal constructor(
      *   "primary_color": null,
      *   "secondary_color": null,
      *   "notification_sender_type": "User",
-     *   "roles": ["example"],
+     *   "roles": ["owner"],
      *   "is_delete_allowed": true,
      *   "created_at": "2026-01-01T00:00:00Z"
      * }
@@ -377,17 +378,17 @@ class WorkspaceResource internal constructor(
      * ```json
      * [
      *   {
-     *     "period": "example",
+     *     "period": "2026-10",
      *     "documents_uploaded": 1,
      *     "documents_sent": 1,
      *     "signature_requests": 1,
      *     "signature_requests_notification_email": 1,
-     *     "signature_requests_notification_whatsapp": 1,
-     *     "signature_requests_notification_bypass": 1,
+     *     "signature_requests_notification_whatsapp": 0,
+     *     "signature_requests_notification_bypass": 0,
      *     "signature_requests_verification_email": 1,
-     *     "signature_requests_verification_whatsapp": 1,
-     *     "signature_requests_verification_bypass": 1,
-     *     "signature_requests_verification_digital_certificate": 1,
+     *     "signature_requests_verification_whatsapp": 0,
+     *     "signature_requests_verification_bypass": 0,
+     *     "signature_requests_verification_digital_certificate": 0,
      *     "signature_requests_viewed": 1,
      *     "signature_requests_completed": 1,
      *     "documents_certified": 1

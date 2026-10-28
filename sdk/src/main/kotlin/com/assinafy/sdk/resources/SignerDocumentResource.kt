@@ -93,17 +93,19 @@ class SignerDocumentResource internal constructor(
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
      *   "name": "Example",
-     *   "status": "example",
+     *   "status": "certificated",
      *   "artifacts": {},
      *   "is_closed": true,
      *   "signing_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder","name": "Example"}],
-     *   "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-     *   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
+     *   "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
      *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z"
+     *   "updated_at": "2026-01-01T00:00:00Z",
+     *   "verification_code": null,
+     *   "verification_url": null
      * }
      * ```
      *
@@ -140,17 +142,19 @@ class SignerDocumentResource internal constructor(
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
      *   "name": "Example",
-     *   "status": "example",
+     *   "status": "certificated",
      *   "artifacts": {},
      *   "is_closed": true,
      *   "signing_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder","name": "Example"}],
-     *   "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-     *   "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
+     *   "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
      *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z"
+     *   "updated_at": "2026-01-01T00:00:00Z",
+     *   "verification_code": null,
+     *   "verification_url": null
      * }
      * ```
      *
@@ -369,7 +373,7 @@ class SignerDocumentResource internal constructor(
      * Request body (`application/json`; optional members may be omitted):
      * ```json
      * {
-     *   "verification-code": "example"
+     *   "verification-code": "123456"
      * }
      * ```
      *
@@ -590,17 +594,19 @@ class SignerDocumentResource internal constructor(
      *     "account_id": "account-id-placeholder",
      *     "template_id": null,
      *     "name": "Example",
-     *     "status": "example",
+     *     "status": "certificated",
      *     "artifacts": {},
      *     "is_closed": true,
      *     "signing_url": "https://example.com/resource",
      *     "decline_reason": null,
-     *     "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-     *     "tags": [{"id": "id-placeholder","name": "Example"}],
-     *     "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-     *     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *     "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+     *     "tags": [{"id": "id-placeholder", "name": "Example"}],
+     *     "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+     *     "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
      *     "created_at": "2026-01-01T00:00:00Z",
-     *     "updated_at": "2026-01-01T00:00:00Z"
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "verification_code": null,
+     *     "verification_url": null
      *   }
      * ]
      * ```
@@ -652,17 +658,19 @@ class SignerDocumentResource internal constructor(
      *     "account_id": "account-id-placeholder",
      *     "template_id": null,
      *     "name": "Example",
-     *     "status": "example",
+     *     "status": "certificated",
      *     "artifacts": {},
      *     "is_closed": true,
      *     "signing_url": "https://example.com/resource",
      *     "decline_reason": null,
-     *     "declined_by": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},
-     *     "tags": [{"id": "id-placeholder","name": "Example"}],
-     *     "assignment": {"resource": "assignment","id": "id-placeholder","sender_email": "person@example.com","method": "virtual","expires_at": null,"message": null,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true,"verification_method": null,"identity_verification_status": null,"notification_methods": ["Email"],"step": 1,"notified": true,"completed": true,"notification_history": [{"event": "example","status": "sent","error_code": null,"error_message": null,"sent_at": null,"failed_at": null}]}],"copy_receivers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}],"items": [{"id": "id-placeholder","page": {"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"},"signer": {"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true},"field": {"resource": "field","id": "id-placeholder","name": "Example","type": "text","regex": null,"is_pre_defined": true,"is_active": true,"is_required": true,"is_standard": true,"is_read_only": true,"is_visible": true},"display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"},"value": null,"completed": true}],"summary": {"signer_count": 1,"completed_count": 1,"signers": [{"resource": "signer","id": "id-placeholder","full_name": "Example","email": null,"whatsapp_phone_number": null,"government_id": null,"has_accepted_terms": true}]},"signing_urls": [{"signer_id": "signer-id-placeholder","url": "https://example.com/resource"}]},
-     *     "pages": [{"id": "id-placeholder","number": 1,"height": 1,"width": 1,"download_url": "https://example.com/resource"}],
+     *     "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+     *     "tags": [{"id": "id-placeholder", "name": "Example"}],
+     *     "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+     *     "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
      *     "created_at": "2026-01-01T00:00:00Z",
-     *     "updated_at": "2026-01-01T00:00:00Z"
+     *     "updated_at": "2026-01-01T00:00:00Z",
+     *     "verification_code": null,
+     *     "verification_url": null
      *   }
      * ]
      * ```

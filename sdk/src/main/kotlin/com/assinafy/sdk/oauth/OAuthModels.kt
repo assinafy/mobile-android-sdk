@@ -31,7 +31,7 @@ object OAuthScope {
     /** Read the workspace's profile, theme and logo. */
     const val ACCOUNT_READ = "account:read"
 
-    /** Create, change and delete webhook endpoints. Signing secrets need an API key. */
+    /** Manage endpoints and rotate signing secrets; reading an existing secret requires an API key. */
     const val WEBHOOKS_WRITE = "webhooks:write"
 
     /** Identify the authenticated user and enable `GET /oauth/userinfo`. */

@@ -22,3 +22,8 @@ consumer bytecode; runtime support starts at Android API21.
 Identity-document and face verification uses hosted capture after explicit signer consent. The SDK
 starts sessions, reads their state, downloads temporary reviewer evidence and submits account
 review decisions. In-review signers can sign; certification waits for approval.
+
+Contract tracking is exposed through `client.contracts`: create terms on an uploaded document, read
+filtered pages, link signed amendments and renew or terminate with version preconditions. Monetary
+amounts use BigDecimal and explicit clears preserve partial-update semantics. Contract events and
+owner notification preferences accompany the signing workflow. All non-loopback API URLs require HTTPS.

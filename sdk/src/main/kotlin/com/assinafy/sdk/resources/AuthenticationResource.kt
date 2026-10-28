@@ -65,8 +65,8 @@ class AuthenticationResource internal constructor(
      * ```json
      * {
      *   "access_token": "<redacted-value>",
-     *   "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
-     *   "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+     *   "user": {"id": "id-placeholder", "name": "Example", "email": "person@example.com", "telephone": null, "government_id": null, "is_email_verified": true, "has_accepted_terms": true, "created_at": "2026-01-01T00:00:00Z", "to_be_deleted_at": null},
+     *   "accounts": [{"id": "id-placeholder", "name": "Example", "roles": ["owner"], "is_delete_allowed": true, "created_at": "2026-01-01T00:00:00Z"}]
      * }
      * ```
      *
@@ -215,8 +215,8 @@ class AuthenticationResource internal constructor(
      * ```json
      * {
      *   "access_token": "<redacted-value>",
-     *   "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
-     *   "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+     *   "user": {"id": "id-placeholder", "name": "Example", "email": "person@example.com", "telephone": null, "government_id": null, "is_email_verified": true, "has_accepted_terms": true, "created_at": "2026-01-01T00:00:00Z", "to_be_deleted_at": null},
+     *   "accounts": [{"id": "id-placeholder", "name": "Example", "roles": ["owner"], "is_delete_allowed": true, "created_at": "2026-01-01T00:00:00Z"}]
      * }
      * ```
      *
@@ -358,8 +358,8 @@ class AuthenticationResource internal constructor(
      * ```json
      * {
      *   "access_token": "<redacted-value>",
-     *   "user": {"id": "id-placeholder","name": "Example","email": "person@example.com","telephone": null,"government_id": null,"is_email_verified": true,"has_accepted_terms": true,"created_at": "2026-01-01T00:00:00Z","to_be_deleted_at": null},
-     *   "accounts": [{"id": "id-placeholder","name": "Example","roles": ["example"],"is_delete_allowed": true,"created_at": "2026-01-01T00:00:00Z"}]
+     *   "user": {"id": "id-placeholder", "name": "Example", "email": "person@example.com", "telephone": null, "government_id": null, "is_email_verified": true, "has_accepted_terms": true, "created_at": "2026-01-01T00:00:00Z", "to_be_deleted_at": null},
+     *   "accounts": [{"id": "id-placeholder", "name": "Example", "roles": ["owner"], "is_delete_allowed": true, "created_at": "2026-01-01T00:00:00Z"}]
      * }
      * ```
      *

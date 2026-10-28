@@ -11,6 +11,8 @@ import com.google.gson.annotations.SerializedName
  * @property events Subscribed event identifiers.
  * @property isActive Whether Assinafy currently sends matching events.
  * @property updatedAt ISO-8601 last-update timestamp.
+ * @property isHeld Whether automatic delivery is paused after consecutive failures.
+ * @property heldSince Unix seconds when delivery was paused, or null.
  */
 data class WebhookSubscription(
     @SerializedName("url") val url: String? = null,
@@ -18,6 +20,8 @@ data class WebhookSubscription(
     @SerializedName("events") val events: List<String> = emptyList(),
     @SerializedName("is_active") val isActive: Boolean = false,
     @SerializedName("updated_at") val updatedAt: String? = null,
+    @SerializedName("is_held") val isHeld: Boolean? = null,
+    @SerializedName("held_since") val heldSince: Long? = null,
 )
 
 /**
@@ -47,6 +51,10 @@ data class WebhookEventTypeInfo(
  * @property error Transport or delivery error message.
  * @property createdAt ISO-8601 creation timestamp.
  * @property updatedAt ISO-8601 last-update timestamp.
+ * @property webhookId Stable logical delivery identifier across attempts.
+ * @property attempt Attempt number for this logical delivery.
+ * @property kind WebhookAttemptKind: scheduled, probe or manual.
+ * @property willRetry Whether another automatic attempt is scheduled.
  */
 data class WebhookDispatch(
     @SerializedName("resource") val resource: String? = null,
@@ -62,6 +70,10 @@ data class WebhookDispatch(
     @SerializedName("error") val error: String? = null,
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("updated_at") val updatedAt: String? = null,
+    @SerializedName("webhook_id") val webhookId: String? = null,
+    @SerializedName("attempt") val attempt: Int? = null,
+    @SerializedName("kind") val kind: String? = null,
+    @SerializedName("will_retry") val willRetry: Boolean? = null,
 )
 
 /**
@@ -104,7 +116,10 @@ data class WebhookPayload(
  * @property signingEnabled Whether deliveries carry a `webhook-signature` header.
  * @property createdAt ISO-8601 creation timestamp.
  * @property updatedAt ISO-8601 last-update timestamp.
- * @property secret One-time signing secret on creation when signing is enabled; absent from reads. Store server-side.
+ * @property secret One-time secret on creation, enabling signing or rotation; absent from reads. Store server-side.
+ * @property isHeld Whether automatic delivery is paused after consecutive failures.
+ * @property heldSince Unix seconds when delivery was paused, or null.
+ * @property resource API resource discriminator when included.
  */
 data class WebhookEndpoint(
     @SerializedName("id") val id: String,
@@ -117,6 +132,9 @@ data class WebhookEndpoint(
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("updated_at") val updatedAt: String? = null,
     @SerializedName("secret") val secret: String? = null,
+    @SerializedName("is_held") val isHeld: Boolean? = null,
+    @SerializedName("held_since") val heldSince: Long? = null,
+    @SerializedName("resource") val resource: String? = null,
 ) {
     /** Returns endpoint diagnostics with the signing secret redacted. */
     override fun toString(): String = "WebhookEndpoint(id=$id, name=$name, url=$url, email=$email, events=$events, " +

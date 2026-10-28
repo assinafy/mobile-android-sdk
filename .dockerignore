@@ -8,6 +8,8 @@
 .claude
 AGENTS.md
 CLAUDE.md
+.env
+.env.*
 local.properties
 *.iml
 .DS_Store
