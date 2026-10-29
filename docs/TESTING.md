@@ -232,6 +232,24 @@ signed bundle with automatic publishing, and waits for Central to report `PUBLIS
 `verify-release` job waits for public availability and resolves the artifact in the minified
 consumer app. If public propagation is transiently slow, retry only `verify-release`.
 
+The GitHub CI workflow also runs for `v*` tags. After its full verification job passes, the
+`release` job creates a GitHub Release using the matching `CHANGELOG.md` section. Tags must be
+`vMAJOR.MINOR.PATCH` and match the version in `sdk/build.gradle.kts`; missing or empty notes fail
+the job. Rerunning an existing release leaves it unchanged. Release creation uses `GITHUB_TOKEN`
+with `contents: write` only in that job; verification keeps `contents: read`, SHA-pinned actions
+and `persist-credentials: false`. No extra GitHub secret is needed.
+
+GitHub Releases and Maven Central publishing run independently. A GitHub Release means GitHub CI
+passed; the GitLab `verify-release` job confirms Maven Central availability. Push `main` and the
+new annotated tag to the origin and let its mirror deliver them to GitHub. Check both services;
+if the mirror is delayed, the same refs can be pushed to the configured `github` remote.
+
+The release-script checks run without network access or credentials:
+
+```shell
+python3 -B -m unittest discover -s .github/scripts -p 'test_*.py'
+```
+
 Before tagging:
 
 1. Run the full local verification command from a clean checkout.
@@ -240,7 +258,8 @@ Before tagging:
 4. Confirm `:consumer-smoke:assembleRelease` resolved the Maven-local artifact and ran R8.
 5. Run read-only live checks; enable disposable writes only when the live account is confirmed.
 6. Confirm the tag version is new; Maven Central versions cannot be replaced or deleted.
-7. Push a protected `vMAJOR.MINOR.PATCH` tag and require both release jobs to pass.
+7. Push `main` and the new protected `vMAJOR.MINOR.PATCH` tag; require GitLab publishing/verification
+   and the GitHub Release job to pass.
 
 ## Contract tracking and production reads
 

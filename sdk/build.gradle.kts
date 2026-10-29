@@ -11,7 +11,7 @@ plugins {
 
 group = "com.assinafy"
 // Honor a release-automation -Pversion override and otherwise use the released version.
-version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.8.0"
+version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.8.1"
 
 val okHttpVersion = "5.5.0"
 val gsonVersion = "2.14.0"
