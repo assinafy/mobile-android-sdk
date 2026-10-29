@@ -2,6 +2,12 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.8.1] - 2026-10-28
+
+### Added
+
+- GitHub Releases are created automatically from stable version tags after CI succeeds, using the matching changelog entry. Existing releases are preserved when a workflow is rerun.
+
 ## [2.8.0] - 2026-10-28
 
 ### Added

@@ -60,7 +60,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.assinafy:assinafy-android-sdk:2.8.0")
+    implementation("com.assinafy:assinafy-android-sdk:2.8.1")
 }
 ```
 
@@ -69,7 +69,7 @@ aos repositórios:
 
 ```shell
 ./gradlew :sdk:publishReleasePublicationToMavenLocal \
-  -Pversion=2.8.0-local-SNAPSHOT \
+  -Pversion=2.8.1-local-SNAPSHOT \
   --no-daemon
 ```
 
