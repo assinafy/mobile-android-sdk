@@ -14,7 +14,7 @@ group = "com.assinafy"
 version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.8.1"
 
 val okHttpVersion = "5.5.0"
-val gsonVersion = "2.14.0"
+val gsonVersion = "2.15.0"
 val coroutinesVersion = "1.11.0"
 val junitVersion = "6.1.3"
 val assertjVersion = "3.27.7"
