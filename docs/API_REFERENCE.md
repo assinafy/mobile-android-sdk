@@ -326,7 +326,7 @@ validation entries. Membership, CPF/CNPJ, plan and existing-state rules are enfo
 | `sendAccessToken(documentId, email)` | `PUT /v1/public/documents/{documentId}/send-token` (public) | `{"channel":"email","recipient":string}`; both required; `recipient` is the signer's email | `AccessTokenDelivery` (`document`, `channel`, `recipient`) |
 | `sendToken(documentId, email?, channel?)` | Same request; deprecated | `email` required; `channel` must be `null` or `email` | `Unit` |
 | `isFullySigned(documentId)` | Calls `details` | local derivation | `true` when every signer is complete or status is `certificated`; does not guarantee the certificated artifact is ready during `certificating` |
-| `getSigningProgress(documentId)` | Calls `details` | local derivation | `SigningProgress` |
+| `getSigningProgress(documentId)` | Calls `details` | local derivation; uses signer `completed` flags when `summary` is absent | `SigningProgress` |
 | `getStatuses()` | `GET /v1/documents/statuses` | none | `List<DocumentStatusInfo>` |
 | `confirmSignerData(documentId, accessCode, request)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | Official subset `full_name`, `email`, `government_id`; deprecated compatibility properties are ignored | `Signer` |
 | `confirmSignerData(documentId, accessCode, data)` | Same endpoint; compatibility overload | Caller-supplied non-empty JSON object | `Signer` |
@@ -540,6 +540,8 @@ must be alone in its step. A virtual assignment may be created while the documen
 `metadata_processing`, or `metadata_ready`; the service promotes it to `pending_signature` after
 metadata processing. A collect assignment requires `metadata_ready` because its fields target
 specific pages.
+Every signer in a collect assignment must own at least one placed field; placement page, signer and
+field identifiers are trimmed before the request is sent.
 
 Step 1 signers are notified when the assignment is created. A later step is notified only after every
 signer in all preceding steps has completed. Each assignment consumes one document from the plan

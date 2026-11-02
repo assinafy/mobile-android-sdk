@@ -58,6 +58,7 @@ data class AssignmentEntry(
  * @property expiresAt Optional ISO-8601 signature deadline.
  * @property copyReceivers Optional signer IDs for recipients who only receive a copy.
  * @property entries Page/field placements required for collect assignments and omitted for virtual assignments.
+ * Every collect signer must own at least one field.
  */
 data class CreateAssignmentRequest(
     @SerializedName("method") val method: String = AssignmentMethod.VIRTUAL,
