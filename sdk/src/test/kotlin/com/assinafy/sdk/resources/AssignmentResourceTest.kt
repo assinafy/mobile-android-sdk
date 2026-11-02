@@ -77,6 +77,43 @@ class AssignmentResourceTest {
     }
 
     @Test
+    fun `collect creation requires a field for every signer and trims placement ids`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = successResponse(assignmentJson))
+        val resource = AssignmentResource(mock, "acc")
+        val request = CreateAssignmentRequest(
+            method = AssignmentMethod.COLLECT,
+            signers = listOf(SignerReference.ofId(" signer-1 "), SignerReference.ofId("signer-2")),
+            entries = listOf(
+                AssignmentEntry(" page-1 ", listOf(AssignmentFieldPlacement(" signer-1 ", " field-1 "))),
+            ),
+        )
+
+        assertThatThrownBy { runBlocking { resource.create("doc-1", request) } }
+            .isInstanceOf(ValidationException::class.java)
+            .hasMessage("Every collect assignment signer must own at least one field")
+        assertThat(mock.calls).isEmpty()
+
+        resource.create(
+            "doc-1",
+            request.copy(
+                entries = request.entries.orEmpty() + AssignmentEntry("page-1", listOf(AssignmentFieldPlacement("signer-2", "field-2"))),
+            ),
+        )
+
+        @Suppress("UNCHECKED_CAST")
+        val body = gson.fromJson(mock.lastCall().body, Map::class.java) as Map<String, Any?>
+
+        @Suppress("UNCHECKED_CAST")
+        val entries = body["entries"] as List<Map<String, Any?>>
+
+        @Suppress("UNCHECKED_CAST")
+        val fields = entries.first()["fields"] as List<Map<String, Any?>>
+        assertThat(entries.first()["page_id"]).isEqualTo("page-1")
+        assertThat(fields.first()["signer_id"]).isEqualTo("signer-1")
+        assertThat(fields.first()["field_id"]).isEqualTo("field-1")
+    }
+
+    @Test
     fun `create throws when signers list is empty`() {
         assertThatThrownBy {
             runBlocking {

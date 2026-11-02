@@ -2,6 +2,14 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.8.2] - 2026-11-02
+
+### Fixed
+
+- Require every collect-assignment signer to own a field and normalize placement identifiers before sending the request.
+- Derive signing progress from signer completion flags when an assignment summary is absent.
+- Count Unicode code points in the 64-character tag-name limit.
+
 ## [2.8.1] - 2026-10-28
 
 ### Added

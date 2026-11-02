@@ -185,6 +185,23 @@ class DocumentResourceTest {
     }
 
     @Test
+    fun `getSigningProgress counts completed signers when summary is absent`() = runTest {
+        val mock = MockApiHttpClient()
+        mock.enqueue(
+            successResponse(
+                """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"pending_signature","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":false,"assignment":{"id":"asg-1","method":"virtual","signers":[{"id":"s1","completed":true},{"id":"s2","completed":false}]}}""",
+            ),
+        )
+
+        val progress = DocumentResource(mock, "acc").getSigningProgress("doc-1")
+
+        assertThat(progress.signed).isEqualTo(1)
+        assertThat(progress.total).isEqualTo(2)
+        assertThat(progress.pending).isEqualTo(1)
+        assertThat(progress.percentage).isEqualTo(50.0)
+    }
+
+    @Test
     fun `activities parses payload, origin object, and ISO timestamp`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(

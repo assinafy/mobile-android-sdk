@@ -82,7 +82,7 @@ class TagResource internal constructor(
      * }
      * ```
      *
-     * @param name Non-blank name, collapsed to single spaces and limited to 64 characters.
+     * @param name Non-blank name, collapsed to single spaces and limited to 64 Unicode characters.
      * @param color Optional six-digit hexadecimal value; a leading `#` is accepted and removed before sending.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Created tag.
@@ -201,7 +201,7 @@ class TagResource internal constructor(
 
     private fun normalizeName(value: String): String {
         val name = requireId(value, "Tag name").replace(Regex("\\s+"), " ")
-        if (name.length > 64) {
+        if (name.codePointCount(0, name.length) > 64) {
             throw ValidationException("Tag name must not exceed 64 characters")
         }
         return name

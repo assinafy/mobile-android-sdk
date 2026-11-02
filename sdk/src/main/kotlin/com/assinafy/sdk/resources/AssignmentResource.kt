@@ -125,8 +125,8 @@ class AssignmentResource internal constructor(
      * @param documentId Stable document identifier placed in the path.
      * @param request Assignment method, signers, optional field placements, and delivery settings.
      * @return Created assignment, including signer state, summary, items, and generated signing URLs.
-     * @throws ValidationException for blank IDs, missing required signers/entries, unsupported methods
-     * or channels, invalid signing steps, invalid collect-field placement, or a digital-certificate
+     * @throws ValidationException for blank IDs, missing required signers/entries, a collect signer
+     * without a field, unsupported methods or channels, invalid signing steps or field placement, or a digital-certificate
      * signer on a non-virtual assignment; that combination exposes
      * [com.assinafy.sdk.ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT].
      */
@@ -609,7 +609,19 @@ class AssignmentResource internal constructor(
         return buildMap {
             put("method", requireId(request.method, "Assignment method"))
             put("signers", signers)
-            request.entries?.let { put("entries", it) }
+            request.entries?.let { entries ->
+                put(
+                    "entries",
+                    entries.map { entry ->
+                        entry.copy(
+                            pageId = entry.pageId.trim(),
+                            fields = entry.fields.map { field ->
+                                field.copy(signerId = field.signerId.trim(), fieldId = field.fieldId.trim())
+                            },
+                        )
+                    },
+                )
+            }
             if (!estimate) {
                 request.message?.let { put("message", it) }
                 request.expiresAt?.let { put("expires_at", it.trim()) }
@@ -652,6 +664,13 @@ class AssignmentResource internal constructor(
             ApiValidator.requireDigitalCertificateStepIsolation(
                 request.signers.map { it.verificationMethod to it.step },
             )
+            if (method == AssignmentMethod.COLLECT) {
+                val signerIds = request.signers.map { requireId(it.id, "Signer ID") }.toSet()
+                val fieldSignerIds = request.entries.orEmpty().flatMap { it.fields }.map { requireId(it.signerId, "Assignment field signer ID") }.toSet()
+                if (!fieldSignerIds.containsAll(signerIds)) {
+                    throw ValidationException("Every collect assignment signer must own at least one field")
+                }
+            }
             request.entries.orEmpty().forEach { entry ->
                 requireId(entry.pageId, "Assignment page ID")
                 ApiValidator.requireAtLeastOne(entry.fields, "assignment field")

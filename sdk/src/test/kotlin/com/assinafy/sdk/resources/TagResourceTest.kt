@@ -89,6 +89,20 @@ class TagResourceTest {
     }
 
     @Test
+    fun `tag name limit counts Unicode characters`() = runTest {
+        val mock = MockApiHttpClient(defaultResponse = success(tagJson))
+        val resource = TagResource(mock, "acc")
+
+        resource.create("😀".repeat(64))
+
+        assertThat(mock.calls).hasSize(1)
+        assertThatThrownBy { runBlocking { resource.create("😀".repeat(65)) } }
+            .isInstanceOf(ValidationException::class.java)
+            .hasMessage("Tag name must not exceed 64 characters")
+        assertThat(mock.calls).hasSize(1)
+    }
+
+    @Test
     fun `update rejects an empty change`() {
         assertThatThrownBy {
             runBlocking { TagResource(MockApiHttpClient(), "acc").update("t1") }

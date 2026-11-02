@@ -661,7 +661,7 @@ class DocumentResource internal constructor(
         if (newName.codePointCount(0, newName.length) > SdkConstants.MAX_DOCUMENT_NAME_LENGTH) {
             throw ValidationException(
                 "Document name exceeds maximum length (${SdkConstants.MAX_DOCUMENT_NAME_LENGTH})",
-                mapOf("length" to newName.length),
+                mapOf("length" to newName.codePointCount(0, newName.length)),
             )
         }
         return call("Failed to rename document", DocumentDetails::class.java) {
@@ -1055,7 +1055,7 @@ class DocumentResource internal constructor(
         val doc = details(documentId)
         val summary = doc.assignment?.summary
         val total = summary?.signerCount ?: doc.assignment?.signers?.size ?: 0
-        val signed = summary?.completedCount ?: 0
+        val signed = summary?.completedCount ?: doc.assignment?.signers?.count { it.completed == true } ?: 0
         val pending = maxOf(total - signed, 0)
         val percentage = if (total > 0) Math.round((signed.toDouble() / total) * 10_000.0) / 100.0 else 0.0
         return SigningProgress(signed, total, pending, percentage)
