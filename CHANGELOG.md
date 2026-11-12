@@ -2,6 +2,28 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.9.0] - 2026-11-11
+
+### Added
+
+- Envelope creation, cost estimates, document ordering, activities, downloads, reminders and lifecycle operations.
+- Embedded-signing origins and short-lived sessions, spending ceilings and creation idempotency keys.
+- Workspace usage, signing entitlements, alert policy and personal push preferences.
+- Signer branding, certified-copy delivery and token downloads, envelope expansions and filters.
+- Webhook test delivery, overlapping secret rotation and dispatch duration; document certification timestamps.
+
+### Fixed
+
+- Signer confirmation sends contact numbers and explicit terms acceptance and handles empty success responses.
+- Signer downloads carry the required access code; expired HTML links fail instead of returning PDF bytes.
+- Nullable invitation URLs and reduced closed-signer projections are represented safely.
+- Envelope and assignment validation rejects duplicate signers, unsupported embedded methods and invalid spending limits.
+
+### Changed
+
+- Use OkHttp 5.5.1, Android Gradle Plugin 9.5.1, Gradle 9.8.2 and the JDK 25.0.5 LTS build image.
+- Retain Gson 2.14 for Android API 21 compatibility and update pinned CI actions.
+
 ## [2.8.2] - 2026-11-02
 
 ### Fixed

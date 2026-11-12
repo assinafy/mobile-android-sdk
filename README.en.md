@@ -12,7 +12,7 @@ Coroutine-first Kotlin client for the [Assinafy API v1](https://api.assinafy.com
 
 ```kotlin
 // settings.gradle.kts: google(); mavenCentral()
-dependencies { implementation("com.assinafy:assinafy-android-sdk:2.8.2") }
+dependencies { implementation("com.assinafy:assinafy-android-sdk:2.9.0") }
 ```
 
 The AAR declares `INTERNET` and ships consumer R8 rules. See [API_REFERENCE.md](docs/API_REFERENCE.md) for every operation and payload, [API_COVERAGE.md](docs/API_COVERAGE.md) for the endpoint map, and [TESTING.md](docs/TESTING.md) for test tiers.
@@ -82,7 +82,7 @@ val request = CreateAssignmentRequest(
 val estimate = backend.assignments.estimateCost(document.id, request)
 require(estimate.hasSufficientResources != false)
 val assignment = backend.assignments.create(document.id, request)
-val signingUrl = assignment.signingUrls.orEmpty().single().url
+val invitationUrl = assignment.signingUrls.orEmpty().single().url // Email: resend page; otherwise null
 ```
 
 For `collect`, use IDs from `document.pages` and `fields.list()` in `entries`; every signer must own at least one field. For `virtual`, confirm signer data and submit `entries = emptyList()` when signing. Estimate first whenever cost or entitlement can block creation.
@@ -96,13 +96,13 @@ For `collect`, use IDs from `document.pages` and `fields.list()` in `entries`; e
 
 Send one method, both, or neither; the API infers the missing side and defaults both to Email. Each signer has exactly one notification channel. `estimateCost` is the source of the final price.
 
-In the signer app, extract the `accessCode` from the URL without logging it:
+The returned Email URL is an invitation-resend page, without document access. Use the `accessCode` from the delivered invitation without logging it. This example is for Email/Whatsapp; biometric and certificate signing follow the flows below:
 
 ```kotlin
 val self = signerClient.signerDocuments.self(accessCode)
-val documentToSign = signerClient.signerDocuments.getCurrent(self.id, accessCode)
 signerClient.signerDocuments.verifyEmail(accessCode, VerifySignerEmailRequest(otp))
-signerClient.signerDocuments.confirmData(documentToSign.id, accessCode, ConfirmSignerDataRequest(fullName = name, email = "person@example.com"))
+val documentToSign = signerClient.signerDocuments.getCurrent(self.id, accessCode)
+signerClient.signerDocuments.confirmData(documentToSign.id, accessCode, ConfirmSignerDataRequest(email = "person@example.com"))
 signerClient.signerDocuments.acceptTerms(accessCode)
 val assignmentToSign = requireNotNull(signerClient.signerDocuments.getAssignment(accessCode).assignment)
 signerClient.signerDocuments.sign(documentToSign.id, assignmentToSign.id, accessCode, fieldValues)
@@ -110,7 +110,7 @@ signerClient.signerDocuments.sign(documentToSign.id, assignmentToSign.id, access
 
 For biometrics, read `getIdentityVerification(accessCode)`. Only when `canStart == true`, obtain explicit consent, call `startIdentityVerification(accessCode, consent = true)`, and open the hosted URL; never log or store it. Pending/InReview/Approved/Declined/Abandoned sessions cannot be replaced. The account reviews with `assignments.getIdentityVerification`, downloads only the named images for temporary use, and calls `reviewIdentityVerification`; rejection cancels the document.
 
-For `DigitalCertificate`, open `signingUrl` in a compatible browser. Assinafy runs the A1/A3 handshake; the app never receives the private key or calls the browser-extension routes. After every signature and review completes:
+For `DigitalCertificate`, open the delivered invitation in a compatible browser. Assinafy runs the A1/A3 handshake; the app never receives the private key or calls the browser-extension routes. After every signature and review completes:
 
 ```kotlin
 val finalState = backend.documents.details(document.id) // after the DOCUMENT_READY webhook
@@ -120,6 +120,23 @@ val verification = backend.documents.verify(requireNotNull(finalState.verificati
 ```
 
 Prefer webhooks over polling for `DOCUMENT_READY`, failures, signatures, identity, and contracts.
+
+## Envelopes and embedded signing
+
+To send multiple PDFs together, upload and wait for `metadata_ready` on each, then estimate and create:
+
+```kotlin
+val envelopeRequest = CreateEnvelopeRequest("Example", listOf(SignerReference.ofId(signer.id)), readyDocumentIds.map { EnvelopeDocumentRequest(it, listOf(signer.id)) }, idempotencyKey = requestId)
+val envelopeCost = backend.envelopes.estimateCost(envelopeRequest)
+val envelope = backend.envelopes.create(envelopeRequest.copy(maxTotalCredits = BigDecimal(requireNotNull(envelopeCost.totalCredits).toString())))
+backend.envelopes.activities(envelope.id, ListParams(page = 1, perPage = 20))
+```
+
+Creation does not guarantee delivery: inspect notification history. Use `get`, `update`, `addDocument`, `removeDocument`, `resendNotification`, `cancel`, `download` and `delete`; deleting a closed envelope preserves documents. Reuse the key only for an explicit retry of the same creation. Templates also accept `idempotencyKey` and `maxTotalCredits`.
+
+For embedding, register an HTTPS origin through `embeddedSigning.addOrigin` on your backend and create the assignment signer with `embedded=true` (Email/Whatsapp). Mint `createSession(documentId, assignmentId, signerId)` for each opening; load the URL once within five minutes in an iframe on that origin. Never log or prefetch it. A native app opens this hosted integration page; Assinafy exchanges its token internally.
+
+`workspaces.get(accountId, expandSigningFeatures=true)` exposes plan entitlements; `getUsage` exposes balances. Alert policy and personal push preferences have separate methods unavailable to third-party OAuth. Signer downloads require the code and support only `original`; after signing, read `certifiedCopy` and use `resendCertifiedCopy` for delivery through the original channel.
 
 ## Webhooks
 
@@ -133,7 +150,7 @@ val verifier = WebhookVerifier(requireNotNull(endpoint.secret))
 require(verifier.verifySignature(rawBody, headers["webhook-id"], headers["webhook-timestamp"], headers["webhook-signature"]))
 ```
 
-Verification uses HMAC-SHA256, constant-time checking, and a 300-second replay window. Process the event only afterward and make consumers idempotent by `webhook-id`.
+`testEndpoint` sends a test delivery. For overlap during rotation, use `rotateEndpointSecret(id, keepPrevious=true)` and switch before `previousSecretExpiresAt` (24 hours). Verification uses HMAC-SHA256, constant-time checking, and a 300-second replay window. Process the event only afterward and make consumers idempotent by `webhook-id`.
 
 ## Contract management
 

@@ -19,6 +19,12 @@ class SmokeApplication : Application() {
     private suspend fun compilePublicApi(client: AssinafyClient) {
         client.documents.list(ListParams(perPage = 1))
         client.users.getCurrent()
+        client.users.getPushPreferences()
+        client.workspaces.get("account", expandSigningFeatures = true)
+        client.workspaces.getUsage("account")
+        client.envelopes.list()
+        client.embeddedSigning.listOrigins()
+        client.signerDocuments.download("signer", "document", "original", "signer-code")
         client.contracts.list(com.assinafy.sdk.request.ContractListParams(endingWithinDays = 30))
         client.contracts.get("document")
         client.contracts.update("document", com.assinafy.sdk.request.UpdateContractRequest(status = com.assinafy.sdk.ContractStatus.ACTIVE))

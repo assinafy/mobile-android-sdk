@@ -2,8 +2,8 @@
 
 ## Supported build environment
 
-- Gradle Wrapper 9.5; use `./gradlew`, not a machine-wide Gradle installation.
-- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.3.3 with built-in Kotlin support and Kotlin compiler 2.4.21.
+- Gradle Wrapper 9.8.2; use `./gradlew`, not a machine-wide Gradle installation.
+- JDK 25 LTS to run Gradle and Android Gradle Plugin 9.5.1 with built-in Kotlin support and Kotlin compiler 2.4.21.
 - Java 17 toolchain and bytecode for the published library.
 - Android SDK platform 37.0 and Build Tools 36.0.0.
 - Android API 21 minimum at runtime. The consuming application owns `targetSdk`.
@@ -38,7 +38,7 @@ Useful focused checks:
 ./gradlew :sdk:assembleRelease --no-daemon
 ```
 
-AGP 9.3.3 exposes the library's configured debug unit-test variant; `:sdk:test` is the aggregate
+AGP 9.5.1 exposes the library's configured debug unit-test variant; `:sdk:test` is the aggregate
 task and runs every configured unit-test variant.
 
 Test reports are written below `sdk/build/reports/tests/` and
@@ -277,3 +277,33 @@ the ordinary build does not load it. Use the read-only live gate against product
 are not yet deployed to sandbox. Recipient-dependent OTP, hosted biometric capture, A1/A3 completion
 and a fresh interactive Public OAuth consent require their separate fixtures; skipped tests are not
 successful live coverage. Android API/R8 compilation does not replace execution on a physical device.
+
+## Envelope and embedding scenarios
+
+`EnvelopeResourceTest` and `IntegrationExtensionsTest` assert complete request bodies, paths,
+filters, explicit nulls, idempotency headers, plan projections and credential-free signer requests.
+Transport tests ensure idempotent creation still sends only once and HTML expiry pages fail binary reads.
+Gson stays on 2.14 because 2.15 requires API 24; the library continues supporting API 21.
+
+The isolated email-envelope live scenario uses one authorized `ASSINAFY_TEST_EMAIL`. It reuses an
+existing matching signer without updating or deleting it; only a signer newly created by the test
+is removed. It uploads three test PDFs, exercises contract terms/renewal/termination, estimates and
+creates an envelope, repeats its idempotency key, updates order, mints an embed session, sends an
+email reminder, adds/removes a document, downloads a ZIP, reads activities, cancels and deletes.
+Cleanup targets only that scenario's unique names. A separate test creates, updates and removes its
+own embed origin. Shared hooks, origins and preference settings are left intact by these scenarios.
+Both need `ASSINAFY_LIVE_WRITES=true`; the envelope also needs plan entitlements and allowance.
+
+With an owner-readable ignored `.env` file, select only these write scenarios explicitly:
+
+```shell
+docker run --rm --platform linux/amd64 --env-file .env -e ASSINAFY_LIVE_WRITES=true \
+  -v "$PWD:/app" mobile-android-sdk-build ./gradlew :sdk:testDebugUnitTest \
+  --tests '*LiveIntegrationTest.isolated email envelope*' \
+  --tests '*LiveIntegrationTest.isolated embed origin*' --no-daemon
+```
+
+These scenarios verify preparation, delivery requests and cleanup; they never submit a signature,
+biometric consent or certificate. OTP completion, completed-copy delivery, fresh OAuth approval,
+biometric capture/review and device-runtime tests need their own interactive fixtures. Mocked tests
+and minified consumer compilation do not substitute for those success paths.

@@ -14,6 +14,14 @@ interface ApiHttpClient {
     suspend fun post(path: String, jsonBody: String? = null): HttpRawResponse
 
     /**
+     * POST JSON with an optional idempotency key. Implementations must preserve the key and never
+     * replay mutations automatically. Older transports work when [idempotencyKey] is absent and
+     * fail before sending when they cannot preserve a supplied key.
+     */
+    suspend fun postIdempotent(path: String, jsonBody: String, idempotencyKey: String?): HttpRawResponse =
+        if (idempotencyKey == null) post(path, jsonBody) else throw UnsupportedOperationException("Transport does not support idempotency keys")
+
+    /**
      * POST [fields] to [path] as `application/x-www-form-urlencoded`, the encoding of the OAuth token
      * and revocation endpoints.
      *

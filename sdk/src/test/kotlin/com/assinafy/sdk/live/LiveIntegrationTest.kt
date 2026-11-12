@@ -3,25 +3,33 @@ package com.assinafy.sdk.live
 import com.assinafy.sdk.AssinafyClient
 import com.assinafy.sdk.AssinafyClientConfig
 import com.assinafy.sdk.DocumentArtifact
+import com.assinafy.sdk.DocumentExpansion
 import com.assinafy.sdk.DocumentStatus
 import com.assinafy.sdk.NotificationMethod
 import com.assinafy.sdk.SdkConstants
 import com.assinafy.sdk.VerificationMethod
 import com.assinafy.sdk.WebhookEvent
 import com.assinafy.sdk.exceptions.ApiException
+import com.assinafy.sdk.models.DocumentContract
 import com.assinafy.sdk.models.DocumentDetails
 import com.assinafy.sdk.oauth.OAuthScope
 import com.assinafy.sdk.request.ContractListParams
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.CreateDocumentFromTemplateRequest
+import com.assinafy.sdk.request.CreateEnvelopeRequest
 import com.assinafy.sdk.request.CreateFieldRequest
 import com.assinafy.sdk.request.CreateSignerRequest
 import com.assinafy.sdk.request.CreateWebhookEndpointRequest
 import com.assinafy.sdk.request.CreateWorkspaceRequest
+import com.assinafy.sdk.request.EnvelopeDocumentRequest
 import com.assinafy.sdk.request.FieldValidationEntry
 import com.assinafy.sdk.request.ListParams
+import com.assinafy.sdk.request.RenewContractRequest
 import com.assinafy.sdk.request.SignerReference
 import com.assinafy.sdk.request.TemplateSigner
+import com.assinafy.sdk.request.TerminateContractRequest
+import com.assinafy.sdk.request.UpdateContractRequest
+import com.assinafy.sdk.request.UpdateEnvelopeRequest
 import com.assinafy.sdk.request.UpdateFieldRequest
 import com.assinafy.sdk.request.UpdateNotificationPreferencesRequest
 import com.assinafy.sdk.request.UpdateSignerRequest
@@ -34,6 +42,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.math.BigDecimal
 import java.util.UUID
 
 /**
@@ -893,6 +902,130 @@ class LiveIntegrationTest {
                 assertThat(estimate.totalCredits).isNotNull()
             },
             cleanup = { recoverDocuments(sdk, ids, name).forEach { deleteDocumentWhenReady(sdk, it) } },
+        )
+    }
+
+    @Test
+    fun `extended workspace reads expose usage envelopes origins and notification settings`() = runBlocking<Unit> {
+        val sdk = client()
+        assertThat(sdk.workspaces.getUsage(accountId).balances).isNotNull()
+        assertThat(sdk.workspaces.get(accountId, expandSigningFeatures = true).signingFeatures).isNotNull()
+        assertThat(sdk.workspaces.getNotificationPolicy(accountId).events).isNotEmpty()
+        assertThat(sdk.users.getPushPreferences()).isNotEmpty()
+        sdk.envelopes.list(ListParams(perPage = 5))
+        sdk.embeddedSigning.listOrigins()
+    }
+
+    @Test
+    fun `isolated embed origin can be added changed and removed`() = runBlocking<Unit> {
+        requireWrites()
+        val sdk = client()
+        val origin = "https://sdk-${UUID.randomUUID()}.example.test"
+        var id: String? = null
+        reversible(
+            block = {
+                id = sdk.embeddedSigning.addOrigin(origin).id
+                assertThat(sdk.embeddedSigning.listOrigins().any { it.id == id }).isTrue()
+                assertThat(sdk.embeddedSigning.updateOrigin(requireNotNull(id), "$origin:8443").origin == "$origin:8443").isTrue()
+            },
+            cleanup = {
+                val created = id ?: sdk.embeddedSigning.listOrigins().firstOrNull { it.origin == origin }?.id
+                created?.let { sdk.embeddedSigning.deleteOrigin(it) }
+            },
+        )
+    }
+
+    @Test
+    fun `isolated email envelope and contract lifecycle completes and cleans up`() = runBlocking<Unit> {
+        requireWrites()
+        assumeTrue(testEmail.isNotBlank(), "Set ASSINAFY_TEST_EMAIL to an authorized disposable recipient")
+        val sdk = client()
+        val marker = "sdk-flow-${UUID.randomUUID()}"
+        val names = (1..3).map { "$marker-$it.pdf" }
+        val documents = mutableSetOf<String>()
+        var envelopeId: String? = null
+        var createdSignerId: String? = null
+        reversible(
+            block = {
+                val existing = sdk.signers.findByEmail(testEmail)
+                val signer = existing ?: sdk.signers.create(CreateSignerRequest(fullName = "SDK Integration", email = testEmail)).also { createdSignerId = it.id }
+                names.forEach { name ->
+                    val uploaded = sdk.documents.upload(minimalPdf(marker), name)
+                    documents += uploaded.id
+                    sdk.documents.waitUntilReady(uploaded.id)
+                }
+                val ids = documents.toList()
+                val contract = sdk.contracts.update(ids[0], UpdateContractRequest(counterpartyName = "SDK Integration", value = BigDecimal("1.00"), endDate = "2027-12-31")) as DocumentContract
+                assertThat((sdk.contracts.get(ids[0]) as DocumentContract).value).isEqualByComparingTo(BigDecimal("1.00"))
+                val renewed = sdk.contracts.renew(ids[0], RenewContractRequest(term = contract.term, updatedAt = contract.updatedAt))
+                assertThat(renewed.term).isEqualTo(requireNotNull(contract.term) + 1)
+                assertThat(sdk.contracts.terminate(ids[0], TerminateContractRequest("Integration fixture completed", renewed.updatedAt)).status).isEqualTo(com.assinafy.sdk.ContractStatus.TERMINATED)
+                val request = CreateEnvelopeRequest(
+                    name = marker,
+                    signers = listOf(SignerReference(id = signer.id, embedded = true)),
+                    documents = ids.take(2).map { EnvelopeDocumentRequest(it, listOf(signer.id)) },
+                    maxTotalCredits = BigDecimal.ZERO,
+                    idempotencyKey = marker,
+                )
+                val cost = sdk.envelopes.estimateCost(request)
+                assertThat(cost.hasSufficientResources != false).isTrue()
+                val envelope = sdk.envelopes.create(request)
+                envelopeId = envelope.id
+                assertThat(sdk.envelopes.create(request).id == envelope.id).isTrue()
+                assertThat(sdk.envelopes.get(envelope.id).documents.size).isEqualTo(2)
+                assertThat(sdk.envelopes.list(ListParams(search = marker)).data.any { it.id == envelope.id }).isTrue()
+                val reordered = sdk.envelopes.update(envelope.id, UpdateEnvelopeRequest(name = "$marker updated", clearMessage = true, documentIds = ids.take(2).reversed()))
+                assertThat(reordered.name == "$marker updated").isTrue()
+                assertThat(reordered.message).isNull()
+                assertThat(reordered.documents.map { it.id } == ids.take(2).reversed()).isTrue()
+                val document = sdk.documents.details(ids[0], setOf(DocumentExpansion.ENVELOPE, DocumentExpansion.ENVELOPE_ID))
+                assertThat(document.envelopeId == envelope.id).isTrue()
+                val assignment = requireNotNull(document.assignment)
+                val session = sdk.embeddedSigning.createSession(ids[0], assignment.id, signer.id)
+                assertThat(session.url.startsWith("https://")).isTrue()
+                assertThat(session.expiresAt).isNotNull()
+                assertThat(sdk.envelopes.resendNotification(envelope.id, signer.id).isSent).isTrue()
+                sdk.envelopes.addDocument(envelope.id, EnvelopeDocumentRequest(ids[2], listOf(signer.id)), BigDecimal.ZERO)
+                assertThat(sdk.envelopes.get(envelope.id).documents.size).isEqualTo(3)
+                assertThat(sdk.envelopes.removeDocument(envelope.id, ids[2]).documents.none { it.id == ids[2] }).isTrue()
+                val zip = sdk.envelopes.download(envelope.id, DocumentArtifact.ORIGINAL)
+                java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(zip)).use { stream ->
+                    var files = 0
+                    while (stream.nextEntry != null) {
+                        assertThat(stream.readBytes().take(PDF_MAGIC.size)).containsExactlyElementsOf(PDF_MAGIC.toList())
+                        files++
+                    }
+                    assertThat(files).isEqualTo(2)
+                }
+                assertThat(sdk.envelopes.activities(envelope.id, ListParams(perPage = 100)).data.any { it.documentId in ids }).isTrue()
+                sdk.envelopes.cancel(envelope.id)
+                sdk.envelopes.delete(envelope.id)
+                envelopeId = null
+                assertThat(sdk.documents.details(ids[0], setOf(DocumentExpansion.ENVELOPE_ID)).envelopeId).isNull()
+            },
+            cleanup = {
+                cleanUpAll(
+                    {
+                        val eid = envelopeId ?: sdk.envelopes.list(ListParams(search = marker)).data.firstOrNull { it.name == marker || it.name == "$marker updated" }?.id
+                        eid?.let {
+                            sdk.envelopes.cancel(it)
+                            sdk.envelopes.delete(it)
+                        }
+                    },
+                    {
+                        recoverDocuments(sdk, documents, *names.toTypedArray()).forEach { id ->
+                            repeat(2) {
+                                try {
+                                    sdk.documents.delete(id)
+                                } catch (error: ApiException) {
+                                    if (error.statusCode != 404) throw error
+                                }
+                            }
+                        }
+                    },
+                    { createdSignerId?.let { sdk.signers.delete(it) } },
+                )
+            },
         )
     }
 

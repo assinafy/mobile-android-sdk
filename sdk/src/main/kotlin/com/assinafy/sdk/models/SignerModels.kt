@@ -45,6 +45,7 @@ data class NotificationHistoryEntry(
  * @property hasSignature Whether a stored signature image exists.
  * @property hasInitial Whether a stored initials image exists.
  * @property isSignatureReusable Whether the signer permits stored-signature reuse.
+ * @property signedAt Envelope document signature timestamp, null before signing.
  * @property identityVerificationStatus Latest identity verification state; see [com.assinafy.sdk.IdentityVerificationStatus].
  * @property resource API resource discriminator when returned by a single-resource endpoint.
  */
@@ -69,4 +70,5 @@ data class Signer(
     @SerializedName("is_signature_reusable") val isSignatureReusable: Boolean? = null,
     @SerializedName("resource") val resource: String? = null,
     @SerializedName("identity_verification_status") val identityVerificationStatus: String? = null,
+    @SerializedName("signed_at") val signedAt: String? = null,
 )

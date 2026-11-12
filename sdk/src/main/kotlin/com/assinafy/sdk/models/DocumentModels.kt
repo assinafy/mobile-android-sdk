@@ -37,6 +37,7 @@ data class DocumentArtifacts(
  * @property verifiedAt Timestamp at which verification ran.
  * @property isValid Whether the hash identifies a valid Assinafy document.
  * @property message Human-readable verification result.
+ * @property certificatedAt Time of the first certification event, when available.
  * @property agreementCode Agreement code printed on the document certificate, when one exists.
  */
 data class DocumentVerification(
@@ -51,6 +52,8 @@ data class DocumentVerification(
     @SerializedName("is_valid") val isValid: Boolean,
     @SerializedName("message") val message: String,
     @SerializedName("agreement_code") val agreementCode: String? = null,
+    /** Time of the first certification event; null for some historical documents. */
+    @SerializedName("certificated_at") val certificatedAt: String? = null,
 )
 
 /**
@@ -132,6 +135,8 @@ data class DocumentPage(
  * @property payload Event-specific JSON payload; its shape depends on [event].
  * @property origin Event-specific origin metadata.
  * @property createdAt Event timestamp.
+ * @property documentId Source document when returned by an envelope activity list.
+ * @property documentName Source document title in an envelope activity list.
  */
 data class DocumentActivity(
     @SerializedName("id") val id: Long,
@@ -140,6 +145,8 @@ data class DocumentActivity(
     @SerializedName("payload") val payload: Any? = null,
     @SerializedName("origin") val origin: Map<String, Any>? = null,
     @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("document_id") val documentId: String? = null,
+    @SerializedName("document_name") val documentName: String? = null,
 )
 
 /** Full document returned by list and search operations. */
@@ -173,6 +180,11 @@ typealias DocumentUploadResponse = DocumentDetails
  * @property hasContract Whether workspace details include tracked contract terms; absent from other projections.
  * @property verificationCode Code for public document authenticity verification.
  * @property verificationUrl Public authenticity-verification URL.
+ * @property envelopeId Envelope identifier when requested by workspace expansion.
+ * @property envelope Envelope identity when explicitly expanded.
+ * @property currentSigner Current signer on signer-facing reads, including closed access codes.
+ * @property isSignerAccessClosed Whether this code no longer opens the document.
+ * @property certifiedCopy Whether the signer can request another certified copy.
  */
 data class DocumentDetails(
     @SerializedName("resource") val resource: String? = null,
@@ -197,6 +209,11 @@ data class DocumentDetails(
     @SerializedName("has_contract") val hasContract: Boolean? = null,
     @SerializedName("verification_code") val verificationCode: String? = null,
     @SerializedName("verification_url") val verificationUrl: String? = null,
+    @SerializedName("envelope_id") val envelopeId: String? = null,
+    @SerializedName("envelope") val envelope: EnvelopeSummary? = null,
+    @SerializedName("current_signer") val currentSigner: Signer? = null,
+    @SerializedName("is_signer_access_closed") val isSignerAccessClosed: Boolean? = null,
+    @SerializedName("certified_copy") val certifiedCopy: CertifiedCopy? = null,
 ) {
     /** Returns diagnostics without capability-bearing URLs. */
     override fun toString(): String = "DocumentDetails(id=$id, name=$name, status=$status, urls=***)"

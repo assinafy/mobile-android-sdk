@@ -2,6 +2,7 @@ package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
+import com.assinafy.sdk.NotificationEvent
 import com.assinafy.sdk.exceptions.AssinafyException
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
@@ -223,4 +224,70 @@ class UserResource internal constructor(
     private companion object {
         val MONTH_PATTERN = Regex("^\\d{4}-(0[1-9]|1[0-2])$")
     }
+
+    /**
+     * Get my push notification preferences. Personal settings; third-party OAuth applications receive 403.
+     *
+     * Wire operation: `GET /v1/users/self/push-preferences`.
+     *
+     * Request body: none.
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "SignerViewed": true,
+     *   "SignerSigned": true,
+     *   "DocumentCompleted": true,
+     *   "SignerDeclined": true,
+     *   "DocumentAboutToExpire": true,
+     *   "DocumentExpired": true,
+     *   "SignerIdentityReviewRequired": true,
+     *   "SignerWhatsappFailed": true
+     * }
+     * ```
+     */
+    suspend fun getPushPreferences(): Map<String, Boolean> = pushPreferences { http.get("/users/self/push-preferences") }
+
+    /**
+     * Update my push notification preferences. Merges only supplied switches; separate from email preferences. Third-party OAuth applications receive 403.
+     *
+     * Wire operation: `PUT /v1/users/self/push-preferences`.
+     *
+     * Request body (`application/json`; optional fields may be omitted):
+     * ```json
+     * {
+     *   "SignerViewed": true,
+     *   "SignerSigned": true,
+     *   "DocumentCompleted": true,
+     *   "SignerDeclined": true,
+     *   "DocumentAboutToExpire": true,
+     *   "DocumentExpired": true,
+     *   "SignerIdentityReviewRequired": true,
+     *   "SignerWhatsappFailed": true
+     * }
+     * ```
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "SignerViewed": true,
+     *   "SignerSigned": true,
+     *   "DocumentCompleted": true,
+     *   "SignerDeclined": true,
+     *   "DocumentAboutToExpire": true,
+     *   "DocumentExpired": true,
+     *   "SignerIdentityReviewRequired": true,
+     *   "SignerWhatsappFailed": true
+     * }
+     * ```
+     */
+    suspend fun updatePushPreferences(events: Map<String, Boolean>): Map<String, Boolean> {
+        if (events.isEmpty() || events.keys.any { it !in NotificationEvent.PUSH }) throw ValidationException("Supply supported push notification events")
+        return pushPreferences { http.put("/users/self/push-preferences", toJson(events)) }
+    }
+
+    private suspend fun pushPreferences(request: suspend () -> com.assinafy.sdk.http.HttpRawResponse): Map<String, Boolean> =
+        callMap("Failed to read push preferences", request).mapValues { (_, value) ->
+            value as? Boolean ?: throw AssinafyException("Push preference must be boolean")
+        }
 }

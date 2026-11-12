@@ -16,6 +16,14 @@ updates:
     commit-message:
       prefix: "build"
 
+    ignore:
+      # Gson 2.15 raises the Android minimum to API 24.
+      - dependency-name: "com.google.code.gson:gson"
+        versions: ["[2.15,)"]
+    groups:
+      android-toolchain:
+        patterns: ["com.android.application", "com.android.library", "gradle-wrapper"]
+
   # Keep the pinned build image current.
   - package-ecosystem: "docker"
     directory: "/"
@@ -23,3 +31,7 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "build"
+    ignore:
+      # Stay on JDK 25 LTS; reconsider the next LTS when it is available.
+      - dependency-name: "eclipse-temurin"
+        versions: [">= 26"]

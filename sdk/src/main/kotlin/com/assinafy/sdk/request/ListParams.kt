@@ -11,6 +11,7 @@ import com.assinafy.sdk.exceptions.ValidationException
  * @property sort Sort expression, e.g. `"name"` or `"-updated_at"`.
  * @property status Status filter (documents and templates list).
  * @property method Signature-method filter, `"virtual"` or `"collect"` (documents list).
+ * @property envelopeId Filter documents to one envelope; null omits it.
  * @property tags Tag IDs to filter by; serialized as a comma-separated `tags` value (AND semantics).
  */
 data class ListParams(
@@ -21,6 +22,7 @@ data class ListParams(
     val status: String? = null,
     val method: String? = null,
     val tags: List<String>? = null,
+    val envelopeId: String? = null,
 ) {
     init {
         if (page != null && page < 1) throw ValidationException("Page must be at least 1")
@@ -35,6 +37,7 @@ data class ListParams(
      * @return Query map suitable for [com.assinafy.sdk.http.ApiHttpClient.get].
      */
     fun toQueryMap(): Map<String, Any?> = buildMap {
+        envelopeId?.let { put("envelope_id", com.assinafy.sdk.util.ApiValidator.requireNonBlank(it, "Envelope ID")) }
         page?.let { put("page", it) }
         perPage?.let { put("per-page", it) }
         search?.let { put("search", it) }

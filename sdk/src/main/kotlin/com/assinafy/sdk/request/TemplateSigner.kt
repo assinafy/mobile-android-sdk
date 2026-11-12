@@ -13,6 +13,7 @@ import com.google.gson.annotations.SerializedName
  * it costs 0.5 credits plus the selected notification.
  * @property notificationMethods Exactly one Email or WhatsApp channel when supplied; it must match
  * Email/WhatsApp OTP verification; biometric verification accepts either and needs an entitled account and signer CPF. Omit to use the Email default.
+ * @property embedded Use a short-lived embed session; the response signing URL is null.
  * @property step Optional one-based signing step; the API validates signing roles, while copy receivers ignore it.
  * @property email Inline signer email, used when no existing id is supplied.
  * @property name Inline signer full name.
@@ -27,4 +28,5 @@ data class TemplateSigner(
     @SerializedName("email") val email: String? = null,
     @SerializedName("name") val name: String? = null,
     @SerializedName("whatsapp_phone_number") val whatsappPhoneNumber: String? = null,
+    @SerializedName("embedded") val embedded: Boolean? = null,
 )

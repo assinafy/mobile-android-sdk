@@ -11,6 +11,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
+import com.google.gson.JsonParseException
 import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import java.io.IOException
@@ -29,7 +30,11 @@ internal object ResponseHandler {
     fun toJsonAllowNulls(value: Any): String = GSON_WITH_NULLS.toJson(value)
 
     /** Maps an already-unwrapped `data` element onto [type]. */
-    fun <T> fromJson(element: JsonElement, type: Class<T>): T = GSON.fromJson(element, type)
+    fun <T> fromJson(element: JsonElement, type: Class<T>): T = try {
+        GSON.fromJson(element, type)
+    } catch (error: JsonParseException) {
+        throw AssinafyException("Failed to parse response data", cause = error)
+    }
 
     fun <T> handle(response: HttpRawResponse, type: Class<T>): T {
         validateSuccess(response)

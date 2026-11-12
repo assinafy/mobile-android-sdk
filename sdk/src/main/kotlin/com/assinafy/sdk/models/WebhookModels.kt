@@ -54,6 +54,7 @@ data class WebhookEventTypeInfo(
  * @property webhookId Stable logical delivery identifier across attempts.
  * @property attempt Attempt number for this logical delivery.
  * @property kind WebhookAttemptKind: scheduled, probe or manual.
+ * @property durationMs Endpoint response duration; null when no request was sent.
  * @property willRetry Whether another automatic attempt is scheduled.
  */
 data class WebhookDispatch(
@@ -74,6 +75,7 @@ data class WebhookDispatch(
     @SerializedName("attempt") val attempt: Int? = null,
     @SerializedName("kind") val kind: String? = null,
     @SerializedName("will_retry") val willRetry: Boolean? = null,
+    @SerializedName("duration_ms") val durationMs: Long? = null,
 )
 
 /**
@@ -149,6 +151,8 @@ data class WebhookEndpoint(
  */
 data class WebhookEndpointSecret(
     @SerializedName("secret") val secret: String,
+    /** End of the 24-hour dual-signature period when keepPrevious was requested. */
+    @SerializedName("previous_secret_expires_at") val previousSecretExpiresAt: String? = null,
 ) {
     /** Returns a diagnostic representation with the secret redacted. */
     override fun toString(): String = "WebhookEndpointSecret(secret=***)"

@@ -622,23 +622,51 @@ class WebhookResource internal constructor(
      *
      * Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate`.
      *
-     * Request body: none.
-     *
-     * Response 200 `data` payload (inside `{status,message,data}`):
+     * Request body (`application/json`; optional fields may be omitted):
      * ```json
      * {
-     *   "secret": "whsec_<base64-key>"
+     *   "keep_previous": false
      * }
      * ```
      *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+     *   "previous_secret_expires_at": "2026-10-30T15:00:00Z"
+     * }
+     * ```
      * @param endpointId Endpoint identifier.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return The new signing secret.
      */
-    suspend fun rotateEndpointSecret(endpointId: String, accountId: String? = null): WebhookEndpointSecret {
+    suspend fun rotateEndpointSecret(endpointId: String, accountId: String? = null): WebhookEndpointSecret =
+        rotateEndpointSecret(endpointId, false, accountId)
+
+    /**
+     * Rotate webhook endpoint signing secret. keep_previous=true lets the previous secret sign for 24 hours. Persist the returned secret securely.
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate`.
+     *
+     * Request body (`application/json`; optional fields may be omitted):
+     * ```json
+     * {
+     *   "keep_previous": false
+     * }
+     * ```
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+     *   "previous_secret_expires_at": "2026-10-30T15:00:00Z"
+     * }
+     * ```
+     */
+    suspend fun rotateEndpointSecret(endpointId: String, keepPrevious: Boolean, accountId: String? = null): WebhookEndpointSecret {
         val path = endpointPath(accountId(accountId), endpointId) + "/secret/rotate"
         logger.info("Rotating webhook endpoint secret")
-        return call("Failed to rotate webhook endpoint secret", WebhookEndpointSecret::class.java) { http.post(path) }
+        return call("Failed to rotate webhook endpoint secret", WebhookEndpointSecret::class.java) { http.post(path, toJson(mapOf("keep_previous" to keepPrevious))) }
     }
 
     /**
@@ -684,5 +712,41 @@ class WebhookResource internal constructor(
             throw ValidationException("Invalid webhook URL", mapOf("url" to url))
         }
         return normalized
+    }
+
+    /**
+     * Send a test delivery. Sends a webhook_test event even to inactive or paused endpoints; does not change pause state. Maximum ten tests per user per ten minutes.
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/test`.
+     *
+     * Request body: none.
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "resource": "activity_dispatching_history",
+     *   "id": "id-placeholder",
+     *   "event": "document_ready",
+     *   "activity_id": 456,
+     *   "endpoint_id": "endpoint-id-placeholder",
+     *   "endpoint": "https://example.com/resource",
+     *   "payload": {},
+     *   "delivered": true,
+     *   "webhook_id": "webhook-id-placeholder",
+     *   "attempt": 2,
+     *   "kind": "scheduled",
+     *   "will_retry": true,
+     *   "duration_ms": 184,
+     *   "http_status": 200,
+     *   "response_body": "OK",
+     *   "error": null,
+     *   "created_at": "2024-01-15T10:30:00Z",
+     *   "updated_at": "2024-01-15T10:30:00Z"
+     * }
+     * ```
+     */
+    suspend fun testEndpoint(endpointId: String, accountId: String? = null): WebhookDispatch {
+        val path = endpointPath(accountId(accountId), endpointId) + "/test"
+        return call("Failed to test webhook endpoint", WebhookDispatch::class.java) { http.post(path) }
     }
 }

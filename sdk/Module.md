@@ -27,3 +27,9 @@ Contract tracking is exposed through `client.contracts`: create terms on an uplo
 filtered pages, link signed amendments and renew or terminate with version preconditions. Monetary
 amounts use BigDecimal and explicit clears preserve partial-update semantics. Contract events and
 owner notification preferences accompany the signing workflow. All non-loopback API URLs require HTTPS.
+
+Envelopes send ordered documents with one invitation per signer. Embedded signing uses allowed
+origins and single-use sessions minted by a trusted backend. Creation supports spending ceilings
+and explicit idempotency keys. Workspace entitlements, balances and notification policy are separate
+from personal push preferences. Certified copies are delivered only to the original signing contact;
+signer-facing downloads require a capability code, while account downloads remain authenticated.

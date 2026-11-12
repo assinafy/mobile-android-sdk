@@ -19,12 +19,15 @@ class MockApiHttpClient(
     /** When set, [postForm] runs the interface default, as a transport written before it existed does. */
     var legacyPostForm = false
 
+    var legacyPostIdempotent = false
+
     data class Call(
         val method: String,
         val path: String,
         val body: String? = null,
         val queryParams: Map<String, Any?> = emptyMap(),
         val form: Map<String, String> = emptyMap(),
+        val idempotencyKey: String? = null,
     )
 
     private var responseQueue: ArrayDeque<HttpRawResponse> = ArrayDeque()
@@ -45,6 +48,12 @@ class MockApiHttpClient(
 
     override suspend fun post(path: String, jsonBody: String?): HttpRawResponse {
         calls.add(Call("POST", path, body = jsonBody))
+        return nextResponse()
+    }
+
+    override suspend fun postIdempotent(path: String, jsonBody: String, idempotencyKey: String?): HttpRawResponse {
+        if (legacyPostIdempotent) return super.postIdempotent(path, jsonBody, idempotencyKey)
+        calls.add(Call("POST", path, body = jsonBody, idempotencyKey = idempotencyKey))
         return nextResponse()
     }
 

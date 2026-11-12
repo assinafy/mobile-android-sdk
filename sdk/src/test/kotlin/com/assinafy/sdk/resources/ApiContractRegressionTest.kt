@@ -166,4 +166,14 @@ class ApiContractRegressionTest {
         val attempt = resource.authorizationRequest(state = "state")
         assertThatThrownBy { resource.parseCallback("https://example.com/callback?code=code&state=state&iss=https%3A%2F%2Fauth.assinafy.com.br%2F", attempt) }.isInstanceOf(ValidationException::class.java)
     }
+
+    @Test
+    fun `OAuth registration rejects invalid HTTPS ports before a request`() {
+        listOf("https://example.com:0/callback", "https://example.com:65536/callback").forEach { uri ->
+            val mock = MockApiHttpClient()
+            val oauth = OAuthResource(mock, mock, OAuthConfig(clientId = "public-client", redirectUri = uri))
+            assertThatThrownBy { oauth.authorizationRequest() }.isInstanceOf(ValidationException::class.java)
+            assertThat(mock.calls).isEmpty()
+        }
+    }
 }

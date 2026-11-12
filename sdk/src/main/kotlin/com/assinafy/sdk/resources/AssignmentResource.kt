@@ -1,6 +1,5 @@
 package com.assinafy.sdk.resources
 
-import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.IdentityReviewDecision
 import com.assinafy.sdk.IdentityReviewImage
 import com.assinafy.sdk.Logger
@@ -15,8 +14,8 @@ import com.assinafy.sdk.models.SignerIdentityReview
 import com.assinafy.sdk.models.WhatsappNotification
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.ListParams
-import com.assinafy.sdk.request.SignerReference
 import com.assinafy.sdk.util.ApiValidator
+import com.assinafy.sdk.util.AssignmentValidation
 
 /**
  * Assignment (signature request) operations scoped to a document: create, cost estimation,
@@ -85,43 +84,128 @@ class AssignmentResource internal constructor(
      * Creates an assignment (`POST /documents/{documentId}/assignments`). The response includes the
      * per-signer `signing_urls` and a `summary`.
      *
-     * Request body — null values are omitted, and `entries` is required only for `collect`:
-     * Each `signing_urls` entry ends in the signer's one-time access code. Treat it as a
-     * credential: deliver it through the intended channel and never log or persist it.
+     * Wire operation: `POST /v1/documents/{documentId}/assignments`
      *
-     * Wire operation: `POST /v1/documents/{documentId}/assignments`.
-     *
-     * Request body (`application/json`; optional members may be omitted):
+     * Request body (`application/json`; optional fields may be omitted):
      * ```json
      * {
-     *   "method": "collect",
-     *   "signers": [{"id": "id-placeholder","verification_method": "Email","notification_methods": ["Email"],"step": 1}],
-     *   "entries": [{"page_id": "page-id-placeholder","fields": [{"signer_id": "signer-id-placeholder","field_id": "field-id-placeholder","display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"}}]}],
+     *   "method": "virtual",
+     *   "signers": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "verification_method": "Email",
+     *       "notification_methods": [
+     *         "Email"
+     *       ],
+     *       "embedded": false,
+     *       "step": 1
+     *     }
+     *   ],
+     *   "entries": [
+     *     {
+     *       "page_id": "example",
+     *       "fields": [
+     *         {
+     *           "signer_id": "example",
+     *           "field_id": "example",
+     *           "display_settings": {
+     *             "left": 69,
+     *             "top": 282,
+     *             "width": 421,
+     *             "height": 45.86,
+     *             "fontFamily": "Arial",
+     *             "fontSize": 22,
+     *             "backgroundColor": "#D5EBFF"
+     *           }
+     *         }
+     *       ]
+     *     }
+     *   ],
      *   "message": "example",
-     *   "expires_at": "2026-01-01T00:00:00Z",
-     *   "copy_receivers": ["example"]
+     *   "expires_at": "2026-11-11T12:00:00Z",
+     *   "copy_receivers": [
+     *     "example"
+     *   ],
+     *   "max_total_credits": 1.5
      * }
      * ```
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "assignment",
      *   "id": "id-placeholder",
+     *   "document_id": "document-id-placeholder",
+     *   "created_at": "2026-06-03T03:54:16Z",
      *   "sender_email": "person@example.com",
      *   "method": "virtual",
      *   "expires_at": null,
-     *   "message": null,
-     *   "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
-     *   "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
-     *   "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
-     *   "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
-     *   "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
-     *   "document_id": "document-placeholder",
-     *   "created_at": "2026-01-01T00:00:00Z"
+     *   "message": "example",
+     *   "signers": [
+     *     {
+     *       "resource": "signer",
+     *       "id": "id-placeholder",
+     *       "full_name": "Example Person",
+     *       "email": "person@example.com",
+     *       "whatsapp_phone_number": "+5548999990000",
+     *       "government_id": "government-id-placeholder",
+     *       "has_accepted_terms": false,
+     *       "verification_method": "Email",
+     *       "notification_methods": [
+     *         "example"
+     *       ],
+     *       "step": 1,
+     *       "notified": true,
+     *       "identity_verification_status": "InReview",
+     *       "completed": true,
+     *       "notification_history": [
+     *         {
+     *           "event": "signature_request",
+     *           "status": "failed",
+     *           "error_code": "MailboxFull",
+     *           "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *           "sent_at": "2026-07-07T12:00:00Z",
+     *           "failed_at": "2026-07-07T12:05:00Z"
+     *         }
+     *       ]
+     *     }
+     *   ],
+     *   "copy_receivers": [
+     *     {}
+     *   ],
+     *   "items": [
+     *     {
+     *       "id": "example",
+     *       "page": {
+     *         "id": "id-placeholder",
+     *         "number": 1,
+     *         "height": 2100,
+     *         "width": 1275,
+     *         "download_url": "https://example.com/resource"
+     *       },
+     *       "signer": {},
+     *       "field": {},
+     *       "display_settings": null,
+     *       "value": null,
+     *       "completed": true
+     *     }
+     *   ],
+     *   "summary": {
+     *     "signer_count": 1,
+     *     "completed_count": 1,
+     *     "signers": [
+     *       {}
+     *     ]
+     *   },
+     *   "signing_urls": [
+     *     {
+     *       "signer_id": "example",
+     *       "url": "https://example.com/resource",
+     *       "embedded": false
+     *     }
+     *   ]
      * }
      * ```
-     *
      * @param documentId Stable document identifier placed in the path.
      * @param request Assignment method, signers, optional field placements, and delivery settings.
      * @return Created assignment, including signer state, summary, items, and generated signing URLs.
@@ -133,10 +217,10 @@ class AssignmentResource internal constructor(
     suspend fun create(documentId: String, request: CreateAssignmentRequest): Assignment {
         val docId = requireId(documentId, "Document ID")
         ApiValidator.requireAtLeastOne(request.signers, "signer")
-        validateRequest(request, estimate = false)
+        AssignmentValidation.validateRequest(request, estimate = false)
         logger.info("Creating assignment", mapOf("documentId" to docId, "signers" to request.signers.size))
         return call("Failed to create assignment", Assignment::class.java) {
-            http.post("/documents/${pathSegment(docId)}/assignments", toJson(normalise(request)))
+            http.post("/documents/${pathSegment(docId)}/assignments", toJson(AssignmentValidation.normalise(request)))
         }
     }
 
@@ -187,11 +271,11 @@ class AssignmentResource internal constructor(
      */
     suspend fun estimateCost(documentId: String, request: CreateAssignmentRequest): CostEstimate {
         val docId = requireId(documentId, "Document ID")
-        validateRequest(request, estimate = true)
+        AssignmentValidation.validateRequest(request, estimate = true)
         return call("Failed to estimate assignment cost", CostEstimate::class.java) {
             http.post(
                 "/documents/${pathSegment(docId)}/assignments/estimate-cost",
-                toJson(normalise(request, estimate = true)),
+                toJson(AssignmentValidation.normalise(request, estimate = true)),
             )
         }
     }
@@ -601,101 +685,8 @@ class AssignmentResource internal constructor(
             "${pathSegment(requireId(assignmentId, "Assignment ID"))}/signers/" +
             "${pathSegment(requireId(signerId, "Signer ID"))}/identity-verification"
 
-    private fun normalise(
-        request: CreateAssignmentRequest,
-        estimate: Boolean = false,
-    ): Map<String, Any?> {
-        val signers = request.signers.map { ref -> normaliseRef(ref, estimate) }
-        return buildMap {
-            put("method", requireId(request.method, "Assignment method"))
-            put("signers", signers)
-            request.entries?.let { entries ->
-                put(
-                    "entries",
-                    entries.map { entry ->
-                        entry.copy(
-                            pageId = entry.pageId.trim(),
-                            fields = entry.fields.map { field ->
-                                field.copy(signerId = field.signerId.trim(), fieldId = field.fieldId.trim())
-                            },
-                        )
-                    },
-                )
-            }
-            if (!estimate) {
-                request.message?.let { put("message", it) }
-                request.expiresAt?.let { put("expires_at", it.trim()) }
-                request.copyReceivers?.let { put("copy_receivers", it.map { id -> requireId(id, "Copy receiver signer ID") }) }
-            }
-        }
-    }
-
-    private fun normaliseRef(ref: SignerReference, estimate: Boolean): Map<String, Any?> {
-        if (!estimate) requireId(ref.id, "Signer ID")
-        return buildMap {
-            if (!estimate) ref.id?.trim()?.let { put("id", it) }
-            ref.verificationMethod?.let { put("verification_method", it) }
-            ref.notificationMethods?.let { put("notification_methods", it) }
-            if (!estimate) ref.step?.let { put("step", it) }
-        }
-    }
-
-    private fun validateRequest(request: CreateAssignmentRequest, estimate: Boolean) {
-        val method = requireId(request.method, "Assignment method")
-        if (method !in METHODS) throw ValidationException("Assignment method must be virtual or collect")
-        // Required for both methods: creation needs to know who signs, and an estimate is priced
-        // per signer. The contract marks `signers` required only for `virtual`, but the API
-        // answers a signer-less body with 400 "Pelo menos um signatários precisa ser informado."
-        if (request.signers.isEmpty()) {
-            throw ValidationException("At least one signer is required")
-        }
-        ApiValidator.requireDigitalCertificateVirtualAssignment(
-            method,
-            request.signers.map(SignerReference::verificationMethod),
-        )
-        if (method == AssignmentMethod.COLLECT && request.entries.isNullOrEmpty()) {
-            throw ValidationException("At least one field-placement entry is required for a collect assignment")
-        }
-        request.signers.forEach { signer ->
-            ApiValidator.requireValidSignerChannels(signer.verificationMethod, signer.notificationMethods)
-        }
-        if (!estimate) {
-            ApiValidator.requireValidSigningSteps(request.signers.map(SignerReference::step))
-            ApiValidator.requireDigitalCertificateStepIsolation(
-                request.signers.map { it.verificationMethod to it.step },
-            )
-            if (method == AssignmentMethod.COLLECT) {
-                val signerIds = request.signers.map { requireId(it.id, "Signer ID") }.toSet()
-                val fieldSignerIds = request.entries.orEmpty().flatMap { it.fields }.map { requireId(it.signerId, "Assignment field signer ID") }.toSet()
-                if (!fieldSignerIds.containsAll(signerIds)) {
-                    throw ValidationException("Every collect assignment signer must own at least one field")
-                }
-            }
-            request.entries.orEmpty().forEach { entry ->
-                requireId(entry.pageId, "Assignment page ID")
-                ApiValidator.requireAtLeastOne(entry.fields, "assignment field")
-                entry.fields.forEach { field ->
-                    requireId(field.signerId, "Assignment field signer ID")
-                    requireId(field.fieldId, "Assignment field ID")
-                    field.displaySettings?.let { settings ->
-                        if (listOf(settings.left, settings.top, settings.width, settings.height, settings.fontSize).any { !it.isFinite() } ||
-                            settings.left < 0 ||
-                            settings.top < 0 ||
-                            settings.width <= 0 ||
-                            settings.height <= 0 ||
-                            settings.fontSize <= 0
-                        ) {
-                            throw ValidationException("Invalid assignment field display settings")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     /** Assignment-method and channel validation constants. */
     companion object {
         private val RESEND_CHANNELS = setOf("email", "whatsapp")
-        private val METHODS = setOf(AssignmentMethod.VIRTUAL, AssignmentMethod.COLLECT)
     }
 }

@@ -26,6 +26,7 @@ import com.google.gson.annotations.SerializedName
  *   Biometric verification requires the account feature and a valid CPF in the existing signer's `government_id`.
  * @property notificationMethods Exactly one channel from [NotificationMethod]. Email and WhatsApp
  *   OTP verification must use their matching channel; biometric and certificate verification accept either. Omit to use the API's Email default.
+ * @property embedded Use a short-lived embed session; the response signing URL is null.
  * @property step Positive integer controlling signing order. Signers sharing a step sign in
  *   parallel; a step is activated only after the previous step completes, and each signer is
  *   notified when their step activates. If supplied for any signer it must be supplied for all,
@@ -37,6 +38,7 @@ data class SignerReference(
     @SerializedName("verification_method") val verificationMethod: String? = null,
     @SerializedName("notification_methods") val notificationMethods: List<String>? = null,
     @SerializedName("step") val step: Int? = null,
+    @SerializedName("embedded") val embedded: Boolean? = null,
 ) {
     /** Convenience construction for existing signers. */
     companion object {

@@ -80,6 +80,12 @@ class OkHttpApiClient private constructor(
         return execute(Request.Builder().url(url(path)).post(body).build())
     }
 
+    override suspend fun postIdempotent(path: String, jsonBody: String, idempotencyKey: String?): HttpRawResponse {
+        val request = Request.Builder().url(url(path)).post(jsonBody.toRequestBody(JSON))
+        idempotencyKey?.let { request.header("Idempotency-Key", it) }
+        return execute(request.build())
+    }
+
     override suspend fun postForm(path: String, fields: Map<String, String>): HttpRawResponse {
         val form = FormBody.Builder().apply { fields.forEach { (name, value) -> add(name, value) } }.build()
         return execute(Request.Builder().url(url(path)).post(form).build())
@@ -139,6 +145,9 @@ class OkHttpApiClient private constructor(
         if (raw.statusCode !in 200..299) {
             val errorBody = body.toString(Charsets.UTF_8).takeIf { it.isNotBlank() }
             throw ApiException.fromResponse(raw.statusCode, errorBody, raw.headers)
+        }
+        if (raw.headers["content-type"]?.substringBefore(';')?.trim()?.equals("text/html", ignoreCase = true) == true) {
+            throw ApiException("Expected a binary artifact but received an HTML page; the download link may have expired", raw.statusCode)
         }
         if (body.isEmpty()) throw ApiException("Empty binary response", raw.statusCode)
         return body

@@ -71,11 +71,13 @@ data class AssignmentSummary(
  * Signing link generated for one assignment signer.
  *
  * @property signerId Signer that owns the link.
- * @property url Public signing URL containing the server-generated access context.
+ * @property embedded Whether this signer requires an embed session.
+ * @property url Email invitation-resend page; null for WhatsApp-only or embedded signers.
  */
 data class SigningUrl(
     @SerializedName("signer_id") val signerId: String,
-    @SerializedName("url") val url: String,
+    @SerializedName("url") val url: String?,
+    @SerializedName("embedded") val embedded: Boolean? = null,
 ) {
     /** Returns diagnostics without capability-bearing URLs. */
     override fun toString(): String = "SigningUrl(signerId=$signerId, url=***)"
@@ -120,7 +122,7 @@ data class AssignmentItem(
  * @property copyReceivers Recipients copied when the assignment completes.
  * @property items Signer fields placed in the assignment.
  * @property summary Aggregate signer completion state.
- * @property signingUrls Generated signing links, normally present on assignment creation.
+ * @property signingUrls Invitation-resend pages for Email; URLs are null for WhatsApp-only or embedded signers.
  * @property documentId Document associated with this assignment when included.
  * @property createdAt Creation timestamp.
  */
@@ -158,6 +160,7 @@ data class ResendEmailResponse(
  * Action button embedded in a rendered WhatsApp notification.
  *
  * @property text Button label shown to the signer.
+ * @property embedded Whether this signer requires an embed session.
  * @property url Optional URL opened by the button.
  */
 data class WhatsappNotificationButton(

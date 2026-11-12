@@ -279,6 +279,12 @@ object NotificationDeliveryStatus {
     /** The message was sent. */
     const val SENT = "sent"
 
+    /** The message reached its recipient. */
+    const val DELIVERED = "delivered"
+
+    /** The email was opened or the WhatsApp message read. */
+    const val OPENED = "opened"
+
     /** The message could not be sent. */
     const val FAILED = "failed"
 }
@@ -455,4 +461,85 @@ enum class ContractField(internal val wireValue: String) {
 
     /** Send JSON null for `updated_at`; see the update request for amendment semantics. */
     UPDATED_AT("updated_at"),
+}
+
+/** Notification event codes for workspace policy and personal preferences. */
+object NotificationEvent {
+    /** Document Completed notification. */
+    const val DOCUMENT_COMPLETED = "DocumentCompleted"
+
+    /** Signer Declined notification. */
+    const val SIGNER_DECLINED = "SignerDeclined"
+
+    /** Document Cancelled notification. */
+    const val DOCUMENT_CANCELLED = "DocumentCancelled"
+
+    /** Document About To Expire notification. */
+    const val DOCUMENT_ABOUT_TO_EXPIRE = "DocumentAboutToExpire"
+
+    /** Document Expired notification. */
+    const val DOCUMENT_EXPIRED = "DocumentExpired"
+
+    /** Document Expiration Reset notification. */
+    const val DOCUMENT_EXPIRATION_RESET = "DocumentExpirationReset"
+
+    /** Document Processing Failed notification. */
+    const val DOCUMENT_PROCESSING_FAILED = "DocumentProcessingFailed"
+
+    /** Template Processing Failed notification. */
+    const val TEMPLATE_PROCESSING_FAILED = "TemplateProcessingFailed"
+
+    /** Signer Whatsapp Failed notification. */
+    const val SIGNER_WHATSAPP_FAILED = "SignerWhatsappFailed"
+
+    /** Contract Renewal Notice notification. */
+    const val CONTRACT_RENEWAL_NOTICE = "ContractRenewalNotice"
+
+    /** Contract Expiring notification. */
+    const val CONTRACT_EXPIRING = "ContractExpiring"
+
+    /** Contract Expired notification. */
+    const val CONTRACT_EXPIRED = "ContractExpired"
+
+    /** Contract Renewed notification. */
+    const val CONTRACT_RENEWED = "ContractRenewed"
+
+    /** Signer Viewed notification. */
+    const val SIGNER_VIEWED = "SignerViewed"
+
+    /** Signer Signed notification. */
+    const val SIGNER_SIGNED = "SignerSigned"
+
+    /** Signer Identity Review Required notification. */
+    const val SIGNER_IDENTITY_REVIEW_REQUIRED = "SignerIdentityReviewRequired"
+
+    /** Every workspace policy event. */
+    val ALL = setOf(DOCUMENT_COMPLETED, SIGNER_DECLINED, DOCUMENT_CANCELLED, DOCUMENT_ABOUT_TO_EXPIRE, DOCUMENT_EXPIRED, DOCUMENT_EXPIRATION_RESET, DOCUMENT_PROCESSING_FAILED, TEMPLATE_PROCESSING_FAILED, SIGNER_WHATSAPP_FAILED, CONTRACT_RENEWAL_NOTICE, CONTRACT_EXPIRING, CONTRACT_EXPIRED, CONTRACT_RENEWED, SIGNER_VIEWED, SIGNER_SIGNED, SIGNER_IDENTITY_REVIEW_REQUIRED)
+
+    /** Events available as personal push preferences. */
+    val PUSH = setOf(SIGNER_VIEWED, SIGNER_SIGNED, DOCUMENT_COMPLETED, SIGNER_DECLINED, DOCUMENT_ABOUT_TO_EXPIRE, DOCUMENT_EXPIRED, SIGNER_IDENTITY_REVIEW_REQUIRED, SIGNER_WHATSAPP_FAILED)
+}
+
+/** Filters based on the states of an envelope's documents. */
+object EnvelopeStatusFilter {
+    /** At least one document is still open. */
+    const val OPEN = "open"
+
+    /** Every document is closed. */
+    const val CLOSED = "closed"
+
+    /** Every supported filter. */
+    val ALL = setOf(OPEN, CLOSED)
+}
+
+/** Optional document projections. */
+object DocumentExpansion {
+    /** Workspace-only envelope identifier. */
+    const val ENVELOPE_ID = "envelope_id"
+
+    /** Envelope identifier and title. */
+    const val ENVELOPE = "envelope"
+
+    /** Every workspace document expansion. */
+    val ALL = setOf(ENVELOPE_ID, ENVELOPE)
 }

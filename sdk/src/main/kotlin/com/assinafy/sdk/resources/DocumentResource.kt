@@ -287,7 +287,7 @@ class DocumentResource internal constructor(
      */
     suspend fun search(params: ListParams, accountId: String? = null): PaginatedResult<DocumentListItem> {
         val id = accountId(accountId)
-        val query = params.toQueryMap().filterKeys { it in setOf("page", "per-page", "search", "status", "sort") }
+        val query = params.toQueryMap().filterKeys { it in setOf("page", "per-page", "search", "status", "sort", "envelope_id") }
         return callList("Failed to search documents", DocumentListItem::class.java) {
             http.get("/accounts/${pathSegment(id)}/documents/search", query)
         }
@@ -296,45 +296,279 @@ class DocumentResource internal constructor(
     /**
      * Fetches full document details, including assignment and pages (`GET /documents/{documentId}`).
      *
-     * Request body: none. Response `data` is the document payload documented on this class, fully populated.
-     *
-     * Wire operation: `GET /v1/documents/{documentId}`.
+     * Wire operation: `GET /v1/documents/{documentId}`
      *
      * Request body: none.
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "document",
      *   "id": "id-placeholder",
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
-     *   "name": "Example",
-     *   "status": "certificated",
-     *   "artifacts": {},
-     *   "is_closed": true,
+     *   "name": "document.pdf",
+     *   "status": "metadata_ready",
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
+     *   "is_closed": false,
      *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
-     *   "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-     *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "verification_code": null,
-     *   "verification_url": null,
-     *   "has_contract": true
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
      * }
      * ```
-     *
      * @param documentId Stable document identifier.
      * @return Complete document state.
      * @throws ValidationException if [documentId] is blank.
      */
-    suspend fun details(documentId: String): DocumentDetails {
+    suspend fun details(documentId: String): DocumentDetails = details(documentId, emptySet())
+
+    /**
+     * Get document. Optional expand=envelope_id,envelope; omitted by default.
+     *
+     * Wire operation: `GET /v1/documents/{documentId}`.
+     *
+     * Request body: none.
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "resource": "document",
+     *   "id": "id-placeholder",
+     *   "account_id": "account-id-placeholder",
+     *   "template_id": null,
+     *   "name": "document.pdf",
+     *   "status": "metadata_ready",
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
+     *   "is_closed": false,
+     *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
+     *   "decline_reason": null,
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
+     * }
+     * ```
+     */
+    suspend fun details(documentId: String, expand: Set<String>): DocumentDetails {
         val id = requireId(documentId, "Document ID")
+        if (expand.any { it !in com.assinafy.sdk.DocumentExpansion.ALL }) throw ValidationException("Unsupported document expansion")
         return call("Failed to fetch document details", DocumentDetails::class.java) {
-            http.get("/documents/${pathSegment(id)}")
+            http.get("/documents/${pathSegment(id)}", if (expand.isEmpty()) emptyMap() else mapOf("expand" to expand.joinToString(",")))
         }
     }
 
@@ -345,31 +579,131 @@ class DocumentResource internal constructor(
      *
      * Request body: none.
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "document",
      *   "id": "id-placeholder",
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
-     *   "name": "Example",
-     *   "status": "certificated",
-     *   "artifacts": {},
-     *   "is_closed": true,
+     *   "name": "document.pdf",
+     *   "status": "metadata_ready",
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
+     *   "is_closed": false,
      *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
-     *   "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-     *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "verification_code": null,
-     *   "verification_url": null,
-     *   "has_contract": true
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
      * }
      * ```
-     *
      * @param documentId Stable document identifier.
      * @return Complete document state.
      */
@@ -388,30 +722,131 @@ class DocumentResource internal constructor(
      *
      * Request body: none.
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "document",
      *   "id": "id-placeholder",
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
-     *   "name": "Example",
-     *   "status": "certificated",
-     *   "artifacts": {},
-     *   "is_closed": true,
+     *   "name": "document.pdf",
+     *   "status": "metadata_ready",
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
+     *   "is_closed": false,
      *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
-     *   "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-     *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "verification_code": null,
-     *   "verification_url": null
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
      * }
      * ```
-     *
      * @param documentId Stable document identifier.
      * @param maxWaitMs Positive total polling budget in milliseconds.
      * @param pollIntervalMs Positive delay between API requests in milliseconds.
@@ -590,20 +1025,14 @@ class DocumentResource internal constructor(
     }
 
     /**
-     * Request body: none. Response `data` is an empty JSON array.
-     *
-     * Deletes a document (`DELETE /documents/{documentId}`). The service permits deletion only in
-     * states whose `GET /documents/statuses` entry advertises `deletable=true`.
-     *
-     * Wire operation: `DELETE /v1/documents/{documentId}`.
+     * Wire operation: `DELETE /v1/documents/{documentId}`
      *
      * Request body: none.
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * []
      * ```
-     *
      * @param documentId Stable document identifier.
      */
     suspend fun delete(documentId: String) {
@@ -617,39 +1046,140 @@ class DocumentResource internal constructor(
      * normalizes diacritics and unsupported characters. The name is required and limited to 255
      * characters. Returns the updated document.
      *
-     * Request body: `{"name":"Service agreement.pdf"}`. Response `data` is the document payload documented on this class.
+     * Wire operation: `PATCH /v1/documents/{documentId}`
      *
-     * Wire operation: `PATCH /v1/documents/{documentId}`.
-     *
-     * Request body (`application/json`; optional members may be omitted):
+     * Request body (`application/json`; optional fields may be omitted):
      * ```json
      * {
-     *   "name": "Example"
+     *   "name": "Service agreement.pdf"
      * }
      * ```
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "document",
      *   "id": "id-placeholder",
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
-     *   "name": "Example",
+     *   "name": "document.pdf",
      *   "status": "metadata_ready",
-     *   "artifacts": {},
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
      *   "is_closed": false,
      *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
-     *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "verification_code": null,
-     *   "verification_url": null
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
      * }
      * ```
-     *
      * @param documentId Stable document identifier.
      * @param name Non-blank replacement name of at most [SdkConstants.MAX_DOCUMENT_NAME_LENGTH] characters.
      * @return Complete updated document.
@@ -673,55 +1203,172 @@ class DocumentResource internal constructor(
      * Creates a document from a template
      * (`POST /accounts/{accountId}/templates/{templateId}/documents`).
      *
-     * Request body maps one signer to each template role and carries the optional document
-     * settings:
-     * Response `data` starts at `uploaded` with `assignment: null`. Processing later produces
-     * `pending_signature` and `assignment_created`, or `failed` and `document_processing_failed`;
-     * failed generation is not charged. Poll details or consume these webhooks before using the assignment.
-     * Use an existing signer ID or inline email/name/WhatsApp fields. Editor roles use editor_fields;
-     * CopyReceiver roles ignore signing settings. Only placed Signer-role fields cause collect signing.
+     * Wire operation: `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
      *
-     * Wire operation: `POST /v1/accounts/{accountId}/templates/{templateId}/documents`.
-     *
-     * Request body (`application/json`; optional members may be omitted):
+     * Request body (`application/json`; optional fields may be omitted):
      * ```json
      * {
-     *   "signers": [{"role_id": "role-id-placeholder","id": "id-placeholder","email": "signer@example.com","name": "Example Signer","whatsapp_phone_number": "+5511999990000","verification_method": "Email","notification_methods": ["Email"],"step": 1}],
-     *   "editor_fields": [{"field_id": "field-id-placeholder","value": "example"}],
-     *   "name": "Example",
-     *   "message": "example",
-     *   "expires_at": "2026-01-01T00:00:00Z",
-     *   "tags": ["example"]
+     *   "signers": [
+     *     {
+     *       "role_id": "role-id-placeholder",
+     *       "id": "id-placeholder",
+     *       "email": "person@example.com",
+     *       "name": "Maria Silva",
+     *       "whatsapp_phone_number": "+5548999999999",
+     *       "verification_method": "Email",
+     *       "notification_methods": [
+     *         "example"
+     *       ],
+     *       "embedded": false,
+     *       "step": 1
+     *     }
+     *   ],
+     *   "editor_fields": [
+     *     {
+     *       "field_id": "field-id-placeholder",
+     *       "value": "Field value"
+     *     }
+     *   ],
+     *   "name": "sample-contract-one-page.pdf",
+     *   "message": "Message to the signers",
+     *   "expires_at": "2024-07-30T23:59:00Z",
+     *   "tags": [
+     *     "example"
+     *   ],
+     *   "max_total_credits": 1.5
      * }
      * ```
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "document",
      *   "id": "id-placeholder",
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
-     *   "name": "Example",
-     *   "status": "uploaded",
-     *   "artifacts": {},
-     *   "is_closed": true,
+     *   "name": "document.pdf",
+     *   "status": "metadata_ready",
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
+     *   "is_closed": false,
      *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
-     *   "assignment": null,
-     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-     *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "verification_code": null,
-     *   "verification_url": null
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
      * }
      * ```
-     *
      * @param templateId Existing template identifier.
      * @param signers Non-empty role-mapped signers; this list replaces [options]' signer list.
-     * @param options Optional generated name, message, expiration, editor fields, and tags.
+     * Optional maxTotalCredits caps spending. idempotencyKey sends Idempotency-Key for an explicit retry of the same creation.
+     *
+     * @param options Optional generated name, message, expiration, editor fields, tags, credit ceiling and idempotency key.
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Uploaded document; assignment is null until asynchronous generation completes.
      * @throws ValidationException for blank identifiers, missing signer identity or invalid channels.
@@ -737,17 +1384,20 @@ class DocumentResource internal constructor(
     ): DocumentDetails {
         val tmplId = requireId(templateId, "Template ID")
         val accId = accountId(accountId)
+        ApiValidator.requireCreditCeiling(options.maxTotalCredits)
+        ApiValidator.requireIdempotencyKey(options.idempotencyKey)
         ApiValidator.requireAtLeastOne(signers, "template signer")
         signers.forEach {
             requireId(it.roleId, "Template role ID")
             if (it.id != null) requireId(it.id, "Template signer ID") else requireValidEmail(requireId(it.email, "Template signer email"))
             ApiValidator.requireValidSignerChannels(it.verificationMethod, it.notificationMethods)
+            ApiValidator.requireEmbeddedMethod(it.embedded, it.verificationMethod)
         }
         // Role-dependent steps and certificate compatibility are checked by the API using its template.
         logger.info("Creating document from template", mapOf("templateId" to tmplId, "accountId" to accId))
         val body = toJson(options.copy(signers = signers))
         return call("Failed to create document from template", DocumentDetails::class.java) {
-            http.post("/accounts/${pathSegment(accId)}/templates/${pathSegment(tmplId)}/documents", body)
+            http.postIdempotent("/accounts/${pathSegment(accId)}/templates/${pathSegment(tmplId)}/documents", body, options.idempotencyKey)
         }
     }
 
@@ -825,23 +1475,23 @@ class DocumentResource internal constructor(
      *
      * Request body: none.
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
-     *   "hash": "example",
-     *   "id": null,
-     *   "agreement_code": null,
-     *   "status": null,
-     *   "page_count": null,
-     *   "signer_count": null,
+     *   "hash": "FE32EDDADE7CBDDCBB934E7402047450B0E59C02",
+     *   "id": "id-placeholder",
+     *   "agreement_code": "550E8400-E29B-41D4-A716-446655440000",
+     *   "status": "certificated",
+     *   "page_count": "1",
+     *   "signer_count": "1",
      *   "completed_count": 1,
-     *   "completed_at": null,
-     *   "verified_at": "2026-01-01T00:00:00Z",
+     *   "completed_at": "2023-01-27T19:27:44Z",
+     *   "certificated_at": "2023-01-27T19:27:45Z",
+     *   "verified_at": "2023-01-27T19:27:46Z",
      *   "is_valid": true,
-     *   "message": "example"
+     *   "message": ""
      * }
      * ```
-     *
      * @param hash Verification hash printed in the signed document.
      * @return Server validation result and matching document details when available.
      */
@@ -980,30 +1630,131 @@ class DocumentResource internal constructor(
      *
      * Request body: none.
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "document",
      *   "id": "id-placeholder",
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
-     *   "name": "Example",
-     *   "status": "certificated",
-     *   "artifacts": {},
-     *   "is_closed": true,
+     *   "name": "document.pdf",
+     *   "status": "metadata_ready",
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
+     *   "is_closed": false,
      *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
-     *   "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-     *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "verification_code": null,
-     *   "verification_url": null
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
      * }
      * ```
-     *
      * @param documentId Stable document identifier.
      * @return `true` for `certificated` status or a non-empty fully completed assignment summary.
      */
@@ -1024,30 +1775,131 @@ class DocumentResource internal constructor(
      *
      * Request body: none.
      *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+     * Response `data` inside `{status,message,data}`:
      * ```json
      * {
      *   "resource": "document",
      *   "id": "id-placeholder",
      *   "account_id": "account-id-placeholder",
      *   "template_id": null,
-     *   "name": "Example",
-     *   "status": "certificated",
-     *   "artifacts": {},
-     *   "is_closed": true,
+     *   "name": "document.pdf",
+     *   "status": "metadata_ready",
+     *   "artifacts": {
+     *     "original": "https://example.com/resource"
+     *   },
+     *   "is_closed": false,
      *   "signing_url": "https://example.com/resource",
+     *   "verification_code": "verification-code-placeholder",
+     *   "verification_url": "https://example.com/resource",
      *   "decline_reason": null,
-     *   "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-     *   "tags": [{"id": "id-placeholder", "name": "Example"}],
-     *   "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-     *   "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-     *   "created_at": "2026-01-01T00:00:00Z",
-     *   "updated_at": "2026-01-01T00:00:00Z",
-     *   "verification_code": null,
-     *   "verification_url": null
+     *   "declined_by": {
+     *     "resource": "signer",
+     *     "id": "id-placeholder",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": "+5548999990000",
+     *     "government_id": "government-id-placeholder",
+     *     "has_accepted_terms": false
+     *   },
+     *   "tags": [
+     *     {
+     *       "id": "example",
+     *       "name": "example",
+     *       "color": "ff8800"
+     *     }
+     *   ],
+     *   "assignment": {
+     *     "resource": "assignment",
+     *     "id": "id-placeholder",
+     *     "document_id": "document-id-placeholder",
+     *     "created_at": "2026-06-03T03:54:16Z",
+     *     "sender_email": "person@example.com",
+     *     "method": "virtual",
+     *     "expires_at": null,
+     *     "message": "example",
+     *     "signers": [
+     *       {
+     *         "resource": "signer",
+     *         "id": "id-placeholder",
+     *         "full_name": "Example Person",
+     *         "email": "person@example.com",
+     *         "whatsapp_phone_number": "+5548999990000",
+     *         "government_id": "government-id-placeholder",
+     *         "has_accepted_terms": false,
+     *         "verification_method": "Email",
+     *         "notification_methods": [
+     *           "example"
+     *         ],
+     *         "step": 1,
+     *         "notified": true,
+     *         "identity_verification_status": "InReview",
+     *         "completed": true,
+     *         "notification_history": [
+     *           {
+     *             "event": "signature_request",
+     *             "status": "failed",
+     *             "error_code": "MailboxFull",
+     *             "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+     *             "sent_at": "2026-07-07T12:00:00Z",
+     *             "failed_at": "2026-07-07T12:05:00Z"
+     *           }
+     *         ]
+     *       }
+     *     ],
+     *     "copy_receivers": [
+     *       {}
+     *     ],
+     *     "items": [
+     *       {
+     *         "id": "example",
+     *         "page": {
+     *           "id": "id-placeholder",
+     *           "number": 1,
+     *           "height": 2100,
+     *           "width": 1275,
+     *           "download_url": "https://example.com/resource"
+     *         },
+     *         "signer": {},
+     *         "field": {},
+     *         "display_settings": null,
+     *         "value": null,
+     *         "completed": true
+     *       }
+     *     ],
+     *     "summary": {
+     *       "signer_count": 1,
+     *       "completed_count": 1,
+     *       "signers": [
+     *         {}
+     *       ]
+     *     },
+     *     "signing_urls": [
+     *       {
+     *         "signer_id": "example",
+     *         "url": "https://example.com/resource",
+     *         "embedded": false
+     *       }
+     *     ]
+     *   },
+     *   "pages": [
+     *     {
+     *       "id": "id-placeholder",
+     *       "number": 1,
+     *       "height": 2100,
+     *       "width": 1275,
+     *       "download_url": "https://example.com/resource"
+     *     }
+     *   ],
+     *   "envelope_id": null,
+     *   "envelope": {
+     *     "id": "id-placeholder",
+     *     "name": "Contrato de prestação de serviços"
+     *   },
+     *   "has_contract": true,
+     *   "created_at": "2026-06-03T03:54:16Z",
+     *   "updated_at": "2026-06-03T03:54:16Z"
      * }
      * ```
-     *
      * @param documentId Stable document identifier.
      * @return Signed, total, pending, and percentage values; all zero when no assignment exists.
      */
@@ -1100,28 +1952,19 @@ class DocumentResource internal constructor(
      *
      * Wire operation: `PUT /v1/documents/{documentId}/signers/confirm-data`.
      *
-     * Request body (`application/json`; optional members may be omitted):
+     * Request body (`application/json`; optional fields may be omitted):
      * ```json
      * {
-     *   "full_name": "Example",
      *   "email": "person@example.com",
-     *   "government_id": "government-id-placeholder"
-     * }
-     * ```
-     *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-     * ```json
-     * {
-     *   "resource": "signer",
-     *   "id": "id-placeholder",
-     *   "full_name": "Example",
-     *   "email": null,
-     *   "whatsapp_phone_number": null,
-     *   "government_id": null,
+     *   "whatsapp_phone_number": "+5548999990000",
      *   "has_accepted_terms": true
      * }
      * ```
      *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * []
+     * ```
      * @param documentId Stable document identifier.
      * @param signerAccessCode One-time signer code sent only in the query string.
      * @param data Non-empty legacy identity map sent unchanged as JSON.
@@ -1137,42 +1980,28 @@ class DocumentResource internal constructor(
         val docId = requireId(documentId, "Document ID")
         val code = requireId(signerAccessCode, "Signer access code")
         if (data.isEmpty()) throw ValidationException("At least one signer identity field is required")
-        return call("Failed to confirm signer data", Signer::class.java) {
-            publicHttp.put(
-                "/documents/${pathSegment(docId)}/signers/confirm-data${queryString("signer-access-code" to code)}",
-                toJson(data),
-            )
-        }
+        return SignerDocumentResource(publicHttp).confirmDataBody(docId, code, data)
     }
 
     /**
      * Typed compatibility overload of [confirmSignerData]; unset official fields are omitted and
-     * deprecated compatibility properties are ignored.
+     * phone and explicit terms acceptance are sent when supplied.
      *
      * Wire operation: `PUT /v1/documents/{documentId}/signers/confirm-data`.
      *
-     * Request body (`application/json`; optional members may be omitted):
+     * Request body (`application/json`; optional fields may be omitted):
      * ```json
      * {
-     *   "full_name": "Example",
      *   "email": "person@example.com",
-     *   "government_id": "government-id-placeholder"
-     * }
-     * ```
-     *
-     * Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-     * ```json
-     * {
-     *   "resource": "signer",
-     *   "id": "id-placeholder",
-     *   "full_name": "Example",
-     *   "email": null,
-     *   "whatsapp_phone_number": null,
-     *   "government_id": null,
+     *   "whatsapp_phone_number": "+5548999990000",
      *   "has_accepted_terms": true
      * }
      * ```
      *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * []
+     * ```
      * @param documentId Stable document identifier.
      * @param signerAccessCode One-time signer code sent only in the query string.
      * @param request Supported signer identity changes.

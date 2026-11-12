@@ -2,12 +2,15 @@ package com.assinafy.sdk.resources
 
 import com.assinafy.sdk.Logger
 import com.assinafy.sdk.NoOpLogger
+import com.assinafy.sdk.NotificationEvent
 import com.assinafy.sdk.NotificationSenderType
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.AccountTheme
+import com.assinafy.sdk.models.AccountUsage
 import com.assinafy.sdk.models.DocumentStatsGranularity
 import com.assinafy.sdk.models.DocumentStatsRow
+import com.assinafy.sdk.models.NotificationPolicy
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.Workspace
 import com.assinafy.sdk.models.WorkspaceListItem
@@ -146,10 +149,46 @@ class WorkspaceResource internal constructor(
      * @param accountId Stable account identifier.
      * @return Complete account record.
      */
-    suspend fun get(accountId: String): Workspace {
+    suspend fun get(accountId: String): Workspace = get(accountId, expandSigningFeatures = false)
+
+    /**
+     * Get account. Set expandSigningFeatures to send expand=signing_features. Feature flags describe current entitlements; estimates still check balances and request rules.
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}`.
+     *
+     * Request body: none.
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "resource": "account",
+     *   "id": "id-placeholder",
+     *   "name": "Acme Inc.",
+     *   "primary_color": "aabbcc",
+     *   "secondary_color": "112233",
+     *   "notification_sender_type": "User",
+     *   "roles": [
+     *     "example"
+     *   ],
+     *   "is_delete_allowed": true,
+     *   "limits": {
+     *     "webhook_endpoints": 1
+     *   },
+     *   "signing_features": {
+     *     "DigitalCertificate": true,
+     *     "VerificationIdDocumentFaceMatchBasic": false,
+     *     "WhatsappNotification": true,
+     *     "VerificationBypass": false,
+     *     "Embed": false
+     *   },
+     *   "created_at": "2026-06-03T03:54:16Z"
+     * }
+     * ```
+     */
+    suspend fun get(accountId: String, expandSigningFeatures: Boolean): Workspace {
         val id = requireId(accountId, "Account ID")
         return call("Failed to fetch workspace", Workspace::class.java) {
-            http.get("/accounts/${pathSegment(id)}")
+            http.get("/accounts/${pathSegment(id)}", if (expandSigningFeatures) mapOf("expand" to "signing_features") else emptyMap())
         }
     }
 
@@ -446,5 +485,145 @@ class WorkspaceResource internal constructor(
         private val HEX_COLOR = Regex("^[0-9a-fA-F]{6}$")
         private val MONTH = Regex("^\\d{4}-(0[1-9]|1[0-2])$")
         private val GRANULARITIES = DocumentStatsGranularity.entries.map { it.wireValue }.toSet()
+    }
+
+    /**
+     * Get account usage. Uses account:read; balances can be unlimited (null).
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/usage`.
+     *
+     * Request body: none.
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "plan": "Pro",
+     *   "documents_renewal_date": "2026-12-01",
+     *   "balances": {
+     *     "documents": {
+     *       "balance": 100,
+     *       "limit": 100,
+     *       "spent": 0
+     *     },
+     *     "credits": {
+     *       "balance": 100,
+     *       "limit": 100,
+     *       "spent": 0
+     *     }
+     *   }
+     * }
+     * ```
+     */
+    suspend fun getUsage(accountId: String): AccountUsage {
+        val id = pathSegment(requireId(accountId, "Account ID"))
+        return call("Failed to fetch account usage", AccountUsage::class.java) { http.get("/accounts/$id/usage") }
+    }
+
+    /**
+     * Get the workspace notification policy.
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/notification-policy`.
+     *
+     * Request body: none.
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "editable": true,
+     *   "owners_receive_all": false,
+     *   "events": {
+     *     "DocumentCompleted": true,
+     *     "SignerDeclined": true,
+     *     "DocumentCancelled": true,
+     *     "DocumentAboutToExpire": true,
+     *     "DocumentExpired": true,
+     *     "DocumentExpirationReset": true,
+     *     "DocumentProcessingFailed": true,
+     *     "TemplateProcessingFailed": true,
+     *     "SignerWhatsappFailed": true,
+     *     "ContractRenewalNotice": true,
+     *     "ContractExpiring": true,
+     *     "ContractExpired": true,
+     *     "ContractRenewed": true,
+     *     "SignerViewed": false,
+     *     "SignerSigned": true,
+     *     "SignerIdentityReviewRequired": true
+     *   }
+     * }
+     * ```
+     */
+    suspend fun getNotificationPolicy(accountId: String): NotificationPolicy {
+        val id = pathSegment(requireId(accountId, "Account ID"))
+        return call("Failed to fetch notification policy", NotificationPolicy::class.java) { http.get("/accounts/$id/notification-policy") }
+    }
+
+    /**
+     * Update the workspace notification policy. Owners only. Omitted keys remain unchanged; identity-review email cannot be disabled.
+     *
+     * Wire operation: `PUT /v1/accounts/{accountId}/notification-policy`.
+     *
+     * Request body (`application/json`; optional fields may be omitted):
+     * ```json
+     * {
+     *   "events": {
+     *     "DocumentCompleted": true,
+     *     "SignerDeclined": true,
+     *     "DocumentCancelled": true,
+     *     "DocumentAboutToExpire": true,
+     *     "DocumentExpired": true,
+     *     "DocumentExpirationReset": true,
+     *     "DocumentProcessingFailed": true,
+     *     "TemplateProcessingFailed": true,
+     *     "SignerWhatsappFailed": true,
+     *     "ContractRenewalNotice": true,
+     *     "ContractExpiring": true,
+     *     "ContractExpired": true,
+     *     "ContractRenewed": true,
+     *     "SignerViewed": false,
+     *     "SignerSigned": true,
+     *     "SignerIdentityReviewRequired": true
+     *   },
+     *   "owners_receive_all": true
+     * }
+     * ```
+     *
+     * Response `data` inside `{status,message,data}`:
+     * ```json
+     * {
+     *   "editable": true,
+     *   "owners_receive_all": false,
+     *   "events": {
+     *     "DocumentCompleted": true,
+     *     "SignerDeclined": true,
+     *     "DocumentCancelled": true,
+     *     "DocumentAboutToExpire": true,
+     *     "DocumentExpired": true,
+     *     "DocumentExpirationReset": true,
+     *     "DocumentProcessingFailed": true,
+     *     "TemplateProcessingFailed": true,
+     *     "SignerWhatsappFailed": true,
+     *     "ContractRenewalNotice": true,
+     *     "ContractExpiring": true,
+     *     "ContractExpired": true,
+     *     "ContractRenewed": true,
+     *     "SignerViewed": false,
+     *     "SignerSigned": true,
+     *     "SignerIdentityReviewRequired": true
+     *   }
+     * }
+     * ```
+     */
+    suspend fun updateNotificationPolicy(
+        accountId: String,
+        events: Map<String, Boolean>? = null,
+        ownersReceiveAll: Boolean? = null,
+    ): NotificationPolicy {
+        val id = pathSegment(requireId(accountId, "Account ID"))
+        if (events?.keys?.any { it !in NotificationEvent.ALL } == true) throw ValidationException("Unknown notification event")
+        if (events.isNullOrEmpty() && ownersReceiveAll == null) throw ValidationException("At least one notification policy change is required")
+        val body = mapOf("events" to events, "owners_receive_all" to ownersReceiveAll)
+        return call("Failed to update notification policy", NotificationPolicy::class.java) {
+            http.put("/accounts/$id/notification-policy", toJson(body))
+        }
     }
 }

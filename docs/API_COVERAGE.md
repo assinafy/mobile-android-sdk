@@ -1,292 +1,239 @@
-# Assinafy v1 API coverage
+# Assinafy v1 operations
 
-This SDK covers every operation in the Assinafy v1 OpenAPI document published at
-[`https://api.assinafy.com.br/v1/docs/openapi.json`](https://api.assinafy.com.br/v1/docs/openapi.json).
+Integration mappings for the [live API contract](https://api.assinafy.com.br/v1/docs/openapi.json).
 
-- Paths: 90
-- Operations: **118 covered / 118 documented**
-- API base URL: `https://api.assinafy.com.br/v1`
+The contract defines 147 operations. The SDK maps 146 integration operations; the embed-token exchange is performed only by the hosted signing page.
 
-Authentication modes below are:
+Account calls use an API key or scoped bearer token. Signer calls use the credential-free transport
+and their access code. Download links carry their own token. Public OAuth uses PKCE without a client
+secret; internal token-exchange grants are outside the Android client.
 
-- **Account** — `X-Api-Key` or `Authorization: Bearer ...`; account-scoped calls use an explicit
-  `accountId` or the client's default.
-- **Signer** — no account credential; `signer-access-code` is sent in the query string.
-- **OAuth** — `Authorization: Bearer` carrying a token issued by the authorization server, scoped to
-  one workspace and to the permissions its user approved.
-- **Public** — no credential.
+## Accounts
 
-The SDK method column omits the leading `client.`. Kotlin aliases and local convenience helpers are
-documented in [API_REFERENCE.md](API_REFERENCE.md).
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}` | `workspaces.get` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}` | `workspaces.update` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}` | `workspaces.delete` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/theme` | `workspaces.getTheme` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/usage` | `workspaces.getUsage` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/logo` | `workspaces.getLogo` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/logo` | `workspaces.uploadLogo` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/logo` | `workspaces.deleteLogo` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts` | `workspaces.list` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts` | `workspaces.create` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/notification-policy` | `workspaces.getNotificationPolicy` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/notification-policy` | `workspaces.updateNotificationPolicy` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/stats` | `workspaces.getStats` | apiKeyAuth, bearerAuth |
 
-“Covered” means the operation has a public SDK mapping; the unit suite tests resource serialization
-and shared transport/response behavior. It does not mean every destructive, credential-rotation,
-social-login, OTP, or signer-state success path is run against a shared live account;
-[TESTING.md](TESTING.md) defines the safe live-test boundary.
+## Documents
 
-## Accounts (10/10)
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/documents/{documentId}/activities` | `documents.activities` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/documents` | `documents.list` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/documents` | `documents.upload` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/documents/search` | `documents.search` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/statuses` | `documents.getStatuses` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}` | `documents.details` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `DELETE /v1/documents/{documentId}` | `documents.delete` | apiKeyAuth, bearerAuth |
+| `PATCH /v1/documents/{documentId}` | `documents.rename` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}/download/{artifactName}` | `documents.download` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `GET /v1/documents/{documentSignatureHash}/verify` | `documents.verify` | Public |
+| `GET /v1/accounts/{accountId}/documents/{documentId}/tags` | `documents.listTags` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/documents/{documentId}/tags` | `documents.replaceTags` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/documents/{documentId}/tags` | `documents.addTags` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}` | `documents.detachTag` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}/thumbnail` | `documents.thumbnail` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `GET /v1/documents/{documentId}/pages/{pageId}/download` | `documents.downloadPage` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `POST /v1/accounts/{accountId}/templates/{templateId}/documents` | `documents.createFromTemplate` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `documents.estimateCostFromTemplate` | apiKeyAuth, bearerAuth |
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/accounts/{accountId}` | `workspaces.get(accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}` | `workspaces.update(accountId, request)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}` | `workspaces.delete(accountId, force)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/theme` | `workspaces.getTheme(accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/logo` | `workspaces.getLogo(accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/logo` | `workspaces.uploadLogo(accountId, ...)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}/logo` | `workspaces.deleteLogo(accountId)` | Account | Covered |
-| `GET /v1/accounts` | `workspaces.list()` | Account | Covered |
-| `POST /v1/accounts` | `workspaces.create(request)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/stats` | `workspaces.getStats(...)` | Account | Covered |
+## Assignments
 
-## Assignments (10/10)
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/assignments` | `assignments.list` | apiKeyAuth, bearerAuth |
+| `POST /v1/documents/{documentId}/assignments` | `assignments.create` | apiKeyAuth, bearerAuth |
+| `POST /v1/documents/{documentId}/assignments/estimate-cost` | `assignments.estimateCost` | apiKeyAuth, bearerAuth |
+| `PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend` | `assignments.resendNotification` | apiKeyAuth, bearerAuth |
+| `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost` | `assignments.estimateResendCost` | apiKeyAuth, bearerAuth |
+| `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration` | `assignments.resetExpiration` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification` | `assignments.getIdentityVerification` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}` | `assignments.downloadIdentityVerificationImage` | apiKeyAuth, bearerAuth |
+| `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review` | `assignments.reviewIdentityVerification` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications` | `assignments.listWhatsappNotifications` | apiKeyAuth, bearerAuth |
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/assignments` | `assignments.list(params, accountId)` | Account | Covered |
-| `POST /v1/documents/{documentId}/assignments` | `assignments.create(documentId, request)` | Account | Covered |
-| `POST /v1/documents/{documentId}/assignments/estimate-cost` | `assignments.estimateCost(documentId, request)` | Account | Covered |
-| `PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend` | `assignments.resendNotification(...)` | Account | Covered |
-| `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost` | `assignments.estimateResendCost(...)` | Account | Covered |
-| `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration` | `assignments.resetExpiration(...)` | Account | Covered |
-| `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications` | `assignments.listWhatsappNotifications(...)` | Account | Covered |
-| `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification` | `assignments.getIdentityVerification(...)` | Account | Covered |
-| `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}` | `assignments.downloadIdentityVerificationImage(...)` | Account | Covered |
-| `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review` | `assignments.reviewIdentityVerification(...)` | Account | Covered |
+## Authentication
 
-Assignment listing sends `page`, `per-page`, `sort` and the explicit or configured `accountId`.
-API keys need the workspace query; OAuth can infer its authorized workspace.
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `POST /v1/login` | `authentication.login` | Public |
+| `PUT /v1/authentication/request-password-reset` | `authentication.requestPasswordReset` | Public |
+| `PUT /v1/authentication/reset-password` | `authentication.resetPassword` | Public |
+| `PUT /v1/authentication/change-password` | `authentication.changePassword` | apiKeyAuth, bearerAuth |
+| `POST /v1/authentication/mfa/verify` | `authentication.verifyMfa` | Public |
+| `GET /v1/users/self/mfa` | `authentication.listMfaMethods` | apiKeyAuth, bearerAuth |
+| `POST /v1/users/self/mfa/totp` | `authentication.startTotpEnrollment` | apiKeyAuth, bearerAuth |
+| `PUT /v1/users/self/mfa/totp/confirm` | `authentication.confirmTotpEnrollment` | apiKeyAuth, bearerAuth |
+| `POST /v1/users/self/mfa/recovery-codes` | `authentication.regenerateRecoveryCodes` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/users/self/mfa/{customId}` | `authentication.removeMfaMethod` | apiKeyAuth, bearerAuth |
+| `POST /v1/authentication/social-login` | `authentication.socialLogin` | Public |
+| `POST /v1/auth/link-social-login` | `authentication.linkSocialLogin` | apiKeyAuth, bearerAuth |
+| `GET /v1/users/api-keys` | `authentication.getApiKey` | apiKeyAuth, bearerAuth |
+| `POST /v1/users/api-keys` | `authentication.createApiKey` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/users/api-keys` | `authentication.deleteApiKey` | apiKeyAuth, bearerAuth |
 
-Assignment creation and estimation reject `DigitalCertificate` with `method=collect` locally under
-the stable `digital_certificate_requires_virtual_assignment` validation code.
+## Contracts
 
-## Authentication (15/15)
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/contracts` | `contracts.list` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/documents/{documentId}/contract` | `contracts.get` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/documents/{documentId}/contract` | `contracts.update` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related` | `contracts.related` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew` | `contracts.renew` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate` | `contracts.terminate` | apiKeyAuth, bearerAuth |
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `POST /v1/login` | `authentication.login(request)` | Public | Covered |
-| `PUT /v1/authentication/request-password-reset` | `authentication.requestPasswordReset(request)` | Public | Covered |
-| `PUT /v1/authentication/reset-password` | `authentication.resetPassword(request)` | Public | Covered |
-| `PUT /v1/authentication/change-password` | `authentication.changePassword(request)` | Account | Covered |
-| `POST /v1/authentication/social-login` | `authentication.socialLogin(request)` | Public | Covered |
-| `POST /v1/auth/link-social-login` | `authentication.linkSocialLogin(request)` | Account | Covered |
-| `GET /v1/users/api-keys` | `authentication.getApiKey()` | Account | Covered |
-| `POST /v1/users/api-keys` | `authentication.createApiKey(request)` | Account | Covered |
-| `DELETE /v1/users/api-keys` | `authentication.deleteApiKey()` | Account | Covered |
-| `POST /v1/authentication/mfa/verify` | `authentication.verifyMfa(request)` | Public | Covered |
-| `GET /v1/users/self/mfa` | `authentication.listMfaMethods()` | Account | Covered |
-| `POST /v1/users/self/mfa/totp` | `authentication.startTotpEnrollment(label)` | Account | Covered |
-| `PUT /v1/users/self/mfa/totp/confirm` | `authentication.confirmTotpEnrollment(request)` | Account | Covered |
-| `POST /v1/users/self/mfa/recovery-codes` | `authentication.regenerateRecoveryCodes(request)` | Account | Covered |
-| `DELETE /v1/users/self/mfa/{customId}` | `authentication.removeMfaMethod(methodId, request)` | Account | Covered |
+## Embedded Signing
 
-`authentication.login` and `authentication.socialLogin` throw `MfaRequiredException` when the user
-has two-factor authentication enabled; its `mfaToken` is the challenge `verifyMfa` exchanges for a
-session.
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/embed-origins` | `embeddedSigning.listOrigins` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/embed-origins` | `embeddedSigning.addOrigin` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/embed-origins/{originId}` | `embeddedSigning.updateOrigin` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/embed-origins/{originId}` | `embeddedSigning.deleteOrigin` | apiKeyAuth, bearerAuth |
+| `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/embed-sessions` | `embeddedSigning.createSession` | apiKeyAuth, bearerAuth |
+| `POST /v1/embed/sessions/{token}/exchange` | `Hosted embed page only; integrations use embeddedSigning.createSession` | Public |
 
-## Contracts (6/6)
+## Envelopes
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/accounts/{accountId}/contracts` | `contracts.list(params, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/documents/{documentId}/contract` | `contracts.get(documentId, accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/documents/{documentId}/contract` | `contracts.update(documentId, request, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related` | `contracts.related(documentId, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew` | `contracts.renew(documentId, request, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate` | `contracts.terminate(documentId, request, accountId)` | Account | Covered |
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/envelopes` | `envelopes.list` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/envelopes` | `envelopes.create` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/envelopes/estimate-cost` | `envelopes.estimateCost` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/envelopes/{envelopeId}` | `envelopes.get` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/envelopes/{envelopeId}` | `envelopes.delete` | apiKeyAuth, bearerAuth |
+| `PATCH /v1/accounts/{accountId}/envelopes/{envelopeId}` | `envelopes.update` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/envelopes/{envelopeId}/activities` | `envelopes.activities` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/envelopes/{envelopeId}/download/{artifactName}` | `envelopes.download` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/envelopes/{envelopeId}/cancel` | `envelopes.cancel` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/resend` | `envelopes.resendNotification` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/envelopes/{envelopeId}/documents` | `envelopes.addDocument` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/envelopes/{envelopeId}/documents/{documentId}` | `envelopes.removeDocument` | apiKeyAuth, bearerAuth |
 
-OAuth reads require `documents:read`; writes require `documents:write` and the account's contract-tracking entitlement.
-Contract reads and updates return `ContractRecord`, either root terms or an amendment link.
+## Fields
 
-## Documents (18/18)
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/fields` | `fields.list` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/fields` | `fields.create` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/fields/{fieldId}` | `fields.get` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/fields/{fieldId}` | `fields.update` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/fields/{fieldId}` | `fields.delete` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/fields/{fieldId}/validate` | `fields.validate` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `POST /v1/accounts/{accountId}/fields/validate-multiple` | `fields.validateMultiple` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `GET /v1/field-types` | `fields.listTypes` | apiKeyAuth, bearerAuth |
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/documents/{documentId}/activities` | `documents.activities(documentId, params)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/documents` | `documents.list(params, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/documents` | `documents.upload(...)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/documents/search` | `documents.search(...)` | Account | Covered |
-| `GET /v1/documents/statuses` | `documents.getStatuses()` | Account | Covered |
-| `GET /v1/documents/{documentId}` | `documents.details(documentId)` | Account | Covered |
-| `DELETE /v1/documents/{documentId}` | `documents.delete(documentId)` | Account | Covered |
-| `PATCH /v1/documents/{documentId}` | `documents.rename(documentId, name)` | Account | Covered |
-| `GET /v1/documents/{documentId}/download/{artifactName}` | `documents.download(documentId, artifactName)` | Account | Covered |
-| `GET /v1/documents/{documentSignatureHash}/verify` | `documents.verify(hash)` | Public | Covered |
-| `GET /v1/accounts/{accountId}/documents/{documentId}/tags` | `documents.listTags(documentId, accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/documents/{documentId}/tags` | `documents.replaceTags(documentId, tagIds, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/documents/{documentId}/tags` | `documents.addTags(documentId, tagIds, accountId)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}` | `documents.detachTag(...)` | Account | Covered |
-| `GET /v1/documents/{documentId}/thumbnail` | `documents.thumbnail(documentId)` | Account | Covered |
-| `GET /v1/documents/{documentId}/pages/{pageId}/download` | `documents.downloadPage(documentId, pageId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/templates/{templateId}/documents` | `documents.createFromTemplate(...)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost` | `documents.estimateCostFromTemplate(...)` | Account | Covered |
+## Users
 
-Template creation and estimates call only their POST endpoint. The API validates Signer-role fields
-and signing steps; Editor fields do not force collect signing and CopyReceiver roles do not sign.
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/users/self/notification-preferences` | `users.getNotificationPreferences` | apiKeyAuth, bearerAuth |
+| `PUT /v1/users/self/notification-preferences` | `users.updateNotificationPreferences` | apiKeyAuth, bearerAuth |
+| `GET /v1/users/self/push-preferences` | `users.getPushPreferences` | apiKeyAuth, bearerAuth |
+| `PUT /v1/users/self/push-preferences` | `users.updatePushPreferences` | apiKeyAuth, bearerAuth |
+| `GET /v1/users/self/stats` | `users.getStats` | apiKeyAuth, bearerAuth |
+| `GET /v1/users/self` | `users.getCurrent` | apiKeyAuth, bearerAuth |
 
-## Fields (8/8)
+## OAuth
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/accounts/{accountId}/fields` | `fields.list(...)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/fields` | `fields.create(request, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/fields/{fieldId}` | `fields.get(fieldId, accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/fields/{fieldId}` | `fields.update(fieldId, request, accountId)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}/fields/{fieldId}` | `fields.delete(fieldId, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/fields/{fieldId}/validate` | `fields.validate(fieldId, value, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/fields/validate-multiple` | `fields.validateMultiple(entries, accountId)` | Account | Covered |
-| `GET /v1/field-types` | `fields.listTypes()` | Account | Covered |
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `POST /v1/oauth/token` | `oauth.exchangeCode / refresh` | Public |
+| `POST /v1/oauth/revoke` | `oauth.revoke` | Public |
+| `GET /v1/oauth/userinfo` | `oauth.userInfo` | apiKeyAuth, bearerAuth |
+| `GET /.well-known/oauth-protected-resource` | `oauth.protectedResourceMetadata` | Public |
 
-## OAuth (4/4)
+## Signing
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `POST /v1/oauth/token` | `oauth.exchangeCode(code, codeVerifier, redirectUri)` and `oauth.refresh(refreshToken)` | Public | Covered |
-| `POST /v1/oauth/revoke` | `oauth.revoke(token, tokenTypeHint)` | Public | Covered |
-| `GET /v1/oauth/userinfo` | `oauth.userInfo()` | OAuth | Covered |
-| `GET /.well-known/oauth-protected-resource` | `oauth.protectedResourceMetadata()` | Public | Covered |
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/public/documents/{documentId}` | `documents.getPublic` | Public |
+| `PUT /v1/public/documents/{documentId}/send-token` | `documents.sendAccessToken` | Public |
+| `GET /v1/signers/self` | `signerDocuments.self` | signerAccessCode |
+| `GET /v1/sign/theme` | `signerDocuments.getTheme` | signerAccessCode |
+| `GET /v1/sign/logo` | `signerDocuments.getLogo` | signerAccessCode |
+| `GET /v1/signers/identity-verification` | `signerDocuments.getIdentityVerification` | signerAccessCode |
+| `POST /v1/signers/identity-verification` | `signerDocuments.startIdentityVerification` | signerAccessCode |
+| `GET /v1/signers/{signerId}/document` | `signerDocuments.getCurrent` | signerAccessCode |
+| `GET /v1/sign` | `signerDocuments.getAssignment` | signerAccessCode |
+| `POST /v1/documents/{documentId}/assignments/{assignmentId}` | `signerDocuments.sign` | signerAccessCode |
+| `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject` | `assignments.decline` | signerAccessCode |
+| `PUT /v1/signers/documents/sign-multiple` | `signerDocuments.signMultiple` | signerAccessCode |
+| `PUT /v1/signers/documents/decline-multiple` | `signerDocuments.declineMultiple` | signerAccessCode |
+| `POST /v1/verify` | `signerDocuments.verifyEmail` | signerAccessCode |
+| `PUT /v1/documents/{documentId}/signers/confirm-data` | `documents.confirmSignerData` | signerAccessCode |
+| `PUT /v1/signers/accept-terms` | `signerDocuments.acceptTerms` | signerAccessCode |
+| `POST /v1/signature` | `signerDocuments.uploadSignature` | signerAccessCode |
+| `GET /v1/signature/{signatureType}` | `signerDocuments.downloadSignature` | signerAccessCode |
+| `GET /v1/signers/{signerId}/documents` | `signerDocuments.list` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `GET /v1/signers/{signerId}/documents/search` | `signerDocuments.search` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}` | `signerDocuments.download` | signerAccessCode |
+| `POST /v1/sign/certified-copy` | `signerDocuments.resendCertifiedCopy` | signerAccessCode |
+| `GET /v1/signers/downloads/{token}` | `signerDocuments.downloadCertifiedCopy` | Public |
+| `POST /v1/signers/downloads/{token}/resend` | `signerDocuments.resendCertifiedCopyByToken` | Public |
 
-`oauth.authorizationRequest(...)` and `oauth.parseCallback(...)` are local: they build the
-authorization URL with its PKCE pair and validate the redirect's `state` and `iss`. Neither performs
-a request, so neither maps to an operation above.
+## Signers
 
-`oauth.authorizationServerMetadata(issuer)` reads the RFC 8414 document from the authorization
-server (`https://auth.assinafy.com.br/.well-known/oauth-authorization-server`). That document is
-served by the issuer, not by this API, so it is likewise not one of the 118 operations.
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/signers` | `signers.list` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/signers` | `signers.create` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/signers/{signerId}` | `signers.get` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/signers/{signerId}` | `signers.update` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/signers/{signerId}` | `signers.delete` | apiKeyAuth, bearerAuth |
 
-These four endpoints are the only ones that do not use the `{status, message, data}` envelope: they
-answer with flat RFC 6749, OpenID Connect, and RFC 9728 objects, and the SDK raises `OAuthException`
-carrying the standard `error` code rather than `ApiException`.
+## Tags
 
-## Signers (5/5)
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/tags` | `tags.list` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/tags` | `tags.create` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/tags/{tagId}` | `tags.update` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/tags/{tagId}` | `tags.delete` | apiKeyAuth, bearerAuth |
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/accounts/{accountId}/signers` | `signers.list(params, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/signers` | `signers.create(request, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/signers/{signerId}` | `signers.get(signerId, accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/signers/{signerId}` | `signers.update(signerId, request, accountId)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}/signers/{signerId}` | `signers.delete(signerId, accountId)` | Account | Covered |
+## Templates
 
-## Signing (19/19)
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/templates` | `templates.list` | apiKeyAuth, bearerAuth |
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/signers/self` | `signerDocuments.self(accessCode)` | Signer | Covered |
-| `GET /v1/signers/{signerId}/document` | `signerDocuments.getCurrent(...)` | Signer | Covered |
-| `GET /v1/sign` | `signerDocuments.getAssignment(...)` | Signer | Covered |
-| `POST /v1/documents/{documentId}/assignments/{assignmentId}` | `signerDocuments.sign(...)` | Signer | Covered |
-| `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject` | `signerDocuments.decline(...)` | Signer | Covered |
-| `PUT /v1/signers/documents/sign-multiple` | `signerDocuments.signMultiple(...)` | Signer | Covered |
-| `PUT /v1/signers/documents/decline-multiple` | `signerDocuments.declineMultiple(...)` | Signer | Covered |
-| `POST /v1/verify` | `signerDocuments.verifyEmail(...)` | Signer | Covered |
-| `PUT /v1/documents/{documentId}/signers/confirm-data` | `signerDocuments.confirmData(...)` | Signer | Covered |
-| `PUT /v1/signers/accept-terms` | `signerDocuments.acceptTerms(accessCode)` | Signer | Covered |
-| `POST /v1/signature` | `signerDocuments.uploadSignature(...)` | Signer | Covered |
-| `GET /v1/signature/{signatureType}` | `signerDocuments.downloadSignature(...)` | Signer | Covered |
-| `GET /v1/signers/{signerId}/documents` | `signerDocuments.list(...)`; `signers.listDocumentsAsWorkspace(...)` | Signer; Account | Covered |
-| `GET /v1/signers/{signerId}/documents/search` | `signerDocuments.search(...)`; `signers.searchDocumentsAsWorkspace(...)` | Signer; Account | Covered |
-| `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}` | `signerDocuments.download(...)` | Public | Covered |
-| `GET /v1/public/documents/{documentId}` | `documents.getPublic(documentId)` | Public | Covered |
-| `PUT /v1/public/documents/{documentId}/send-token` | `documents.sendAccessToken(documentId, email)` | Public | Covered |
-| `GET /v1/signers/identity-verification` | `signerDocuments.getIdentityVerification(accessCode)` | Signer | Covered |
-| `POST /v1/signers/identity-verification` | `signerDocuments.startIdentityVerification(accessCode, consent)` | Signer | Covered |
+## Webhooks
 
-## Tags (4/4)
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/accounts/{accountId}/webhooks/subscriptions` | `webhooks.get` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/webhooks/subscriptions` | `webhooks.register` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/webhooks/inactivate` | `webhooks.inactivate` | apiKeyAuth, bearerAuth |
+| `GET /v1/webhooks/event-types` | `webhooks.listEventTypes` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/webhooks` | `webhooks.listDispatches` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry` | `webhooks.retryDispatch` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.listEndpoints` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.createEndpoint` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.deleteEndpointByUrl` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.getEndpoint` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.updateEndpoint` | apiKeyAuth, bearerAuth |
+| `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.deleteEndpoint` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` | `webhooks.getEndpointSecret` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` | `webhooks.rotateEndpointSecret` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/test` | `webhooks.testEndpoint` | apiKeyAuth, bearerAuth |
 
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/accounts/{accountId}/tags` | `tags.list(search, accountId)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/tags` | `tags.create(name, color, accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/tags/{tagId}` | `tags.update(...)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}/tags/{tagId}` | `tags.delete(tagId, force, accountId)` | Account | Covered |
+## Additional integration behavior
 
-## Templates (1/1)
-
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/accounts/{accountId}/templates` | `templates.list(params, accountId)` | Account | Covered |
-
-## Users (4/4)
-
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/users/self` | `users.getCurrent()` | Account | Covered |
-| `GET /v1/users/self/stats` | `users.getStats(query)` | Account | Covered |
-| `GET /v1/users/self/notification-preferences` | `users.getNotificationPreferences()` | Account | Covered |
-| `PUT /v1/users/self/notification-preferences` | `users.updateNotificationPreferences(request)` | Account | Covered |
-
-## Webhooks (14/14)
-
-| Operation | SDK method | Auth | Status |
-|---|---|---|---|
-| `GET /v1/accounts/{accountId}/webhooks/subscriptions` | `webhooks.get(accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/webhooks/subscriptions` | `webhooks.register(request, accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/webhooks/inactivate` | `webhooks.inactivate(accountId)` | Account | Covered |
-| `GET /v1/webhooks/event-types` | `webhooks.listEventTypes()` | Account | Covered |
-| `GET /v1/accounts/{accountId}/webhooks` | `webhooks.listDispatches(...)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry` | `webhooks.retryDispatch(historyId, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.listEndpoints(accountId, url)` | Account | Covered |
-| `POST /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.createEndpoint(request, accountId)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}/webhooks/endpoints` | `webhooks.deleteEndpointByUrl(url, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.getEndpoint(endpointId, accountId)` | Account | Covered |
-| `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.updateEndpoint(endpointId, request, accountId)` | Account | Covered |
-| `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}` | `webhooks.deleteEndpoint(endpointId, accountId)` | Account | Covered |
-| `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` | `webhooks.getEndpointSecret(endpointId, accountId)` | API key | Covered |
-| `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` | `webhooks.rotateEndpointSecret(endpointId, accountId)` | Account (`webhooks:write` for OAuth) | Covered |
-
-An account has 1 webhook endpoint, or up to 3 on paid plans; `createEndpoint` past the limit answers
-`403`. The subscription operations (`get`, `register`, `inactivate`) act on the account's oldest
-endpoint. `listDispatches(WebhookDispatchParams(...))` sends the `endpoint_id`, `event`,
-`delivered`, `from`, `to`, `page` and `per-page` filters. Reading an existing secret requires an API key; rotation accepts OAuth with `webhooks:write`. Signed deliveries follow Standard
-Webhooks and are checked locally by `WebhookVerifier.verifySignature`, which performs no request.
-
-The internal-service RFC 8693 token-exchange grant requires a confidential client secret and is not
-an Android Public-client flow. The OAuth token operation maps authorization-code and refresh grants.
-
-## Retained compatibility route
-
-`templates.get(templateId, accountId)` calls
-`GET /v1/accounts/{accountId}/templates/{templateId}`. The route is absent from the OpenAPI document
-but answers `200` with the complete template — pages, roles, and tags — on the deployed service, so
-it is retained. It is not counted among the 118 OpenAPI operations. No other undocumented HTTP route
-is added by the SDK.
-
-`POST /v1/signers/certificate/start` and `/complete` also answer on the deployed service and are
-deliberately not mapped: they drive the Web PKI browser-extension handshake for ICP-Brasil A1/A3
-signing, which a native client cannot complete. A digital-certificate signer is sent to the web
-signing page instead.
-
-## Public token delivery
-
-`documents.sendAccessToken` sends `PUT /v1/public/documents/{documentId}/send-token` with
-`{"channel":"email","recipient":"signer@example.com"}` and returns `data`
-`{document, channel, recipient}` as `AccessTokenDelivery`. Both members are required and `email` is
-the only channel. The deprecated `documents.sendToken` sends the same request.
-
-## Signer access code and workspace credentials
-
-Signer methods take the access code as a required argument, reject a blank one before any request,
-and send only that code (`signer-access-code` query) on the credential-free transport. The two
-routes the OpenAPI document also opens to account credentials are reached through separate methods,
-`signers.listDocumentsAsWorkspace` and `signers.searchDocumentsAsWorkspace`.
-
-## Rate limits
-
-A `429` that reaches the caller raises `ApiException` with `retryAfter` (`Retry-After`, seconds) and
-`rateLimitLimit`, `rateLimitRemaining`, `rateLimitReset` (`X-Rate-Limit-*`).
-
-## Retained compatibility behavior
-
-These are opt-in wire extensions kept for older deployments. None adds an operation, and none is on
-the default request path:
-
-- document upload adds multipart `name` and JSON-string `metadata` beside the OpenAPI `file` part
-  only when the caller explicitly supplies metadata;
-- notification resend adds the deployed API's `channel` JSON body only when the caller explicitly
-  passes that compatibility parameter;
-- document tag mutations pass the supplied strings unchanged. IDs attach existing tags; a supplied tag name creates the tag if it does not exist yet;
-- account create/update may send the deprecated six-digit `primary_color` and `secondary_color`
-  fields when callers explicitly use them;
-- `signers.create` may send the deprecated `metadata` field when callers explicitly use it; the
-  deprecated `cpf` value is sent as `government_id` on create and update when `governmentId` is not set.
+`templates.get` retains the deployed single-template read although it is absent from OpenAPI.
+Certificate start/complete routes require the Web PKI browser extension; use the hosted signing
+page for A1/A3 completion. Public request/response examples, overloads and compatibility extensions
+are described in [API_REFERENCE.md](API_REFERENCE.md). Test prerequisites and live-test boundaries
+are described in [TESTING.md](TESTING.md).

@@ -15,6 +15,7 @@ import com.google.gson.annotations.SerializedName
  * @property roles Authenticated user's roles when included by the endpoint projection.
  * @property createdAt ISO-8601 creation timestamp.
  * @property limits Current plan limits returned by the API.
+ * @property signingFeatures Current subscription features, only when explicitly expanded.
  */
 data class Workspace(
     @SerializedName("resource") val resource: String? = null,
@@ -27,6 +28,7 @@ data class Workspace(
     @SerializedName("roles") val roles: List<String>? = null,
     @SerializedName("created_at") val createdAt: String? = null,
     @SerializedName("limits") val limits: WorkspaceLimits? = null,
+    @SerializedName("signing_features") val signingFeatures: SigningFeatures? = null,
 )
 
 /** List and single-account endpoints return the same account shape. */
@@ -54,4 +56,20 @@ data class AccountTheme(
  */
 data class WorkspaceLimits(
     @SerializedName("webhook_endpoints") val webhookEndpoints: Int? = null,
+)
+
+/**
+ * Current workspace signing entitlements; balances and operation-specific rules still apply.
+ * @property digitalCertificate ICP-Brasil certificate signing.
+ * @property identityDocumentFaceMatch ID document and face verification.
+ * @property whatsappNotification WhatsApp invitations and OTP verification.
+ * @property verificationBypass Workspace bypass entitlement, independent of the public method catalog.
+ * @property embed Embedded signing and origin management.
+ */
+data class SigningFeatures(
+    @SerializedName("DigitalCertificate") val digitalCertificate: Boolean,
+    @SerializedName("VerificationIdDocumentFaceMatchBasic") val identityDocumentFaceMatch: Boolean,
+    @SerializedName("WhatsappNotification") val whatsappNotification: Boolean,
+    @SerializedName("VerificationBypass") val verificationBypass: Boolean,
+    @SerializedName("Embed") val embed: Boolean,
 )

@@ -13,6 +13,8 @@ import com.assinafy.sdk.resources.AssignmentResource
 import com.assinafy.sdk.resources.AuthenticationResource
 import com.assinafy.sdk.resources.ContractResource
 import com.assinafy.sdk.resources.DocumentResource
+import com.assinafy.sdk.resources.EmbeddedSigningResource
+import com.assinafy.sdk.resources.EnvelopeResource
 import com.assinafy.sdk.resources.FieldResource
 import com.assinafy.sdk.resources.OAuthResource
 import com.assinafy.sdk.resources.SignerDocumentResource
@@ -48,6 +50,8 @@ data class UploadAndRequestSignaturesResult(
  *
  * @property authentication Human-user authentication and API-key operations.
  * @property documents Account and public document operations.
+ * @property envelopes Multiple documents sent together with one invitation per signer.
+ * @property embeddedSigning Allowed iframe origins and short-lived signing sessions.
  * @property contracts Document contract terms, amendments, renewal and termination.
  * @property signers Account signer management and legacy signer-facing operations.
  * @property signerDocuments Signer-facing document and signing operations.
@@ -65,6 +69,8 @@ class AssinafyClient internal constructor(
     val authentication: AuthenticationResource,
     val documents: DocumentResource,
     val contracts: ContractResource,
+    val envelopes: EnvelopeResource,
+    val embeddedSigning: EmbeddedSigningResource,
     val signers: SignerResource,
     val signerDocuments: SignerDocumentResource,
     val workspaces: WorkspaceResource,
@@ -223,6 +229,8 @@ class AssinafyClient internal constructor(
                 ),
                 documents = DocumentResource(httpClient, config.accountId, logger, publicHttpClient),
                 contracts = ContractResource(httpClient, config.accountId, logger),
+                envelopes = EnvelopeResource(httpClient, config.accountId, logger),
+                embeddedSigning = EmbeddedSigningResource(httpClient, config.accountId, logger),
                 signers = SignerResource(httpClient, config.accountId, logger, publicHttpClient),
                 signerDocuments = SignerDocumentResource(publicHttpClient),
                 workspaces = WorkspaceResource(httpClient, logger),

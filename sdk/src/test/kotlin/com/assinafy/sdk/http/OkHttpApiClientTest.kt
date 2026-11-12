@@ -18,6 +18,21 @@ import java.util.concurrent.TimeUnit
 class OkHttpApiClientTest {
 
     @Test
+    fun `idempotency key is sent once and expired download HTML is rejected`() {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse(code = 503, headers = headersOf("Retry-After", "0")))
+            val client = OkHttpApiClient.forTesting(OkHttpClient(), server.url("/").toString())
+            runBlocking { assertThat(client.postIdempotent("/create", "{}", "once").statusCode).isEqualTo(503) }
+            assertThat(server.requestCount).isEqualTo(1)
+            val request = server.takeRequest()
+            assertThat(request.headers["Idempotency-Key"]).isEqualTo("once")
+            server.enqueue(MockResponse(headers = headersOf("Content-Type", "text/html; charset=utf-8"), body = "<html>Expired</html>"))
+            assertThatThrownBy { runBlocking { client.getBinary("/expired") } }.isInstanceOf(ApiException::class.java)
+        }
+    }
+
+    @Test
     fun `mutations never follow redirect timeout or service retry responses`() {
         listOf(302, 307, 408, 503).forEach { status ->
             MockWebServer().use { server ->

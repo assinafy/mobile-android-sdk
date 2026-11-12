@@ -328,7 +328,7 @@ validation entries. Membership, CPF/CNPJ, plan and existing-state rules are enfo
 | `isFullySigned(documentId)` | Calls `details` | local derivation | `true` when every signer is complete or status is `certificated`; does not guarantee the certificated artifact is ready during `certificating` |
 | `getSigningProgress(documentId)` | Calls `details` | local derivation; uses signer `completed` flags when `summary` is absent | `SigningProgress` |
 | `getStatuses()` | `GET /v1/documents/statuses` | none | `List<DocumentStatusInfo>` |
-| `confirmSignerData(documentId, accessCode, request)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | Official subset `full_name`, `email`, `government_id`; deprecated compatibility properties are ignored | `Signer` |
+| `confirmSignerData(documentId, accessCode, request)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | `email`, `whatsapp_phone_number`, `has_accepted_terms`; name/government-ID extensions remain opt-in | `Signer` |
 | `confirmSignerData(documentId, accessCode, data)` | Same endpoint; compatibility overload | Caller-supplied non-empty JSON object | `Signer` |
 | `listTags(documentId, accountId)` | `GET /v1/accounts/{accountId}/documents/{documentId}/tags` | none | `List<Tag>` |
 | `replaceTags(documentId, tagNames, accountId)` | `PUT /v1/accounts/{accountId}/documents/{documentId}/tags` | `{"tags":["tag_id",...]}`; parameter name is retained for source compatibility | `List<Tag>` |
@@ -442,13 +442,13 @@ in a JSON body.
 | `signMultiple(documentIds, accessCode)` | `PUT /v1/signers/documents/sign-multiple?signer-access-code=...` | `{"document_ids":[string,...]}` | `Unit` |
 | `declineMultiple(documentIds, declineReason, accessCode)` | `PUT /v1/signers/documents/decline-multiple?signer-access-code=...` | `{"document_ids":[string,...],"decline_reason":string}` | `Unit` |
 | `verifyEmail(accessCode, VerifySignerEmailRequest)` | `POST /v1/verify?signer-access-code=...` | `{"verification-code":string}` | `Unit` |
-| `confirmData(documentId, accessCode, ConfirmSignerDataRequest)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | Subset `full_name`, `email`, `government_id`; terms use `acceptTerms` | `Signer` |
+| `confirmData(documentId, accessCode, ConfirmSignerDataRequest)` | `PUT /v1/documents/{documentId}/signers/confirm-data?signer-access-code=...` | `email`, `whatsapp_phone_number`, `has_accepted_terms`; legacy name/ID extensions remain opt-in | `Signer` |
 | `acceptTerms(accessCode)` | `PUT /v1/signers/accept-terms?signer-access-code=...` | none | `Unit` |
 | `uploadSignature(accessCode, imageData, type, reuse)` | `POST /v1/signature?signer-access-code=...&type=...&reuse=...` | Raw PNG bytes, `Content-Type: image/png` | `Unit` |
 | `downloadSignature(accessCode, type)` | `GET /v1/signature/{type}?signer-access-code=...` | none | Raw PNG `ByteArray` |
 | `list(signerId, accessCode, ListParams)` | `GET /v1/signers/{signerId}/documents?signer-access-code=...` | Query uses only `page`, `per-page` | `PaginatedResult<DocumentDetails>` |
 | `search(signerId, accessCode, search)` | `GET /v1/signers/{signerId}/documents/search?signer-access-code=...&search=...` | none | `PaginatedResult<DocumentDetails>` |
-| `download(signerId, documentId, artifactName)` | `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}` (public) | none and no access code | Raw PDF/ZIP `ByteArray` |
+| `download(signerId, documentId, artifactName, accessCode)` | `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}?signer-access-code=...` | Only `original`; the old three-argument overload is deprecated | PDF `ByteArray` |
 
 For `DigitalCertificate`, call `confirmData` and `acceptTerms` before `getAssignment`; setting
 `has_accepted_terms` on `getAssignment` is too late for that verification gate.
@@ -589,9 +589,9 @@ not clamp out-of-bounds values.
 | `getCurrent()` | `GET /v1/users/self` | none | `AuthenticatedUser` |
 | `getStats(DocumentStatsQuery)` | `GET /v1/users/self/stats` | Optional `granularity=monthly\|daily`; daily requires `month=YYYY-MM` | `List<DocumentStatsRow>` |
 | `getNotificationPreferences()` | `GET /v1/users/self/notification-preferences` | none | `NotificationPreferences` |
-| `updateNotificationPreferences(request)` | `PUT /v1/users/self/notification-preferences` | Non-empty subset of the nine PascalCase preference keys | Complete `NotificationPreferences` |
+| `updateNotificationPreferences(request)` | `PUT /v1/users/self/notification-preferences` | Non-empty subset of the thirteen PascalCase preference keys | Complete `NotificationPreferences` |
 
-All nine document-notification preferences are always returned and default to `true`. They govern
+All thirteen document-notification preferences are always returned and default to `true`. They govern
 owner-facing email for the authenticated user across every account they belong to; setting a key to
 `false` disables that email in all of those accounts. Welcome, password-reset, invitation, and
 account-deletion emails are security/account messages and are not configurable here.
@@ -724,7 +724,7 @@ Enabling signing on update returns a new `secret` once, just as creation does.
 | `UpdateWorkspaceRequest` | `name:String?`, `notification_sender_type:String?`; compatibility `primary_color:String?`, `secondary_color:String?` |
 | `CreateSignerRequest` | `full_name:String`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?` (CPF or CNPJ; formatting accepted, normalized by the API); deprecated `cpf:String?` (sent as `government_id` when `governmentId` is null), `metadata:Map?` |
 | `UpdateSignerRequest` | `full_name:String?`, `email:String?`, `whatsapp_phone_number:String?`, `government_id:String?`; deprecated compatibility `cpf:String?` |
-| `ConfirmSignerDataRequest` | `full_name:String?`, `email:String?`, `government_id:String?`; deprecated `whatsapp_phone_number` and `has_accepted_terms` are not sent by `signerDocuments.confirmData` |
+| `ConfirmSignerDataRequest` | `full_name:String?`, `email:String?`, `government_id:String?`; `whatsapp_phone_number:String?`, `has_accepted_terms:Boolean?` confirm contacts and explicit consent |
 | `SignerReference` | `id:String?` (required for creation, omitted for pricing), `verification_method:String?`, `notification_methods:List<String>?` (exactly one: Email or WhatsApp), `step:Int?` |
 | `CreateAssignmentRequest` | `method:String`, `signers:List<SignerReference>`, `message:String?`, `expires_at:String?`, `copy_receivers:List<String>?` (signer IDs), `entries:List<AssignmentEntry>?` |
 | `AssignmentEntry` | `page_id:String`, `fields:List<AssignmentFieldPlacement>` |
@@ -791,7 +791,7 @@ changing standard requests.
 | `SigningProgress` | Local `signed:Int`, `total:Int`, `pending:Int`, `percentage:Double` |
 | `Assignment` | `resource:String?`, `id:String`, `sender_email→senderEmail:String?`, `method:String?`, `expires_at→expiresAt:String?`, compatibility `expiration:String?`, `message:String?`, `signers:List<Signer>`, `copy_receivers→copyReceivers:List<Signer>?`, `items:List<AssignmentItem>?`, `summary:AssignmentSummary?`, `signing_urls→signingUrls:List<SigningUrl>?` |
 | `AssignmentSummary` | `signer_count→signerCount:Int`, `completed_count→completedCount:Int`, `signers:List<Signer>` |
-| `SigningUrl` | `signer_id→signerId:String`, `url:String` |
+| `SigningUrl` | `signer_id→signerId:String`, `url:String?`, `embedded:Boolean?` |
 | `Signer` | `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, legacy `cpf:String?`, deployed response `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, legacy `metadata:Map<String,Any>?`; assignment expansions `completed:Boolean?`, `verification_method→verificationMethod:String?`, `notification_methods→notificationMethods:List<String>?`, `step:Int?`, `notified:Boolean?`, `notification_history→notificationHistory:List<NotificationHistoryEntry>?`; signer-self expansions `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?`; `resource:String?`, `identity_verification_status→identityVerificationStatus:String?` |
 | `SignerSelf` | `resource:String?`, `id:String`, `full_name→fullName:String?`, `email:String?`, `whatsapp_phone_number→whatsappPhoneNumber:String?`, `government_id→governmentId:String?`, `has_accepted_terms→hasAcceptedTerms:Boolean?`, `has_signature→hasSignature:Boolean?`, `has_initial→hasInitial:Boolean?`, `is_signature_reusable→isSignatureReusable:Boolean?`, `verification_method→verificationMethod:String?` |
 | `NotificationHistoryEntry` | `event:String?`, `status:String?`, `error_code→errorCode:String?`, `error_message→errorMessage:String?`, `sent_at→sentAt:String?`, `failed_at→failedAt:String?` |
@@ -918,238 +918,64 @@ Contract constants: `ContractStatus` (draft, active, expired, terminated), `Cont
 for explicit null updates. `WebhookEvent.DOCUMENT_CONTRACT_*` supplies all eight contract event IDs.
 `TemplateRoleType` supplies Editor/Signer/CopyReceiver; `WebhookAttemptKind` supplies scheduled/probe/manual.
 
+## Envelopes, embedding, and delivery
+
+`client.envelopes` lists, estimates, creates, reads, updates, cancels and deletes envelopes; downloads
+ZIPs, pages activities, reminds a signer and adds/removes documents. Upload every PDF and wait for
+`metadata_ready` first. Use 1..20 distinct signers and documents, with every signer assigned to at
+least one document. A certificate signer signs virtual documents alone on each. Envelope signers
+have no sequential steps. `maxTotalCredits` caps spending; `idempotencyKey` is a caller-chosen
+`Idempotency-Key` header on creation. Reuse it only for an explicit retry of the same request.
+The SDK never automatically replays a mutation. Creation success does not guarantee delivery;
+read assignment notification history. Deleting a closed envelope preserves its documents.
+
+`client.embeddedSigning` manages exact HTTPS origins (HTTP only for localhost/127.0.0.1) and mints
+single-use sessions for signers created with `embedded=true`. Register an origin on the trusted
+backend, create the assignment, then mint a session each time the signer opens the page. Load it
+within five minutes in an iframe on an allowed origin; never prefetch or log it. The hosted page
+exchanges the token internally. Email/WhatsApp verification still applies. Native clients use a
+hosted integration page on an allowed origin. Origin management is unavailable to third-party OAuth.
+
+`SigningUrl.url` is nullable. For Email it opens an invitation-resend page; it contains no signer
+access code. WhatsApp-only and embedded signers have no such URL. The delivered invitation supplies
+the signing access. `signerDocuments.download` requires that code and permits only `original`.
+Use `resendCertifiedCopy` after completion; the API sends only to the original signing contact.
+Email allows one resend every two minutes, ten per day; WhatsApp allows one per signature request.
+Completion links last seven days, resent links thirty minutes. Download-token methods work without
+account credentials, and expired-link HTML is rejected as a download. Closed signing reads expose
+`currentSigner`, `isSignerAccessClosed`, and `certifiedCopy`; identity/contact fields may be absent.
+`confirmData` sends contact data and explicit terms acceptance, then reads the signer after the
+API's empty-array success to preserve the existing return type.
+
+`workspaces.get(accountId, expandSigningFeatures=true)` exposes current method entitlements;
+`getUsage` returns plan/balances as exact decimals, with null unlimited quantities.
+`getNotificationPolicy` / `updateNotificationPolicy` manage workspace alert policy, and
+`users.getPushPreferences` / `updatePushPreferences` manage personal push preferences separately
+from email. Maps accept `NotificationEvent` keys; updates merge only supplied values. Third-party
+OAuth cannot access these settings. Identity-review email is always delivered even when its policy
+flag is false. Owners alone may update workspace policy.
+
+`webhooks.testEndpoint` sends a test delivery and returns its dispatch, including `durationMs`.
+`rotateEndpointSecret(endpointId, keepPrevious=true)` returns the new secret and
+`previousSecretExpiresAt`; both signatures are emitted for 24 hours. Rotating again replaces the
+previous overlap. Save the new secret immediately and switch receivers before that deadline.
+`DocumentVerification.certificatedAt` records certification; `verifiedAt` records the check time.
+
 ## Complete method payloads
 
-Examples use placeholder identities. Optional properties may be omitted by the service or the caller;
-arrays show one illustrative item. A JSON example for multipart or raw image input describes its
-parts; send binary bytes with the stated content type, rather than serializing that example.
-Event-dependent opaque objects have no fixed member schema.
-
-### `workspaces.get`
-
-`GET /v1/accounts/{accountId}`
-
-Parameters: `accountId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "account",
-  "id": "id-placeholder",
-  "name": "Example",
-  "primary_color": null,
-  "secondary_color": null,
-  "notification_sender_type": "User",
-  "roles": ["owner"],
-  "is_delete_allowed": true,
-  "created_at": "2026-01-01T00:00:00Z",
-  "limits": {"webhook_endpoints": 3}
-}
-```
-
-### `workspaces.update`
-
-`PUT /v1/accounts/{accountId}`
-
-Parameters: `accountId` (path, required).
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "name": "Example",
-  "notification_sender_type": "User"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "account",
-  "id": "id-placeholder",
-  "name": "Example",
-  "primary_color": null,
-  "secondary_color": null,
-  "notification_sender_type": "User",
-  "roles": ["owner"],
-  "is_delete_allowed": true,
-  "created_at": "2026-01-01T00:00:00Z"
-}
-```
-
-### `workspaces.delete`
-
-`DELETE /v1/accounts/{accountId}`
-
-Parameters: `accountId` (path, required).
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "force": true
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[]
-```
-
-### `workspaces.getTheme`
-
-`GET /v1/accounts/{accountId}/theme`
-
-Parameters: `accountId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "account_name": "example",
-  "primary_color": "2072b9",
-  "secondary_color": null,
-  "logo": "https://example.com/resource"
-}
-```
-
-### `workspaces.getLogo`
-
-`GET /v1/accounts/{accountId}/logo`
-
-Parameters: `accountId` (path, required).
-
-Request body: none.
-
-Response 200: raw binary bytes (`image/*`), without a JSON envelope.
-
-### `workspaces.uploadLogo`
-
-`POST /v1/accounts/{accountId}/logo`
-
-Parameters: `accountId` (path, required).
-
-Request body (`multipart/form-data`; optional members may be omitted):
-```json
-{
-  "file": "<binary bytes>"
-}
-```
-
-Response 200 body; optional members depend on document state and permissions:
-```json
-{
-  "status": 200,
-  "message": "example"
-}
-```
-
-### `workspaces.deleteLogo`
-
-`DELETE /v1/accounts/{accountId}/logo`
-
-Parameters: `accountId` (path, required).
-
-Request body: none.
-
-Response 200 body; optional members depend on document state and permissions:
-```json
-{
-  "status": 200,
-  "message": "example"
-}
-```
-
-### `workspaces.list`
-
-`GET /v1/accounts`
-
-Parameters: none.
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "resource": "account",
-    "id": "id-placeholder",
-    "name": "Example",
-    "primary_color": null,
-    "secondary_color": null,
-    "notification_sender_type": "User",
-    "roles": ["owner"],
-    "is_delete_allowed": true,
-    "created_at": "2026-01-01T00:00:00Z"
-  }
-]
-```
-
-### `workspaces.create`
-
-`POST /v1/accounts`
-
-Parameters: none.
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "name": "Example",
-  "notification_sender_type": "User"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "account",
-  "id": "id-placeholder",
-  "name": "Example",
-  "primary_color": null,
-  "secondary_color": null,
-  "notification_sender_type": "User",
-  "roles": ["owner"],
-  "is_delete_allowed": true,
-  "created_at": "2026-01-01T00:00:00Z"
-}
-```
-
-### `workspaces.getStats`
-
-`GET /v1/accounts/{accountId}/stats`
-
-Parameters: `accountId` (path, required), `granularity` (query, optional), `month` (query, optional).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "period": "2026-10",
-    "documents_uploaded": 1,
-    "documents_sent": 1,
-    "signature_requests": 1,
-    "signature_requests_notification_email": 1,
-    "signature_requests_notification_whatsapp": 0,
-    "signature_requests_notification_bypass": 0,
-    "signature_requests_verification_email": 1,
-    "signature_requests_verification_whatsapp": 0,
-    "signature_requests_verification_bypass": 0,
-    "signature_requests_verification_digital_certificate": 0,
-    "signature_requests_viewed": 1,
-    "signature_requests_completed": 1,
-    "documents_certified": 1
-  }
-]
-```
+Optional fields depend on state, permissions and expansion. Examples show the full documented
+shape; supply your own identifiers and contact values. Binary operations return bytes.
 
 ### `assignments.list`
 
-`GET /v1/assignments`
+Lists assignments with `GET /assignments` and no request body.
 
-Parameters: `accountId` (query, optional), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Reads `page`, `per-page` and `sort` from [params]. Sends [accountId] or the configured account
+as `accountId`; OAuth can infer its workspace when neither is set. API-key calls need one.
+Response `data` is an array of complete [Assignment] values and `X-Pagination-*` headers are
+exposed through [PaginatedResult.meta].
+
+Wire operation: `GET /v1/assignments`.
 
 Request body: none.
 
@@ -1174,48 +1000,157 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@param params Optional one-based page and records-per-page values.
+@param accountId Workspace query override; otherwise the configured default is sent when available.
+@return Assignment page and optional pagination metadata.
+@throws ValidationException if an explicitly supplied [accountId] is blank.
+
 ### `assignments.create`
 
-`POST /v1/documents/{documentId}/assignments`
+Creates an assignment (`POST /documents/{documentId}/assignments`). The response includes the
+per-signer `signing_urls` and a `summary`.
 
-Parameters: `documentId` (path, required).
+Wire operation: `POST /v1/documents/{documentId}/assignments`
 
-Request body (`application/json`; optional members may be omitted):
+Request body (`application/json`; optional fields may be omitted):
 ```json
 {
-  "method": "collect",
-  "signers": [{"id": "id-placeholder","verification_method": "Email","notification_methods": ["Email"],"step": 1}],
-  "entries": [{"page_id": "page-id-placeholder","fields": [{"signer_id": "signer-id-placeholder","field_id": "field-id-placeholder","display_settings": {"left": 1,"top": 1,"width": 1,"height": 1,"fontFamily": "Arial","fontSize": 1,"backgroundColor": "#D5EBFF"}}]}],
+  "method": "virtual",
+  "signers": [
+    {
+      "id": "id-placeholder",
+      "verification_method": "Email",
+      "notification_methods": [
+        "Email"
+      ],
+      "embedded": false,
+      "step": 1
+    }
+  ],
+  "entries": [
+    {
+      "page_id": "example",
+      "fields": [
+        {
+          "signer_id": "example",
+          "field_id": "example",
+          "display_settings": {
+            "left": 69,
+            "top": 282,
+            "width": 421,
+            "height": 45.86,
+            "fontFamily": "Arial",
+            "fontSize": 22,
+            "backgroundColor": "#D5EBFF"
+          }
+        }
+      ]
+    }
+  ],
   "message": "example",
-  "expires_at": "2026-01-01T00:00:00Z",
-  "copy_receivers": ["example"]
+  "expires_at": "2026-11-11T12:00:00Z",
+  "copy_receivers": [
+    "example"
+  ],
+  "max_total_credits": 1.5
 }
 ```
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+Response `data` inside `{status,message,data}`:
 ```json
 {
   "resource": "assignment",
   "id": "id-placeholder",
+  "document_id": "document-id-placeholder",
+  "created_at": "2026-06-03T03:54:16Z",
   "sender_email": "person@example.com",
   "method": "virtual",
   "expires_at": null,
-  "message": null,
-  "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}],
-  "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}],
-  "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}],
-  "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]},
-  "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}],
-  "document_id": "document-placeholder",
-  "created_at": "2026-01-01T00:00:00Z"
+  "message": "example",
+  "signers": [
+    {
+      "resource": "signer",
+      "id": "id-placeholder",
+      "full_name": "Example Person",
+      "email": "person@example.com",
+      "whatsapp_phone_number": "+5548999990000",
+      "government_id": "government-id-placeholder",
+      "has_accepted_terms": false,
+      "verification_method": "Email",
+      "notification_methods": [
+        "example"
+      ],
+      "step": 1,
+      "notified": true,
+      "identity_verification_status": "InReview",
+      "completed": true,
+      "notification_history": [
+        {
+          "event": "signature_request",
+          "status": "failed",
+          "error_code": "MailboxFull",
+          "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+          "sent_at": "2026-07-07T12:00:00Z",
+          "failed_at": "2026-07-07T12:05:00Z"
+        }
+      ]
+    }
+  ],
+  "copy_receivers": [
+    {}
+  ],
+  "items": [
+    {
+      "id": "example",
+      "page": {
+        "id": "id-placeholder",
+        "number": 1,
+        "height": 2100,
+        "width": 1275,
+        "download_url": "https://example.com/resource"
+      },
+      "signer": {},
+      "field": {},
+      "display_settings": null,
+      "value": null,
+      "completed": true
+    }
+  ],
+  "summary": {
+    "signer_count": 1,
+    "completed_count": 1,
+    "signers": [
+      {}
+    ]
+  },
+  "signing_urls": [
+    {
+      "signer_id": "example",
+      "url": "https://example.com/resource",
+      "embedded": false
+    }
+  ]
 }
 ```
+@param documentId Stable document identifier placed in the path.
+@param request Assignment method, signers, optional field placements, and delivery settings.
+@return Created assignment, including signer state, summary, items, and generated signing URLs.
+@throws ValidationException for blank IDs, missing required signers/entries, a collect signer
+without a field, unsupported methods or channels, invalid signing steps or field placement, or a digital-certificate
+signer on a non-virtual assignment; that combination exposes
+[com.assinafy.sdk.ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT].
 
 ### `assignments.estimateCost`
 
-`POST /v1/documents/{documentId}/assignments/estimate-cost`
+Estimates assignment cost with `POST /documents/{documentId}/assignments/estimate-cost`.
 
-Parameters: `documentId` (path, required).
+Request body carries only what affects pricing — signer IDs, steps, messages, expiration and
+copy receivers are deliberately omitted:
+`blocking_reason` is one of `PendingPayment`, `InsufficientDocuments`, or
+`InsufficientCredits`. A digital-certificate signer adds a `SignatureDigitalCertificate`
+breakdown line worth 0.5 credits on top of its notification.
+
+Wire operation: `POST /v1/documents/{documentId}/assignments/estimate-cost`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1243,48 +1178,26 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
-### `assignments.resendNotification`
-
-`PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend`
-
-Parameters: `documentId` (path, required), `assignmentId` (path, required), `signerId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "is_sent": true,
-  "document_id": "document-id-placeholder",
-  "signer_id": "signer-id-placeholder"
-}
-```
-
-### `assignments.estimateResendCost`
-
-`POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost`
-
-Parameters: `documentId` (path, required), `assignmentId` (path, required), `signerId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "total": 0.45,
-  "breakdown": [{"code": "NotificationWhatsappResend", "name": "WhatsApp notification resend", "cost": 0.45}],
-  "credit_balance": 10,
-  "has_sufficient_credits": true
-}
-```
+@param documentId Stable document identifier placed in the path.
+@param request Proposed method, signer channels, and optional collect placements.
+@return Credit/document estimate and resource-sufficiency result.
+@throws ValidationException for blank IDs, missing required signers/entries, unsupported methods
+or channels, invalid collect requirements, or a digital-certificate signer on a non-virtual
+assignment; that combination exposes
+[com.assinafy.sdk.ValidationCode.DIGITAL_CERTIFICATE_REQUIRES_VIRTUAL_ASSIGNMENT].
 
 ### `assignments.resetExpiration`
 
-`PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration`
+Sets a new expiration for an assignment, or removes it with `null` (the assignment then no
+longer expires). Not allowed once the document is closed.
 
-Parameters: `documentId` (path, required), `assignmentId` (path, required).
+Wire request: `PUT /documents/{documentId}/assignments/{assignmentId}/reset-expiration` with
+`{"expires_at":"..."}`, or `{"expires_at":null}` to clear; `expires_at` is required and always
+sent. The response `data` is the complete updated [Assignment].
 
-Request body (`application/json`; `expires_at` required and nullable — `null` removes the expiration):
+Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reset-expiration`.
+
+Request body (`application/json`; `expires_at` required, nullable):
 ```json
 {
   "expires_at": "2026-12-31T23:59:59Z"
@@ -1310,11 +1223,50 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param documentId Stable document identifier.
+@param assignmentId Stable assignment identifier.
+@param expiresAt Replacement ISO-8601 expiration at least one hour ahead, or `null` to remove
+the expiration (sent as `{"expires_at":null}`; the key is always present).
+@return Complete updated assignment.
+@throws ValidationException if either identifier is blank, or [expiresAt] is blank.
+
+### `assignments.decline`
+
+Declines an assignment through the public signer route.
+
+Sends `PUT /documents/{documentId}/assignments/{assignmentId}/reject`, the access code only as
+`signer-access-code` in the query, and `{"decline_reason":"..."}` as the complete JSON body.
+A successful empty-data envelope is returned as [Unit].
+
+Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "decline_reason": "example"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+@param documentId Stable document identifier.
+@param assignmentId Stable assignment identifier.
+@param signerAccessCode One-time signer code sent only in the query.
+@param reason Required free-text decline reason.
+@throws ValidationException if any identifier or [reason] is blank.
+
 ### `assignments.listWhatsappNotifications`
 
-`GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications`
+Lists WhatsApp messages dispatched for an assignment.
 
-Parameters: `documentId` (path, required), `assignmentId` (path, required).
+Wire request: `GET /documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications`
+with no query or body. Response `data` is an array containing render text, destination,
+signer, send time, and buttons for each [WhatsappNotification].
+
+Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/whatsapp-notifications`.
 
 Request body: none.
 
@@ -1332,11 +1284,239 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@param documentId Stable document identifier.
+@param assignmentId Stable assignment identifier.
+@return Rendered WhatsApp notification history.
+@throws ValidationException if either identifier is blank.
+
+### `assignments.resendNotification`
+
+Resends one signer's signature notification.
+
+Sends a `PUT` to
+`/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend`. The current
+OpenAPI request has no body; [channel] opts into the deployed compatibility body
+`{"channel":"email"}` or `{"channel":"whatsapp"}`. Response `data` is
+[ResendEmailResponse]: delivery acceptance plus document and signer IDs.
+
+Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/resend`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "is_sent": true,
+  "document_id": "document-id-placeholder",
+  "signer_id": "signer-id-placeholder"
+}
+```
+
+@param documentId Stable document identifier.
+@param assignmentId Stable assignment identifier.
+@param signerId Stable signer identifier.
+@param channel Optional deployed-service notification channel; omit for the OpenAPI request.
+@return Resend acceptance and related IDs.
+@throws ValidationException if any identifier is blank.
+
+### `assignments.estimateResendCost`
+
+Estimates the cost of resending one signer notification.
+
+Sends an empty-body `POST` to
+`/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost`.
+Response `data` is the complete [CostEstimate] payload.
+
+Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/estimate-resend-cost`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "total": 0.45,
+  "breakdown": [{"code": "NotificationWhatsappResend", "name": "WhatsApp notification resend", "cost": 0.45}],
+  "credit_balance": 10,
+  "has_sufficient_credits": true
+}
+```
+
+@param documentId Stable document identifier.
+@param assignmentId Stable assignment identifier.
+@param signerId Stable signer identifier.
+@return Credit cost, balances, sufficiency, and any itemized breakdown.
+@throws ValidationException if any identifier is blank.
+
+### `assignments.getIdentityVerification`
+
+Reads an account-facing identity review without fetching evidence images.
+
+InReview permits signing to continue, but certification waits for the account decision.
+Evidence is a summary; images are fetched separately and are available only while the review is open.
+
+Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "verification-placeholder",
+  "status": "InReview",
+  "provider": "AssinafyVerify",
+  "verification_method": "IdDocumentFaceMatchBasic",
+  "reason_codes": [
+    {
+      "code": "NAME_MISMATCH",
+      "description": "Registered and captured names differ"
+    }
+  ],
+  "evidence_available": true,
+  "expected": {
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "document": {
+    "type": "CNH",
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "matches": {
+    "cpf": true,
+    "name": 0.52,
+    "birth_date": null
+  },
+  "checks": [
+    {
+      "name": "name",
+      "result": "review",
+      "score": 0.52,
+      "reasons": [
+        "NAME_MISMATCH"
+      ]
+    }
+  ],
+  "images": [
+    "document_front",
+    "document_back",
+    "face"
+  ],
+  "ruleset_version": "example",
+  "evidence_sha256": "digest-placeholder",
+  "reviewed_by": {
+    "id": "reviewer-placeholder",
+    "name": "Example Reviewer"
+  },
+  "reviewed_at": null,
+  "review_note": null,
+  "completed_at": null
+}
+```
+
+@param documentId Document identifier.
+@param assignmentId Assignment identifier.
+@param signerId Signer identifier within the assignment.
+
+### `assignments.downloadIdentityVerificationImage`
+
+Downloads a reviewer evidence image or digital-document PDF.
+
+The API sends Cache-Control: no-store. Do not cache the sensitive evidence.
+Images return 404 after a review decision; the SDK propagates [com.assinafy.sdk.exceptions.ApiException].
+
+Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}`.
+
+Request body: none.
+
+Response 200 payload: raw `image/jpeg`, `image/png`, or `application/pdf` bytes; no JSON envelope.
+
+@param documentId Document identifier.
+@param assignmentId Assignment identifier.
+@param signerId Signer identifier within the assignment.
+@param name One of [IdentityReviewImage], as listed in the open review.
+
+### `assignments.reviewIdentityVerification`
+
+Approves or rejects an open account identity review.
+
+Approval permits certification after every signature and review completes. Rejection cancels
+the document and sends the cancellation notice to signers and copy receivers.
+The document must still be pending_signature or pending_identity_review.
+
+Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review`.
+
+Request body: (`application/json`):
+```json
+{
+  "decision": "Approved",
+  "note": "Identity checked by the account reviewer"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "verification-placeholder",
+  "status": "Approved",
+  "provider": "AssinafyVerify",
+  "verification_method": "IdDocumentFaceMatchBasic",
+  "reason_codes": [
+    {
+      "code": "NAME_MISMATCH",
+      "description": "Registered and captured names differ"
+    }
+  ],
+  "evidence_available": true,
+  "expected": {
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "document": {
+    "type": "CNH",
+    "name": "Example Signer",
+    "cpf": "00000000000"
+  },
+  "matches": {
+    "cpf": true,
+    "name": 0.52,
+    "birth_date": null
+  },
+  "checks": [
+    {
+      "name": "name",
+      "result": "review",
+      "score": 0.52,
+      "reasons": [
+        "NAME_MISMATCH"
+      ]
+    }
+  ],
+  "images": [],
+  "ruleset_version": "example",
+  "evidence_sha256": "digest-placeholder",
+  "reviewed_by": {
+    "id": "reviewer-placeholder",
+    "name": "Example Reviewer"
+  },
+  "reviewed_at": "2026-10-16T12:00:00Z",
+  "review_note": "Identity checked by the account reviewer",
+  "completed_at": "2026-10-16T12:00:00Z"
+}
+```
+
+@param documentId Document identifier.
+@param assignmentId Assignment identifier.
+@param signerId Signer identifier within the assignment.
+@param decision [IdentityReviewDecision.APPROVED] or [IdentityReviewDecision.REJECTED].
+@param note Optional internal note, at most 2000 Unicode characters; never shown to the signer.
+
 ### `authentication.login`
 
-`POST /v1/login`
+Authenticates with `POST /login`.
 
-Parameters: none.
+Request body: `{"email":"user@example.com","password":"secret"}`.
+
+Wire operation: `POST /v1/login`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1355,14 +1535,22 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
-When two-factor authentication is enabled, `data` is `{"mfa_token": "<redacted-value>"}` and the SDK
-throws `MfaRequiredException`.
+@param request Required email and password payload.
+@return JWT, authenticated user, and accessible accounts.
+When the user has two-factor authentication enabled, `data` carries `{"mfa_token": "..."}`
+instead and the SDK throws [MfaRequiredException]; finish with [verifyMfa].
+
+@throws ValidationException when the email is invalid or the password is blank.
+@throws MfaRequiredException when a second factor is required.
 
 ### `authentication.requestPasswordReset`
 
-`PUT /v1/authentication/request-password-reset`
+Sends a reset message with `PUT /authentication/request-password-reset`.
 
-Parameters: none.
+Request body: `{"email":"user@example.com"}`.
+Response `data`: `{"email":"user@example.com"}`.
+
+Wire operation: `PUT /v1/authentication/request-password-reset`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1378,11 +1566,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param request Email address that receives the reset message.
+@return The email address accepted by the API.
+@throws ValidationException when the email is invalid.
+
 ### `authentication.resetPassword`
 
-`PUT /v1/authentication/reset-password`
+Completes a reset with `PUT /authentication/reset-password`.
 
-Parameters: none.
+Request body:
+`{"email":"user@example.com","new_password":"new-secret","token":"emailed-token"}`.
+The current schema permits omitting `token`. Response `data`: `{"email":"user@example.com"}`.
+
+Wire operation: `PUT /v1/authentication/reset-password`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1400,11 +1596,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param request Email, new password, and optional emailed reset token.
+@return The email address whose password was reset.
+@throws ValidationException when the email is invalid, the new password is blank, or a supplied token is blank.
+
 ### `authentication.changePassword`
 
-`PUT /v1/authentication/change-password`
+Changes the authenticated user's password with `PUT /authentication/change-password`.
 
-Parameters: none.
+Request body:
+`{"email":"user@example.com","password":"old-secret","new_password":"new-secret"}`.
+Response `data`: `{"email":"user@example.com"}`.
+
+Wire operation: `PUT /v1/authentication/change-password`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1422,11 +1626,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param request Email, current password, and replacement password.
+@return The email address whose password was changed.
+@throws ValidationException when the email is invalid or either password is blank.
+
 ### `authentication.socialLogin`
 
-`POST /v1/authentication/social-login`
+Exchanges a provider token with `POST /authentication/social-login`.
 
-Parameters: none.
+Request body:
+`{"provider":"google","token":"provider-token","has_accepted_terms":true}`.
+Response `data` has the same complete `access_token`, `user`, and `accounts` shape documented by [login].
+
+Wire operation: `POST /v1/authentication/social-login`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1446,11 +1658,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param request Google provider token and terms acceptance.
+@return JWT, authenticated user, and accessible accounts.
+@throws ValidationException when the provider token is blank.
+@throws MfaRequiredException when a second factor is required.
+
 ### `authentication.linkSocialLogin`
 
-`POST /v1/auth/link-social-login`
+Links a provider identity with `POST /auth/link-social-login`.
 
-Parameters: none.
+Request body: `{"provider":"google","token":"provider-token"}`.
+Response body is the standard success envelope with no `data` payload.
+
+Wire operation: `POST /v1/auth/link-social-login`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1468,11 +1688,17 @@ Response 200 body; optional members depend on document state and permissions:
 }
 ```
 
+@param request Google provider and provider-issued token to link.
+@throws ValidationException when the provider token is blank.
+
 ### `authentication.getApiKey`
 
-`GET /v1/users/api-keys`
+Retrieves the masked personal key with `GET /users/api-keys`.
 
-Parameters: none.
+Request body: none. Response `data`: `{"api_key":"********suffix"}` or `{"api_key":null}`.
+A legacy top-level `data: null` response is normalized to `null`.
+
+Wire operation: `GET /v1/users/api-keys`.
 
 Request body: none.
 
@@ -1483,11 +1709,16 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@return Masked key payload, or `null` when the API returns no key payload.
+
 ### `authentication.createApiKey`
 
-`POST /v1/users/api-keys`
+Creates or rotates the personal key with `POST /users/api-keys`.
 
-Parameters: none.
+Request body: `{"password":"secret"}`. Response `data`: `{"api_key":"full-key-shown-once"}`.
+Generating a new key invalidates the previous key.
+
+Wire operation: `POST /v1/users/api-keys`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -1503,11 +1734,16 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param request Current password used to authorize key generation.
+@return Newly generated full API key; [ApiKeyResponse.apiKey] may be `null` only if the server returns it so.
+@throws ValidationException when the password is blank.
+
 ### `authentication.deleteApiKey`
 
-`DELETE /v1/users/api-keys`
+Revokes the personal key with `DELETE /users/api-keys`.
 
-Parameters: none.
+Request body: none. Response `data` is an empty JSON array.
+Wire operation: `DELETE /v1/users/api-keys`.
 
 Request body: none.
 
@@ -1518,9 +1754,11 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 
 ### `authentication.verifyMfa`
 
-`POST /v1/authentication/mfa/verify` (no credential)
+Completes a two-factor login by exchanging the challenge from [MfaRequiredException] for a
+session. The challenge is single-use and expires five minutes after login; an expired, used
+or over-tried challenge answers `401`.
 
-Parameters: none.
+Wire operation: `POST /v1/authentication/mfa/verify` (no credential).
 
 Request body (`application/json`):
 ```json
@@ -1539,13 +1777,15 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
-An expired, used or over-tried challenge answers `401`.
+@param request Challenge token and authenticator or recovery code.
+@return JWT, authenticated user, and accessible accounts.
+@throws ValidationException when either value is blank.
 
 ### `authentication.listMfaMethods`
 
-`GET /v1/users/self/mfa`
+Lists the authenticated user's two-factor methods and remaining recovery codes.
 
-Parameters: none.
+Wire operation: `GET /v1/users/self/mfa`.
 
 Request body: none.
 
@@ -1559,20 +1799,23 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
+@return Enrolled methods and the recovery-code balance.
+
 ### `authentication.startTotpEnrollment`
 
-`POST /v1/users/self/mfa/totp`
+Starts authenticator-app enrollment. The returned secret is shown only once; two-factor
+authentication stays off until [confirmTotpEnrollment] succeeds.
 
-Parameters: none.
+Wire operation: `POST /v1/users/self/mfa/totp`.
 
-Request body (`application/json`; `label` is optional, `{}` when omitted):
+Request body (`application/json`; `label` is optional):
 ```json
 {
   "label": "Phone"
 }
 ```
 
-Response 200 `data` payload (inside `{status,message,data}`); the secret is returned only once:
+Response 200 `data` payload (inside `{status,message,data}`):
 ```json
 {
   "id": "id-placeholder",
@@ -1581,13 +1824,18 @@ Response 200 `data` payload (inside `{status,message,data}`); the secret is retu
 }
 ```
 
+@param label Optional name that tells devices apart.
+@return Pending method id, shared secret and provisioning URI for a QR code.
+
 ### `authentication.confirmTotpEnrollment`
 
-`PUT /v1/users/self/mfa/totp/confirm`
+Activates a pending authenticator method with one live code from the new device. From then on
+every login needs a second factor. Replacing an already confirmed method also needs
+re-authentication through `password` or `reauth_code`; first-time enrollment needs neither.
 
-Parameters: none.
+Wire operation: `PUT /v1/users/self/mfa/totp/confirm`.
 
-Request body (`application/json`; `password` and `reauth_code` only when replacing a confirmed method):
+Request body (`application/json`; `password` and `reauth_code` are optional):
 ```json
 {
   "id": "id-placeholder",
@@ -1604,11 +1852,15 @@ Response 200 `data` payload (inside `{status,message,data}`); the codes are show
 }
 ```
 
+@param request Pending method id, new-device code and optional re-authentication.
+@return Recovery codes to show the user once.
+@throws ValidationException when the id or code is blank.
+
 ### `authentication.regenerateRecoveryCodes`
 
-`POST /v1/users/self/mfa/recovery-codes`
+Issues ten fresh recovery codes and invalidates the previous set.
 
-Parameters: none.
+Wire operation: `POST /v1/users/self/mfa/recovery-codes`.
 
 Request body (`application/json`; send `password` or `code`):
 ```json
@@ -1625,11 +1877,15 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
+@param request Current password, authenticator code or existing recovery code (consumed).
+@return The new recovery codes.
+@throws ValidationException when neither proof is supplied.
+
 ### `authentication.removeMfaMethod`
 
-`DELETE /v1/users/self/mfa/{customId}`
+Removes an enrolled method. Removing the last one also discards the recovery codes.
 
-Parameters: `customId` (path, required).
+Wire operation: `DELETE /v1/users/self/mfa/{methodId}`.
 
 Request body (`application/json`; send `password` or `code`):
 ```json
@@ -1646,33 +1902,561 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
-### `documents.activities`
+@param methodId Method identifier from [listMfaMethods].
+@param request Current password, authenticator code or existing recovery code (consumed).
+@return Whether two-factor authentication remains enabled.
+@throws ValidationException when the id is blank or neither proof is supplied.
 
-`GET /v1/documents/{documentId}/activities`
+### `contracts.list`
 
-Parameters: `documentId` (path, required), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Lists contracts, most recently updated first by default.
+
+Filters include status (comma-separated), counterparty, search, end_date_from/to, ending_within_days,
+external_system/id, sort, expand=document, page and per-page. X-Pagination-* headers supply metadata.
+For reconciliation, page by updated_at until records predate the last sync.
+
+Wire operation: `GET /v1/accounts/{accountId}/contracts`.
 
 Request body: none.
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+Response 200 `data`, with optional document expansion (inside `{status,message,data}`):
 ```json
 [
   {
-    "id": 1,
-    "event": "assignment_created",
-    "message": "example",
-    "payload": {},
-    "origin": {"ip": "203.0.113.7", "user-agent": "example"},
-    "created_at": "2026-01-01T00:00:00Z"
+    "resource": "document_contract",
+    "document_id": "document-placeholder",
+    "status": "active",
+    "counterparty_name": "Acme Ltda",
+    "counterparty_taxpayer_id": "11222333000181",
+    "value": 120000.5,
+    "currency": "BRL",
+    "start_date": "2026-11-01",
+    "end_date": "2027-10-31",
+    "auto_renew": true,
+    "renewal_term_months": 12,
+    "notice_period_days": 30,
+    "term": 1,
+    "owner_id": "owner-placeholder",
+    "metadata": {
+      "crm_stage": "won"
+    },
+    "external_references": [
+      {
+        "system": "hubspot",
+        "id": "98765"
+      }
+    ],
+    "created_at": "2026-10-23T12:00:00Z",
+    "updated_at": "2026-10-23T12:00:00Z",
+    "document": {
+      "id": "document-placeholder",
+      "account_id": "document-placeholder",
+      "template_id": null,
+      "name": "Contrato de prestação de serviços.pdf",
+      "status": "certificated",
+      "artifacts": {
+        "original": "https://example.com/resource"
+      },
+      "is_closed": true,
+      "signing_url": "https://example.com/resource",
+      "verification_code": "document-placeholder",
+      "verification_url": "https://example.com/resource",
+      "decline_reason": null,
+      "declined_by": null,
+      "tags": [],
+      "created_at": "2026-10-20T14:00:00Z",
+      "updated_at": "2026-10-22T09:00:00Z"
+    }
   }
 ]
 ```
 
+@param params Validated filters and optional document expansion.
+@param accountId Workspace override; defaults to the configured workspace.
+@return Contract page and pagination headers.
+
+### `contracts.get`
+
+Reads a document's own contract terms or its amendment link.
+
+The concrete ContractRecord type distinguishes terms from an instrument. A missing contract returns
+HTTP 404; reads remain available when the workspace plan lapses.
+
+Wire operation: `GET /v1/accounts/{accountId}/documents/{documentId}/contract`.
+
+Request body: none.
+
+Response 200 `data` for a root contract (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 130000,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2028-06-30",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 2,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-05-12T18:20:00Z",
+  "amendments": [
+    {
+      "document_id": "document-placeholder",
+      "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+      "parent_document_id": "document-placeholder",
+      "relation_type": "amendment",
+      "number": 1,
+      "status": "applied",
+      "document_status": "certificated",
+      "apply_error": null,
+      "currency": "BRL",
+      "terms": {
+        "value": 130000,
+        "end_date": "2028-06-30"
+      },
+      "changes": {
+        "value": {
+          "from": 120000.5,
+          "to": 130000
+        },
+        "end_date": {
+          "from": "2027-10-31",
+          "to": "2028-06-30"
+        },
+        "term": {
+          "from": 1,
+          "to": 2
+        }
+      },
+      "applied_at": "2027-05-12T18:20:00Z",
+      "created_at": "2027-05-10T15:00:00Z",
+      "updated_at": "2027-05-12T18:20:00Z"
+    }
+  ]
+}
+```
+
+Alternative response 200 `data` for an instrument (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract_amendment",
+  "document_id": "document-placeholder",
+  "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+  "parent_document_id": "document-placeholder",
+  "relation_type": "amendment",
+  "number": null,
+  "status": "pending",
+  "document_status": "pending_signature",
+  "apply_error": null,
+  "currency": "BRL",
+  "terms": {
+    "value": 130000,
+    "end_date": "2028-06-30"
+  },
+  "changes": {
+    "value": {
+      "from": 120000.5,
+      "to": 130000
+    },
+    "end_date": {
+      "from": "2027-10-31",
+      "to": "2028-06-30"
+    },
+    "term": {
+      "from": 1,
+      "to": 2
+    }
+  },
+  "applied_at": null,
+  "created_at": "2027-05-10T15:00:00Z",
+  "updated_at": "2027-05-10T15:00:00Z"
+}
+```
+
+@param documentId Contract or instrument document identifier.
+@param accountId Workspace override.
+@return DocumentContract or DocumentContractAmendment.
+
+### `contracts.update`
+
+Creates terms or changes only the supplied attributes.
+
+Use clearFields for explicit nulls and externalReferences for whole-list replacement. A pending
+instrument null removes that term from its delta. Send parent_document_id and relation_type to link;
+clear parent_document_id to unlink a pending instrument. Applied instruments cannot change.
+An amendment may change the value, currency, dates, auto-renew, renewal/notice periods, counterparty
+and metadata; a renewal only end_date/value; a termination only end_date. The API applies signed
+instruments in certification order. Send the last-read updated_at to refuse stale writes with 409.
+Link request example: {"parent_document_id":"parent-placeholder","relation_type":"amendment","value":130000}.
+
+Wire operation: `PUT /v1/accounts/{accountId}/documents/{documentId}/contract`.
+
+Request body (`application/json`; omit unchanged fields):
+```json
+{
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11.222.333/0001-81",
+  "value": 120000.5,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2027-10-31",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Response 200 `data` for contract terms (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 120000.5,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2027-10-31",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 1,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Alternative response 200 `data` for an instrument (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract_amendment",
+  "document_id": "document-placeholder",
+  "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+  "parent_document_id": "document-placeholder",
+  "relation_type": "amendment",
+  "number": null,
+  "status": "pending",
+  "document_status": "pending_signature",
+  "apply_error": null,
+  "currency": "BRL",
+  "terms": {
+    "value": 130000,
+    "end_date": "2028-06-30"
+  },
+  "changes": {
+    "value": {
+      "from": 120000.5,
+      "to": 130000
+    },
+    "end_date": {
+      "from": "2027-10-31",
+      "to": "2028-06-30"
+    },
+    "term": {
+      "from": 1,
+      "to": 2
+    }
+  },
+  "applied_at": null,
+  "created_at": "2027-05-10T15:00:00Z",
+  "updated_at": "2027-05-10T15:00:00Z"
+}
+```
+
+@param documentId Existing document identifier.
+@param request Partial terms, explicit clears or instrument link/delta.
+@param accountId Workspace override.
+@return Saved contract or instrument; no signing operation is performed.
+@throws ValidationException for an empty update, conflicting clears or invalid field values.
+
+### `contracts.related`
+
+Reads the root contract and every linked instrument from any document in its family.
+
+Applied instruments are ordered by number, followed by pending instruments. A missing family returns 404.
+
+Wire operation: `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related`.
+
+Request body: none.
+
+Response 200 `data` (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 130000,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2028-06-30",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 2,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-05-12T18:20:00Z",
+  "amendments": [
+    {
+      "document_id": "document-placeholder",
+      "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
+      "parent_document_id": "document-placeholder",
+      "relation_type": "amendment",
+      "number": 1,
+      "status": "applied",
+      "document_status": "certificated",
+      "apply_error": null,
+      "currency": "BRL",
+      "terms": {
+        "value": 130000,
+        "end_date": "2028-06-30"
+      },
+      "changes": {
+        "value": {
+          "from": 120000.5,
+          "to": 130000
+        },
+        "end_date": {
+          "from": "2027-10-31",
+          "to": "2028-06-30"
+        },
+        "term": {
+          "from": 1,
+          "to": 2
+        }
+      },
+      "applied_at": "2027-05-12T18:20:00Z",
+      "created_at": "2027-05-10T15:00:00Z",
+      "updated_at": "2027-05-12T18:20:00Z"
+    }
+  ]
+}
+```
+
+@param documentId Root or instrument identifier.
+@param accountId Workspace override.
+@return Root contract with amendments.
+
+### `contracts.renew`
+
+Starts the next term and reopens an expired contract.
+
+Supply the current term or an explicit end date later than the current one. With no end date the
+server advances by renewal_term_months (12 when unset), until the date is in the future. Repeated
+preconditions are refused, so a renewal cannot advance twice. Terminated contracts cannot renew.
+Omit value to retain it; clearValue sends null. A stale updated_at returns 409.
+
+Wire operation: `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew`.
+
+Request body (`application/json`; omit unchanged fields):
+```json
+{
+  "term": 1,
+  "end_date": "2029-06-30",
+  "value": 130000,
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Response 200 `data` (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "active",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 130000,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2029-06-30",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 2,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-10-15T09:30:00Z"
+}
+```
+
+@param documentId Root contract document identifier.
+@param request Renewal preconditions and optional value.
+@param accountId Workspace override.
+@return Contract after renewal.
+
+### `contracts.terminate`
+
+Closes a contract and stops its lifecycle alerts.
+
+The reason is recorded in document_contract_terminated. The server strips HTML. A contract already
+terminated is refused; stale updated_at returns 409. The signed document itself is preserved.
+
+Wire operation: `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate`.
+
+Request body (`application/json`; omit unchanged fields):
+```json
+{
+  "reason": "Supplier replaced",
+  "updated_at": "2026-10-23T12:00:00Z"
+}
+```
+
+Response 200 `data` (inside `{status,message,data}`):
+```json
+{
+  "resource": "document_contract",
+  "document_id": "document-placeholder",
+  "status": "terminated",
+  "counterparty_name": "Acme Ltda",
+  "counterparty_taxpayer_id": "11222333000181",
+  "value": 120000.5,
+  "currency": "BRL",
+  "start_date": "2026-11-01",
+  "end_date": "2027-10-31",
+  "auto_renew": true,
+  "renewal_term_months": 12,
+  "notice_period_days": 30,
+  "term": 1,
+  "owner_id": "owner-placeholder",
+  "metadata": {
+    "crm_stage": "won"
+  },
+  "external_references": [
+    {
+      "system": "hubspot",
+      "id": "98765"
+    }
+  ],
+  "created_at": "2026-10-23T12:00:00Z",
+  "updated_at": "2027-03-02T14:00:00Z"
+}
+```
+
+@param documentId Root contract document identifier.
+@param request Optional reason and version precondition.
+@param accountId Workspace override.
+@return Terminated contract.
+
+### `documents.upload`
+
+Uploads a PDF (`POST /accounts/{accountId}/documents`, multipart). Validated locally: must be a
+non-empty `.pdf` ≤ 25 MB. The service accepts at most 2,000 PDF pages.
+
+Request body: `multipart/form-data` with one `file` part. When [metadata] is supplied the
+request also carries `name` and a JSON-string `metadata` part, a deployed-service extension
+beyond the OpenAPI `file`-only body. Response `data` is the document payload documented on this class, in
+`uploaded` or `metadata_processing` status with `assignment` and `pages` not yet populated.
+
+The current OpenAPI request contains only the `file` part. Supplying [metadata] opts into the
+legacy extension that also sends `name` and `metadata` form fields.
+
+Wire operation: `POST /v1/accounts/{accountId}/documents`.
+
+Request body (`multipart/form-data`; optional members may be omitted):
+```json
+{
+  "file": "<binary bytes>"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "uploaded",
+  "artifacts": {},
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
+}
+```
+
+@param fileData Complete PDF bytes, beginning with the `%PDF-` signature.
+@param fileName Non-blank `.pdf` multipart file name.
+@param metadata Optional legacy metadata serialized as a JSON string part.
+@param accountId Account override; otherwise the client's default account is used.
+@return Uploaded document identity and initial processing state.
+@throws com.assinafy.sdk.exceptions.ValidationException on a non-PDF, empty, or oversized file.
+
 ### `documents.list`
 
-`GET /v1/accounts/{accountId}/documents`
+Lists documents (`GET /accounts/{accountId}/documents`).
 
-Parameters: `accountId` (path, required), `status` (query, optional), `method` (query, optional), `search` (query, optional), `tags` (query, optional), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Request body: none. Query: `status`, `method`, `search`, `tags`, `sort`, `page`, `per-page`.
+Response `data` is an array of the document payload documented on this class, and `X-Pagination-*` headers are
+exposed through [PaginatedResult.meta].
+
+Wire operation: `GET /v1/accounts/{accountId}/documents`.
 
 Request body: none.
 
@@ -1702,47 +2486,18 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
-### `documents.upload`
-
-`POST /v1/accounts/{accountId}/documents`
-
-Parameters: `accountId` (path, required).
-
-Request body (`multipart/form-data`; optional members may be omitted):
-```json
-{
-  "file": "<binary bytes>"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "document",
-  "id": "id-placeholder",
-  "account_id": "account-id-placeholder",
-  "template_id": null,
-  "name": "Example",
-  "status": "uploaded",
-  "artifacts": {},
-  "is_closed": false,
-  "signing_url": "https://example.com/resource",
-  "decline_reason": null,
-  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder", "name": "Example"}],
-  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z",
-  "verification_code": null,
-  "verification_url": null
-}
-```
+@param params Status, method, search, tag-ID, sort, and pagination filters.
+@param accountId Account override; otherwise the client's default account is used.
+@return Matching document summaries and optional pagination-header metadata.
 
 ### `documents.search`
 
-`GET /v1/accounts/{accountId}/documents/search`
+Lightweight document search (`GET /accounts/{accountId}/documents/search`). Returns the same
+[DocumentListItem] shape as [list] but only supports `search`/`status`/`page`/`per-page`.
 
-Parameters: `accountId` (path, required), `search` (query, optional), `status` (query, optional), `sort` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Request body: none. Response `data` is an array of the document payload documented on this class.
+
+Wire operation: `GET /v1/accounts/{accountId}/documents/search`.
 
 Request body: none.
 
@@ -1770,11 +2525,21 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
-### `documents.getStatuses`
+@param query Optional partial document-name search.
+@param status Optional exact status filter.
+@param page Optional one-based results page.
+@param perPage Optional records-per-page limit.
+@param accountId Account override; otherwise the client's default account is used.
+@return Matching document summaries and optional pagination-header metadata.
 
-`GET /v1/documents/statuses`
+### `documents.search`
 
-Parameters: none.
+Lightweight document search (`GET /accounts/{accountId}/documents/search`). Returns the same
+[DocumentListItem] shape as [list] but only supports `search`/`status`/`page`/`per-page`.
+
+Request body: none. Response `data` is an array of the document payload documented on this class.
+
+Wire operation: `GET /v1/accounts/{accountId}/documents/search`.
 
 Request body: none.
 
@@ -1782,286 +2547,1039 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 [
   {
-    "code": "metadata_ready",
-    "deletable": true
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "account-id-placeholder",
+    "template_id": null,
+    "name": "Example",
+    "status": "certificated",
+    "artifacts": {},
+    "is_closed": true,
+    "signing_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
   }
 ]
 ```
 
+@param params Search, status, pagination and sort (name or updated_at, optionally prefixed with minus).
+@param accountId Workspace override.
+@return Matching documents with pagination metadata.
+
 ### `documents.details`
 
-`GET /v1/documents/{documentId}`
+Fetches full document details, including assignment and pages (`GET /documents/{documentId}`).
 
-Parameters: `documentId` (path, required).
+Wire operation: `GET /v1/documents/{documentId}`
 
 Request body: none.
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+Response `data` inside `{status,message,data}`:
 ```json
 {
   "resource": "document",
   "id": "id-placeholder",
   "account_id": "account-id-placeholder",
   "template_id": null,
-  "name": "Example",
-  "status": "certificated",
-  "artifacts": {},
-  "is_closed": true,
-  "signing_url": "https://example.com/resource",
-  "decline_reason": null,
-  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder", "name": "Example"}],
-  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z",
-  "verification_code": null,
-  "verification_url": null,
-  "has_contract": true
-}
-```
-
-### `documents.delete`
-
-`DELETE /v1/documents/{documentId}`
-
-Parameters: `documentId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[]
-```
-
-### `documents.rename`
-
-`PATCH /v1/documents/{documentId}`
-
-Parameters: `documentId` (path, required).
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "name": "Example"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "document",
-  "id": "id-placeholder",
-  "account_id": "account-id-placeholder",
-  "template_id": null,
-  "name": "Example",
+  "name": "document.pdf",
   "status": "metadata_ready",
-  "artifacts": {},
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
   "is_closed": false,
   "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder", "name": "Example"}],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z",
-  "verification_code": null,
-  "verification_url": null
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
 }
 ```
+@param documentId Stable document identifier.
+@return Complete document state.
+@throws ValidationException if [documentId] is blank.
+
+### `documents.details`
+
+Get document. Optional expand=envelope_id,envelope; omitted by default.
+
+Wire operation: `GET /v1/documents/{documentId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
+}
+```
+
+### `documents.get`
+
+Alias for [details]; same request and response.
+
+Wire operation: `GET /v1/documents/{documentId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
+}
+```
+@param documentId Stable document identifier.
+@return Complete document state.
+
+### `documents.waitUntilReady`
+
+Polls [details] until the document reaches a ready status (`metadata_ready`/`pending_signature`/
+`certificated`). Throws if it reaches a terminal failure status or [maxWaitMs] elapses.
+
+Sends no request of its own: repeats `GET /documents/{documentId}` every [pollIntervalMs] and
+returns the document payload documented on this class from the first ready response. Its budget is independent of
+the client's per-request timeout because readiness spans several round trips plus server-side
+PDF processing.
+
+Wire operation: `GET /v1/documents/{documentId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
+}
+```
+@param documentId Stable document identifier.
+@param maxWaitMs Positive total polling budget in milliseconds.
+@param pollIntervalMs Positive delay between API requests in milliseconds.
+@return First document response whose status is in [DocumentStatus.READY].
+@throws ValidationException for invalid timing values, a terminal failure status, or timeout.
 
 ### `documents.download`
 
-`GET /v1/documents/{documentId}/download/{artifactName}`
+Downloads a document artifact as raw bytes (`GET /documents/{documentId}/download/{artifactName}`).
+Defaults to the `certificated` artifact, which is only available once the document is completed;
+use [DocumentArtifact.ORIGINAL] for the uploaded file.
 
-Parameters: `documentId` (path, required), `artifactName` (path, required).
+Request body: none. The response is the raw artifact, not the JSON envelope, and its bytes
+are returned unchanged. An artifact that does not exist yet answers `404`.
+
+Wire operation: `GET /v1/documents/{documentId}/download/{artifactName}`.
 
 Request body: none.
 
 Response 200: raw binary bytes (`application/pdf`), without a JSON envelope.
 
-### `documents.verify`
-
-`GET /v1/documents/{documentSignatureHash}/verify`
-
-Parameters: `documentSignatureHash` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "hash": "example",
-  "id": null,
-  "agreement_code": null,
-  "status": null,
-  "page_count": null,
-  "signer_count": null,
-  "completed_count": 1,
-  "completed_at": null,
-  "verified_at": "2026-01-01T00:00:00Z",
-  "is_valid": true,
-  "message": "example"
-}
-```
-
-### `documents.listTags`
-
-`GET /v1/accounts/{accountId}/documents/{documentId}/tags`
-
-Parameters: `accountId` (path, required), `documentId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "resource": "tag",
-    "id": "id-placeholder",
-    "name": "Example",
-    "color": null,
-    "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
-  }
-]
-```
-
-### `documents.replaceTags`
-
-`PUT /v1/accounts/{accountId}/documents/{documentId}/tags`
-
-Parameters: `accountId` (path, required), `documentId` (path, required).
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "tags": ["example"]
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "resource": "tag",
-    "id": "id-placeholder",
-    "name": "Example",
-    "color": null,
-    "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
-  }
-]
-```
-
-### `documents.addTags`
-
-`POST /v1/accounts/{accountId}/documents/{documentId}/tags`
-
-Parameters: `accountId` (path, required), `documentId` (path, required).
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "tags": ["example"]
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "resource": "tag",
-    "id": "id-placeholder",
-    "name": "Example",
-    "color": null,
-    "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z"
-  }
-]
-```
-
-### `documents.detachTag`
-
-`DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}`
-
-Parameters: `accountId` (path, required), `documentId` (path, required), `tagId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "detached": true
-}
-```
+@param documentId Stable document identifier.
+@param artifactName Artifact wire value from [DocumentArtifact].
+@return Unmodified PDF or ZIP response bytes.
+@throws ValidationException if either identifier is blank.
 
 ### `documents.thumbnail`
 
-`GET /v1/documents/{documentId}/thumbnail`
+Downloads the document thumbnail (`GET /documents/{documentId}/thumbnail`).
 
-Parameters: `documentId` (path, required).
+Request body: none. The response is the raw image, not the JSON envelope; its bytes are
+returned unchanged.
+
+Wire operation: `GET /v1/documents/{documentId}/thumbnail`.
 
 Request body: none.
 
-Response 200: raw binary bytes (`image/*`), without a JSON envelope.
+Response 200: raw binary bytes (`image` media types), without a JSON envelope.
+
+@param documentId Stable document identifier.
+@return Unmodified thumbnail image bytes.
 
 ### `documents.downloadPage`
 
-`GET /v1/documents/{documentId}/pages/{pageId}/download`
+Downloads a page image (`GET /documents/{documentId}/pages/{pageId}/download`).
 
-Parameters: `documentId` (path, required), `pageId` (path, required).
+Request body: none. The response is the raw 150-DPI page image, not the JSON envelope, which
+is the coordinate space `display_settings` positions collect fields in.
+
+Wire operation: `GET /v1/documents/{documentId}/pages/{pageId}/download`.
 
 Request body: none.
 
-Response 200: raw binary bytes (`image/*`), without a JSON envelope.
+Response 200: raw binary bytes (`image` media types), without a JSON envelope.
 
-### `documents.createFromTemplate`
+@param documentId Stable document identifier.
+@param pageId Page identifier from [DocumentDetails.pages].
+@return Unmodified page image bytes.
 
-`POST /v1/accounts/{accountId}/templates/{templateId}/documents`
+### `documents.activities`
 
-Parameters: `accountId` (path, required), `templateId` (path, required).
+Returns the document's activity log (`GET /documents/{documentId}/activities`).
 
-Request body (`application/json`; optional members may be omitted):
+Request body: none. Response `data` is one entry per recorded event, each carrying a snapshot
+of the event `payload` and the requesting `origin`:
+
+Wire operation: `GET /v1/documents/{documentId}/activities`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "id": 1,
+    "event": "assignment_created",
+    "message": "example",
+    "payload": {},
+    "origin": {"ip": "203.0.113.7", "user-agent": "example"},
+    "created_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+@param documentId Stable document identifier.
+@return First activity page; use the ListParams overload to read subsequent pages.
+
+### `documents.activities`
+
+Returns the document's activity log (`GET /documents/{documentId}/activities`).
+
+Request body: none. Response `data` is one entry per recorded event, each carrying a snapshot
+of the event `payload` and the requesting `origin`:
+
+Wire operation: `GET /v1/documents/{documentId}/activities`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "id": 1,
+    "event": "assignment_created",
+    "message": "example",
+    "payload": {},
+    "origin": {"ip": "203.0.113.7", "user-agent": "example"},
+    "created_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+@param documentId Stable document identifier.
+@param params Pagination and sort: id for oldest first, -id (default) for newest first.
+@return Activity page with X-Pagination-* metadata.
+
+### `documents.delete`
+
+Wire operation: `DELETE /v1/documents/{documentId}`
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[]
+```
+@param documentId Stable document identifier.
+
+### `documents.rename`
+
+Renames a document (`PATCH /documents/{documentId}`, body `{"name": ...}`). The service
+allows rename before assignment while status is `uploaded` or `metadata_ready`, and
+normalizes diacritics and unsupported characters. The name is required and limited to 255
+characters. Returns the updated document.
+
+Wire operation: `PATCH /v1/documents/{documentId}`
+
+Request body (`application/json`; optional fields may be omitted):
 ```json
 {
-  "signers": [{"role_id": "role-id-placeholder","id": "id-placeholder","verification_method": "Email","notification_methods": ["Email"],"step": 1}],
-  "editor_fields": [{"field_id": "field-id-placeholder","value": "example"}],
-  "name": "Example",
-  "message": "example",
-  "expires_at": "2026-01-01T00:00:00Z",
-  "tags": ["example"]
+  "name": "Service agreement.pdf"
 }
 ```
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+Response `data` inside `{status,message,data}`:
 ```json
 {
   "resource": "document",
   "id": "id-placeholder",
   "account_id": "account-id-placeholder",
   "template_id": null,
-  "name": "Example",
-  "status": "uploaded",
-  "artifacts": {},
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
   "is_closed": false,
   "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder", "name": "Example"}],
-  "assignment": null,
-  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z",
-  "verification_code": null,
-  "verification_url": null
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
+}
+```
+@param documentId Stable document identifier.
+@param name Non-blank replacement name of at most [SdkConstants.MAX_DOCUMENT_NAME_LENGTH] characters.
+@return Complete updated document.
+@throws ValidationException if an identifier/name is blank or the name is too long.
+
+### `documents.createFromTemplate`
+
+Creates a document from a template
+(`POST /accounts/{accountId}/templates/{templateId}/documents`).
+
+Wire operation: `POST /v1/accounts/{accountId}/templates/{templateId}/documents`
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "signers": [
+    {
+      "role_id": "role-id-placeholder",
+      "id": "id-placeholder",
+      "email": "person@example.com",
+      "name": "Maria Silva",
+      "whatsapp_phone_number": "+5548999999999",
+      "verification_method": "Email",
+      "notification_methods": [
+        "example"
+      ],
+      "embedded": false,
+      "step": 1
+    }
+  ],
+  "editor_fields": [
+    {
+      "field_id": "field-id-placeholder",
+      "value": "Field value"
+    }
+  ],
+  "name": "sample-contract-one-page.pdf",
+  "message": "Message to the signers",
+  "expires_at": "2024-07-30T23:59:00Z",
+  "tags": [
+    "example"
+  ],
+  "max_total_credits": 1.5
 }
 ```
 
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
+}
+```
+@param templateId Existing template identifier.
+@param signers Non-empty role-mapped signers; this list replaces [options]' signer list.
+Optional maxTotalCredits caps spending. idempotencyKey sends Idempotency-Key for an explicit retry of the same creation.
+
+@param options Optional generated name, message, expiration, editor fields, tags, credit ceiling and idempotency key.
+@param accountId Account override; otherwise the client's default account is used.
+@return Uploaded document; assignment is null until asynchronous generation completes.
+@throws ValidationException for blank identifiers, missing signer identity or invalid channels.
+The API validates Signer-role steps and certificate restrictions; CopyReceiver roles ignore
+signing settings and Editor-role fields are filled before generation. Template reads are not
+required by this call, so documents:write is sufficient without templates:read.
+
 ### `documents.estimateCostFromTemplate`
 
-`POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost`
+Estimates the credit cost of creating a document from a template
+(`POST /accounts/{accountId}/templates/{templateId}/documents/estimate-cost`).
 
-Parameters: `accountId` (path, required), `templateId` (path, required).
+Request body carries only what affects pricing — each role mapping's verification and
+notification channels — so signer IDs and steps are omitted. Response `data`:
+The API checks template roles and placed Signer-role fields; certificate signing requires
+a virtual assignment. No template-read permission is required by this operation.
+
+Wire operation: `POST /v1/accounts/{accountId}/templates/{templateId}/documents/estimate-cost`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2087,11 +3605,425 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
-### `fields.list`
+@param templateId Existing template identifier.
+@param signers Non-empty role mappings; signer IDs and signing steps are not sent for pricing.
+@param accountId Account override; otherwise the client's default account is used.
+@return Typed credit, balance, resource-sufficiency, and pricing-breakdown response.
+@throws ValidationException for a blank account/template/role ID, an empty list or invalid channels.
+The API determines which roles sign and whether their placed fields require a collect assignment.
 
-`GET /v1/accounts/{accountId}/fields`
+### `documents.verify`
 
-Parameters: `accountId` (path, required), `include_inactive` (query, optional), `include_standard` (query, optional).
+Verifies a signed document by signature hash (`GET /documents/{hash}/verify`, public/no-auth).
+
+Request body: none. This call always answers HTTP `200`; an unknown hash or unsigned document
+sets `is_valid` to false, leaves the details null, and explains why in `message`.
+
+Wire operation: `GET /v1/documents/{documentSignatureHash}/verify`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "hash": "FE32EDDADE7CBDDCBB934E7402047450B0E59C02",
+  "id": "id-placeholder",
+  "agreement_code": "550E8400-E29B-41D4-A716-446655440000",
+  "status": "certificated",
+  "page_count": "1",
+  "signer_count": "1",
+  "completed_count": 1,
+  "completed_at": "2023-01-27T19:27:44Z",
+  "certificated_at": "2023-01-27T19:27:45Z",
+  "verified_at": "2023-01-27T19:27:46Z",
+  "is_valid": true,
+  "message": ""
+}
+```
+@param hash Verification hash printed in the signed document.
+@return Server validation result and matching document details when available.
+
+### `documents.getPublic`
+
+Fetches non-sensitive public document information without account credentials
+(`GET /public/documents/{documentId}`).
+
+Request body: none, and no credential is sent — this uses the client's credential-free
+transport. Response `data` carries only signer-safe fields:
+
+Wire operation: `GET /v1/public/documents/{documentId}`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "Example",
+  "status": "certificated",
+  "artifacts": {},
+  "is_closed": true,
+  "signing_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+  "tags": [{"id": "id-placeholder", "name": "Example"}],
+  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "verification_code": null,
+  "verification_url": null
+}
+```
+
+@param documentId Stable public document identifier.
+@return Public document identity, status, and signer-safe fields exposed by the API.
+
+### `documents.sendAccessToken`
+
+Sends a one-time access token to a signer of a public document so they can view it.
+
+The document must be pending signature and [email] must belong to a signer of the document who
+has not signed yet. Only the `email` channel exists. No credential is sent: this uses the
+client's credential-free transport.
+
+Wire operation: `PUT /v1/public/documents/{documentId}/send-token`.
+
+Request body (`application/json`; both members required):
+```json
+{
+  "channel": "email",
+  "recipient": "signer@example.com"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "document": {"resource": "document","id": "doc-id","name": "Agreement.pdf","page_count": 3,"created_by": "Sender Name"},
+  "channel": "email",
+  "recipient": "signer@example.com"
+}
+```
+
+@param documentId Stable public document identifier.
+@param email The signer's email address, sent as `recipient`.
+@return Where the token was sent.
+@throws ValidationException for a blank document ID or a malformed email, before any request.
+
+### `documents.sendToken`
+
+Sends a one-time access token to a signer of a public document; same request as
+[sendAccessToken], discarding its result.
+
+Wire operation: `PUT /v1/public/documents/{documentId}/send-token`.
+
+Request body (`application/json`; both members required):
+```json
+{
+  "channel": "email",
+  "recipient": "signer@example.com"
+}
+```
+
+Response 200 `data` payload: the [AccessTokenDelivery] shape documented on [sendAccessToken].
+
+@param documentId Stable public document identifier.
+@param email The signer's email address. Required.
+@param channel `email` or `null`; the API supports no other channel.
+@throws ValidationException for a blank document ID or recipient, a malformed email, or a
+channel other than `email`.
+
+### `documents.isFullySigned`
+
+Sends no request of its own: derived from [details], so it costs one
+`GET /documents/{documentId}`.
+
+Checks whether every assignment signer has completed, including a certificated document.
+A `true` result can precede certification artifact readiness while status is `certificating`.
+
+Wire operation: `GET /v1/documents/{documentId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
+}
+```
+@param documentId Stable document identifier.
+@return `true` for `certificated` status or a non-empty fully completed assignment summary.
+
+### `documents.getSigningProgress`
+
+Derives signing counts and percentage from the current assignment summary.
+
+Sends no request of its own: derived from [details], so it costs one
+`GET /documents/{documentId}` and reads its `assignment.summary`.
+
+Wire operation: `GET /v1/documents/{documentId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z"
+}
+```
+@param documentId Stable document identifier.
+@return Signed, total, pending, and percentage values; all zero when no assignment exists.
+
+### `documents.getStatuses`
+
+Lists the document status catalog (`GET /documents/statuses`).
+
+Request body/query: none. Response `data`:
+`[{"code":"metadata_ready","deletable":true}]`.
+
+Wire operation: `GET /v1/documents/statuses`.
 
 Request body: none.
 
@@ -2099,26 +4031,879 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ```json
 [
   {
-    "resource": "field",
-    "id": "id-placeholder",
-    "name": "Example",
-    "type": "text",
-    "regex": null,
-    "is_pre_defined": true,
-    "is_active": true,
-    "is_required": true,
-    "is_standard": true,
-    "is_read_only": true,
-    "is_visible": true
+    "code": "metadata_ready",
+    "deletable": true
   }
 ]
 ```
 
+@return Status identifiers and optional deletable flags.
+
+### `documents.confirmSignerData`
+
+Sends a legacy signer-data confirmation using the signer's access code. The supplied
+non-empty map is encoded unchanged; prefer the typed signer-facing resource for the current
+`full_name`, `email`, and `government_id` schema.
+
+Request: `PUT /documents/{documentId}/signers/confirm-data?signer-access-code={code}` with the
+supplied map as the JSON body. Response `data` is the updated signer record.
+
+Wire operation: `PUT /v1/documents/{documentId}/signers/confirm-data`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "email": "person@example.com",
+  "whatsapp_phone_number": "+5548999990000",
+  "has_accepted_terms": true
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+[]
+```
+@param documentId Stable document identifier.
+@param signerAccessCode One-time signer code sent only in the query string.
+@param data Non-empty legacy identity map sent unchanged as JSON.
+@return Updated signer.
+@throws ValidationException if an identifier is blank or [data] is empty.
+
+### `documents.confirmSignerData`
+
+Typed compatibility overload of [confirmSignerData]; unset official fields are omitted and
+phone and explicit terms acceptance are sent when supplied.
+
+Wire operation: `PUT /v1/documents/{documentId}/signers/confirm-data`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "email": "person@example.com",
+  "whatsapp_phone_number": "+5548999990000",
+  "has_accepted_terms": true
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+[]
+```
+@param documentId Stable document identifier.
+@param signerAccessCode One-time signer code sent only in the query string.
+@param request Supported signer identity changes.
+@return Updated signer.
+
+### `documents.listTags`
+
+Lists tags currently attached to a document
+(`GET /accounts/{accountId}/documents/{documentId}/tags`).
+
+Request body: none. Response `data`:
+
+Wire operation: `GET /v1/accounts/{accountId}/documents/{documentId}/tags`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "tag",
+    "id": "id-placeholder",
+    "name": "Example",
+    "color": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+@param documentId Stable document identifier.
+@param accountId Account override; otherwise the client's default account is used.
+@return Attached tags.
+
+### `documents.replaceTags`
+
+Replaces the document's tag set with [tagNames], whose values are tag IDs in the current
+OpenAPI. The parameter name is retained because older deployments require names on the same
+route. Values are sent unchanged; an empty list detaches all tags.
+
+Request: `PUT /accounts/{accountId}/documents/{documentId}/tags` with body
+`{"tags":["fa8c09f3e709a8a1c82d69b1454"]}`. Response `data` is the resulting tag array, in
+the shape documented by [listTags].
+
+Wire operation: `PUT /v1/accounts/{accountId}/documents/{documentId}/tags`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "tags": ["example"]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "tag",
+    "id": "id-placeholder",
+    "name": "Example",
+    "color": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+@param documentId Stable document identifier.
+@param tagNames Complete tag-ID set; despite the legacy parameter name these are IDs, not names.
+@param accountId Account override; otherwise the client's default account is used.
+@return Resulting complete tag set.
+
+### `documents.addTags`
+
+Attaches [tagNames] (tag IDs in the current OpenAPI) without removing existing tags. The
+parameter name is retained because older deployments require names on the same route. Values
+are sent unchanged; the API returns the resulting tag set.
+
+Request: `POST /accounts/{accountId}/documents/{documentId}/tags` with body
+`{"tags":["fa8c09f3e709a8a1c82d69b1454"]}`. Response `data` is the resulting tag array, in
+the shape documented by [listTags].
+
+Wire operation: `POST /v1/accounts/{accountId}/documents/{documentId}/tags`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "tags": ["example"]
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "tag",
+    "id": "id-placeholder",
+    "name": "Example",
+    "color": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+@param documentId Stable document identifier.
+@param tagNames Tag IDs to add; despite the legacy parameter name these are IDs, not names.
+@param accountId Account override; otherwise the client's default account is used.
+@return Resulting complete tag set.
+
+### `documents.detachTag`
+
+Detaches a single tag from a document without deleting the tag
+(`DELETE /accounts/{accountId}/documents/{documentId}/tags/{tagId}`).
+
+Request body: none. Response carries no `data` payload. The tag itself survives; use
+[com.assinafy.sdk.resources.TagResource.delete] to remove it from the workspace.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/documents/{documentId}/tags/{tagId}`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "detached": true
+}
+```
+
+@param documentId Stable document identifier.
+@param tagId Stable tag identifier.
+@param accountId Account override; otherwise the client's default account is used.
+
+### `embeddedSigning.listOrigins`
+
+List embed origins. Requires the embedded-signing plan feature; origin management is unavailable to OAuth apps.
+
+Wire operation: `GET /v1/accounts/{accountId}/embed-origins`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[
+  {
+    "id": "id-placeholder",
+    "origin": "https://app.example.com",
+    "created_at": "2026-11-04T12:05:00Z"
+  }
+]
+```
+
+### `embeddedSigning.addOrigin`
+
+Add embed origin. Exact HTTPS origin, or HTTP localhost/127.0.0.1; at most ten origins. Unavailable to OAuth apps.
+
+Wire operation: `POST /v1/accounts/{accountId}/embed-origins`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "origin": "https://app.example.com"
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "id": "id-placeholder",
+  "origin": "https://app.example.com",
+  "created_at": "2026-11-04T12:05:00Z"
+}
+```
+
+### `embeddedSigning.updateOrigin`
+
+Update embed origin. Exact HTTPS origin, or HTTP localhost/127.0.0.1; at most ten origins. Unavailable to OAuth apps.
+
+Wire operation: `PUT /v1/accounts/{accountId}/embed-origins/{originId}`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "origin": "https://app.example.com"
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "id": "id-placeholder",
+  "origin": "https://app.example.com",
+  "created_at": "2026-11-04T12:05:00Z"
+}
+```
+
+### `embeddedSigning.deleteOrigin`
+
+Remove embed origin. Removing the last origin prevents new embed sessions.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/embed-origins/{originId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[]
+```
+
+### `embeddedSigning.createSession`
+
+Create an embed session. Requires an embedded signer. Load once within five minutes; do not prefetch or log the URL. Each reopening needs a new session.
+
+Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/embed-sessions`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "url": "https://example.com/resource",
+  "expires_at": "2026-11-04T12:05:00Z"
+}
+```
+
+### `envelopes.list`
+
+List envelopes. Query: page, per-page, search and status=open|closed. Newest first.
+
+Wire operation: `GET /v1/accounts/{accountId}/envelopes`.
+
+Optional query/header parameters: `page` (query), `per-page` (query), `search` (query), `status` (query).
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[
+  {
+    "resource": "envelope",
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços",
+    "message": "Segue o contrato e seus anexos.",
+    "documents": [
+      {
+        "id": "id-placeholder",
+        "position": 1,
+        "name": "contrato.pdf",
+        "status": "pending_signature",
+        "artifacts": {
+          "original": "https://example.com/resource",
+          "thumbnail": "https://example.com/resource"
+        },
+        "signers": [
+          {
+            "id": "id-placeholder",
+            "full_name": "Example Person",
+            "email": "person@example.com",
+            "whatsapp_phone_number": "+5548999990001",
+            "completed": false,
+            "signed_at": "2026-11-06T14:30:00Z"
+          }
+        ]
+      }
+    ],
+    "counts": {
+      "certificated": 1,
+      "pending_signature": 2
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ],
+    "created_at": "2026-11-04T12:00:00Z"
+  }
+]
+```
+
+### `envelopes.create`
+
+Create envelope. Upload every PDF and wait for metadata first. A successful creation does not guarantee invitation delivery. The optional Idempotency-Key header prevents duplicate creation on explicit retries.
+
+Wire operation: `POST /v1/accounts/{accountId}/envelopes`.
+
+Optional query/header parameters: `Idempotency-Key` (header).
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "max_total_credits": 1.5,
+  "signers": [
+    {
+      "id": "id-placeholder",
+      "verification_method": "Email",
+      "notification_methods": [
+        "Email"
+      ],
+      "embedded": true
+    }
+  ],
+  "documents": [
+    {
+      "id": "id-placeholder",
+      "method": "virtual",
+      "entries": [
+        {
+          "page_id": "example",
+          "fields": [
+            {
+              "signer_id": "example",
+              "field_id": "example",
+              "display_settings": {
+                "left": 69,
+                "top": 282,
+                "width": 421,
+                "height": 45.86,
+                "fontFamily": "Arial",
+                "fontSize": 22,
+                "backgroundColor": "#D5EBFF"
+              }
+            }
+          ]
+        }
+      ],
+      "signer_ids": [
+        "example"
+      ],
+      "expires_at": "example",
+      "copy_receiver_ids": [
+        "example"
+      ]
+    }
+  ]
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "envelope",
+  "id": "id-placeholder",
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "documents": [
+    {
+      "id": "id-placeholder",
+      "position": 1,
+      "name": "contrato.pdf",
+      "status": "pending_signature",
+      "artifacts": {
+        "original": "https://example.com/resource",
+        "thumbnail": "https://example.com/resource"
+      },
+      "signers": [
+        {
+          "id": "id-placeholder",
+          "full_name": "Example Person",
+          "email": "person@example.com",
+          "whatsapp_phone_number": "+5548999990001",
+          "completed": false,
+          "signed_at": "2026-11-06T14:30:00Z"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "certificated": 1,
+    "pending_signature": 2
+  },
+  "signing_urls": [
+    {
+      "signer_id": "example",
+      "url": "https://example.com/resource",
+      "embedded": false
+    }
+  ],
+  "created_at": "2026-11-04T12:00:00Z"
+}
+```
+
+### `envelopes.estimateCost`
+
+Estimate envelope cost. Creates and charges nothing. One document allowance is charged per envelope; certificate verification is charged per document.
+
+Wire operation: `POST /v1/accounts/{accountId}/envelopes/estimate-cost`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "max_total_credits": 1.5,
+  "signers": [
+    {
+      "id": "id-placeholder",
+      "verification_method": "Email",
+      "notification_methods": [
+        "Email"
+      ],
+      "embedded": true
+    }
+  ],
+  "documents": [
+    {
+      "id": "id-placeholder",
+      "method": "virtual",
+      "entries": [
+        {
+          "page_id": "example",
+          "fields": [
+            {
+              "signer_id": "example",
+              "field_id": "example",
+              "display_settings": {
+                "left": 69,
+                "top": 282,
+                "width": 421,
+                "height": 45.86,
+                "fontFamily": "Arial",
+                "fontSize": 22,
+                "backgroundColor": "#D5EBFF"
+              }
+            }
+          ]
+        }
+      ],
+      "signer_ids": [
+        "example"
+      ],
+      "expires_at": "example",
+      "copy_receiver_ids": [
+        "example"
+      ]
+    }
+  ]
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "documents": 1,
+  "credits": 0.9,
+  "needs_extra_document": true,
+  "extra_document_cost": 1,
+  "total_credits": 1.9,
+  "breakdown": [
+    {
+      "code": "NotificationWhatsapp",
+      "name": "Whatsapp Notification",
+      "cost": 0.9,
+      "quantity": 2,
+      "unit_cost": 0.45
+    }
+  ],
+  "document_balance": 0,
+  "credit_balance": 10,
+  "has_sufficient_resources": true,
+  "blocking_reason": null,
+  "message": "example"
+}
+```
+
+### `envelopes.get`
+
+Get envelope.
+
+Wire operation: `GET /v1/accounts/{accountId}/envelopes/{envelopeId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "envelope",
+  "id": "id-placeholder",
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "documents": [
+    {
+      "id": "id-placeholder",
+      "position": 1,
+      "name": "contrato.pdf",
+      "status": "pending_signature",
+      "artifacts": {
+        "original": "https://example.com/resource",
+        "thumbnail": "https://example.com/resource"
+      },
+      "signers": [
+        {
+          "id": "id-placeholder",
+          "full_name": "Example Person",
+          "email": "person@example.com",
+          "whatsapp_phone_number": "+5548999990001",
+          "completed": false,
+          "signed_at": "2026-11-06T14:30:00Z"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "certificated": 1,
+    "pending_signature": 2
+  },
+  "signing_urls": [
+    {
+      "signer_id": "example",
+      "url": "https://example.com/resource",
+      "embedded": false
+    }
+  ],
+  "created_at": "2026-11-04T12:00:00Z"
+}
+```
+
+### `envelopes.update`
+
+Update envelope. Omitted fields remain unchanged; clearMessage sends explicit null. Reordering requires every current document exactly once.
+
+Wire operation: `PATCH /v1/accounts/{accountId}/envelopes/{envelopeId}`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "document_ids": [
+    "example"
+  ]
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "envelope",
+  "id": "id-placeholder",
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "documents": [
+    {
+      "id": "id-placeholder",
+      "position": 1,
+      "name": "contrato.pdf",
+      "status": "pending_signature",
+      "artifacts": {
+        "original": "https://example.com/resource",
+        "thumbnail": "https://example.com/resource"
+      },
+      "signers": [
+        {
+          "id": "id-placeholder",
+          "full_name": "Example Person",
+          "email": "person@example.com",
+          "whatsapp_phone_number": "+5548999990001",
+          "completed": false,
+          "signed_at": "2026-11-06T14:30:00Z"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "certificated": 1,
+    "pending_signature": 2
+  },
+  "signing_urls": [
+    {
+      "signer_id": "example",
+      "url": "https://example.com/resource",
+      "embedded": false
+    }
+  ],
+  "created_at": "2026-11-04T12:00:00Z"
+}
+```
+
+### `envelopes.delete`
+
+Delete envelope. Every document must be closed first. Documents, certificates and downloads are preserved.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/envelopes/{envelopeId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[]
+```
+
+### `envelopes.activities`
+
+List envelope activities. Query: page, per-page and sort=id|-id. Includes documents removed from the envelope, except deleted documents.
+
+Wire operation: `GET /v1/accounts/{accountId}/envelopes/{envelopeId}/activities`.
+
+Optional query/header parameters: `sort` (query), `page` (query), `per-page` (query).
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[
+  {
+    "id": 4,
+    "event": "assignment_created",
+    "message": "Assignment created by John Smith.",
+    "payload": [],
+    "origin": {
+      "ip": "172.19.0.1",
+      "user-agent": "example"
+    },
+    "created_at": "2022-07-19T19:28:13Z",
+    "document_id": "document-id-placeholder",
+    "document_name": "Contrato.pdf"
+  }
+]
+```
+
+### `envelopes.download`
+
+Download envelope artifacts. ZIP of available document artifacts, in envelope order; 404 when no document has the artifact.
+
+Wire operation: `GET /v1/accounts/{accountId}/envelopes/{envelopeId}/download/{artifactName}`.
+
+Request body: none.
+
+Response: binary bytes or an empty successful response, as the operation specifies.
+
+### `envelopes.cancel`
+
+Cancel envelope. Cancels eligible open documents and notifies their participants. Closed or certification-queued documents remain unchanged.
+
+Wire operation: `PUT /v1/accounts/{accountId}/envelopes/{envelopeId}/cancel`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[
+  {
+    "id": "id-placeholder",
+    "status": "rejected_by_user",
+    "cancelled": true
+  }
+]
+```
+
+### `envelopes.resendNotification`
+
+Remind envelope signer. Sends one reminder for the whole envelope. Paid notification channels are charged again.
+
+Wire operation: `PUT /v1/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/resend`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "is_sent": true,
+  "envelope_id": "example",
+  "signer_id": "example"
+}
+```
+
+### `envelopes.addDocument`
+
+Add document to envelope. Only existing envelope signers may be selected; the server validates their channels and certificate isolation. Sends invitations for the added document.
+
+Wire operation: `POST /v1/accounts/{accountId}/envelopes/{envelopeId}/documents`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "id": "id-placeholder",
+  "method": "virtual",
+  "entries": [
+    {
+      "page_id": "example",
+      "fields": [
+        {
+          "signer_id": "example",
+          "field_id": "example",
+          "display_settings": {
+            "left": 69,
+            "top": 282,
+            "width": 421,
+            "height": 45.86,
+            "fontFamily": "Arial",
+            "fontSize": 22,
+            "backgroundColor": "#D5EBFF"
+          }
+        }
+      ]
+    }
+  ],
+  "signer_ids": [
+    "example"
+  ],
+  "expires_at": "example",
+  "copy_receiver_ids": [
+    "example"
+  ],
+  "max_total_credits": 1.5
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "envelope",
+  "id": "id-placeholder",
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "documents": [
+    {
+      "id": "id-placeholder",
+      "position": 1,
+      "name": "contrato.pdf",
+      "status": "pending_signature",
+      "artifacts": {
+        "original": "https://example.com/resource",
+        "thumbnail": "https://example.com/resource"
+      },
+      "signers": [
+        {
+          "id": "id-placeholder",
+          "full_name": "Example Person",
+          "email": "person@example.com",
+          "whatsapp_phone_number": "+5548999990001",
+          "completed": false,
+          "signed_at": "2026-11-06T14:30:00Z"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "certificated": 1,
+    "pending_signature": 2
+  },
+  "signing_urls": [
+    {
+      "signer_id": "example",
+      "url": "https://example.com/resource",
+      "embedded": false
+    }
+  ],
+  "created_at": "2026-11-04T12:00:00Z"
+}
+```
+
+### `envelopes.removeDocument`
+
+Take document out of envelope. Cancels and removes an open document; the other documents continue. Participants are notified.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/envelopes/{envelopeId}/documents/{documentId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "envelope",
+  "id": "id-placeholder",
+  "name": "Contrato de prestação de serviços",
+  "message": "Segue o contrato e seus anexos.",
+  "documents": [
+    {
+      "id": "id-placeholder",
+      "position": 1,
+      "name": "contrato.pdf",
+      "status": "pending_signature",
+      "artifacts": {
+        "original": "https://example.com/resource",
+        "thumbnail": "https://example.com/resource"
+      },
+      "signers": [
+        {
+          "id": "id-placeholder",
+          "full_name": "Example Person",
+          "email": "person@example.com",
+          "whatsapp_phone_number": "+5548999990001",
+          "completed": false,
+          "signed_at": "2026-11-06T14:30:00Z"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "certificated": 1,
+    "pending_signature": 2
+  },
+  "signing_urls": [
+    {
+      "signer_id": "example",
+      "url": "https://example.com/resource",
+      "embedded": false
+    }
+  ],
+  "created_at": "2026-11-04T12:00:00Z"
+}
+```
+
 ### `fields.create`
 
-`POST /v1/accounts/{accountId}/fields`
+Creates a definition with `POST /accounts/{accountId}/fields`.
 
-Parameters: `accountId` (path, required).
+Request body:
+`{"name":"Employee CPF","type":"cpf","regex":null,"is_required":true}`.
+
+Wire operation: `POST /v1/accounts/{accountId}/fields`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2147,11 +4932,54 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param request Required name/type and optional regex/required state.
+@param accountId Account override; otherwise the resource default is used.
+@return Created field definition.
+@throws ValidationException when the account, name, or type is blank.
+
+### `fields.list`
+
+Lists definitions with `GET /accounts/{accountId}/fields`.
+
+Query shape: optional `include_inactive` and `include_standard` booleans; request body: none.
+Response `data` is an unpaginated array of complete [FieldDefinition] objects:
+
+Wire operation: `GET /v1/accounts/{accountId}/fields`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "field",
+    "id": "id-placeholder",
+    "name": "Example",
+    "type": "text",
+    "regex": null,
+    "is_pre_defined": true,
+    "is_active": true,
+    "is_required": true,
+    "is_standard": true,
+    "is_read_only": true,
+    "is_visible": true
+  }
+]
+```
+
+@param includeInactive Whether inactive definitions should be included.
+@param includeStandard Whether built-in signature, initial, and signature-date definitions should be included.
+@param accountId Account override; otherwise the resource default is used.
+@return Field definitions matching the query.
+
 ### `fields.get`
 
-`GET /v1/accounts/{accountId}/fields/{fieldId}`
+Retrieves one definition with `GET /accounts/{accountId}/fields/{fieldId}`.
 
-Parameters: `accountId` (path, required), `fieldId` (path, required).
+Request body/query: none. Response `data` contains `resource`, `id`, `name`, `type`, nullable `regex`,
+`is_pre_defined`, `is_active`, `is_required`, `is_standard`, `is_read_only`, and `is_visible`.
+
+Wire operation: `GET /v1/accounts/{accountId}/fields/{fieldId}`.
 
 Request body: none.
 
@@ -2172,11 +5000,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param fieldId Field definition identifier.
+@param accountId Account override; otherwise the resource default is used.
+@return Complete field definition.
+@throws ValidationException when the account or field identifier is blank.
+
 ### `fields.update`
 
-`PUT /v1/accounts/{accountId}/fields/{fieldId}`
+Updates a definition with `PUT /accounts/{accountId}/fields/{fieldId}`.
 
-Parameters: `accountId` (path, required), `fieldId` (path, required).
+Request body is a non-empty subset of `{"name":"New name","regex":null,"is_active":false}`.
+Response `data` is the complete updated [FieldDefinition] shape documented by [create].
+
+Wire operation: `PUT /v1/accounts/{accountId}/fields/{fieldId}`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2204,11 +5040,20 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param fieldId Field definition identifier.
+@param request Name, regex, explicit regex removal, and/or active-state changes.
+@param accountId Account override; otherwise the resource default is used.
+@return Updated field definition.
+@throws ValidationException for a blank field ID/name, conflicting regex changes, or an empty update.
+
 ### `fields.delete`
 
-`DELETE /v1/accounts/{accountId}/fields/{fieldId}`
+Deletes a definition with `DELETE /accounts/{accountId}/fields/{fieldId}`.
 
-Parameters: `accountId` (path, required), `fieldId` (path, required).
+Request body/query: none. Response is the standard success envelope without a typed `data` payload.
+Definitions already used by assignments may need to be deactivated with [update] instead.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/fields/{fieldId}`.
 
 Request body: none.
 
@@ -2217,11 +5062,18 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 []
 ```
 
+@param fieldId Field definition identifier.
+@param accountId Account override; otherwise the resource default is used.
+@throws ValidationException when the account or field identifier is blank.
+
 ### `fields.validate`
 
-`POST /v1/accounts/{accountId}/fields/{fieldId}/validate`
+Validates one value with `POST /accounts/{accountId}/fields/{fieldId}/validate`.
 
-Parameters: `accountId` (path, required), `fieldId` (path, required).
+Request body: `{"value":"400.676.228-36"}`; request query: none.
+Response `data`: `{"type":"cpf","success":true,"error_message":""}`.
+
+Wire operation: `POST /v1/accounts/{accountId}/fields/{fieldId}/validate`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2239,11 +5091,20 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param fieldId Field definition whose type/regex validates the value.
+@param value JSON-compatible input value; the `value` key is retained when this is `null`.
+@param accountId Account override; otherwise the resource default is used.
+@return Type, success flag, and error message from the validator.
+@throws ValidationException when the account or field identifier is blank.
+
 ### `fields.validateMultiple`
 
-`POST /v1/accounts/{accountId}/fields/validate-multiple`
+Validates values in one request with `POST /accounts/{accountId}/fields/validate-multiple`.
 
-Parameters: `accountId` (path, required).
+Request body: `[{"field_id":"field-1","value":"123"}]`; request query: none.
+`[{"field_id":"field-1","type":"cpf","success":false,"error_message":"Invalid CPF."}]`.
+
+Wire operation: `POST /v1/accounts/{accountId}/fields/validate-multiple`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2267,11 +5128,18 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@param entries Non-empty field identifier/value array sent directly as the JSON body.
+@param accountId Account override; otherwise the resource default is used.
+@return One validation result for each request entry.
+@throws ValidationException when the account is blank, the array is empty, or an entry has a blank field ID.
+
 ### `fields.listTypes`
 
-`GET /v1/field-types`
+Lists supported types with `GET /field-types`.
 
-Parameters: none.
+Request body/query: none. Response `data`: `[{"type":"cpf","name":"CPF"}]`.
+
+Wire operation: `GET /v1/field-types`.
 
 Request body: none.
 
@@ -2285,126 +5153,17 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
-### `signers.list`
-
-`GET /v1/accounts/{accountId}/signers`
-
-Parameters: `accountId` (path, required), `search` (query, optional), `page` (query, optional), `per-page` (query, optional).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "resource": "signer",
-    "id": "id-placeholder",
-    "full_name": "Example",
-    "email": null,
-    "whatsapp_phone_number": null,
-    "government_id": null,
-    "has_accepted_terms": true
-  }
-]
-```
-
-### `signers.create`
-
-`POST /v1/accounts/{accountId}/signers`
-
-Parameters: `accountId` (path, required).
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "full_name": "Example",
-  "email": "person@example.com",
-  "whatsapp_phone_number": "+15555550100",
-  "government_id": "390.533.447-05"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "signer",
-  "id": "id-placeholder",
-  "full_name": "Example",
-  "email": null,
-  "whatsapp_phone_number": null,
-  "government_id": null,
-  "has_accepted_terms": true
-}
-```
-
-### `signers.get`
-
-`GET /v1/accounts/{accountId}/signers/{signerId}`
-
-Parameters: `accountId` (path, required), `signerId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "signer",
-  "id": "id-placeholder",
-  "full_name": "Example",
-  "email": null,
-  "whatsapp_phone_number": null,
-  "government_id": null,
-  "has_accepted_terms": true
-}
-```
-
-### `signers.update`
-
-`PUT /v1/accounts/{accountId}/signers/{signerId}`
-
-Parameters: `accountId` (path, required), `signerId` (path, required).
-
-Request body (`application/json`; optional members may be omitted):
-```json
-{
-  "full_name": "Example",
-  "email": "person@example.com",
-  "whatsapp_phone_number": "+15555550100",
-  "government_id": "government-id-placeholder"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "signer",
-  "id": "id-placeholder",
-  "full_name": "Example",
-  "email": null,
-  "whatsapp_phone_number": null,
-  "government_id": null,
-  "has_accepted_terms": true
-}
-```
-
-### `signers.delete`
-
-`DELETE /v1/accounts/{accountId}/signers/{signerId}`
-
-Parameters: `accountId` (path, required), `signerId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[]
-```
+@return Machine-readable type codes and human-readable names.
 
 ### `signerDocuments.self`
 
-`GET /v1/signers/self`
+Fetches the signer identified by an access code.
 
-Parameters: none.
+Wire request: `GET /signers/self?signer-access-code={code}`, with no body or credential
+header. The typed [SignerSelf] response represents:
+Signature-state flags remain nullable because older responses can omit them.
+
+Wire operation: `GET /v1/signers/self`.
 
 Request body: none.
 
@@ -2425,75 +5184,655 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param signerAccessCode One-time code from the signer's signing link.
+@return The signer's identity and stored-signature state.
+
 ### `signerDocuments.getCurrent`
 
-`GET /v1/signers/{signerId}/document`
+Fetches the current document for a known signer.
 
-Parameters: `signerId` (path, required).
+Wire request: `GET /signers/{signerId}/document?signer-access-code={code}`, with both path
+and query values URL-encoded. The [DocumentDetails] response has the full document shape:
+
+Wire operation: `GET /v1/signers/{signerId}/document`.
 
 Request body: none.
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+Response `data` inside `{status,message,data}`:
 ```json
 {
   "resource": "document",
   "id": "id-placeholder",
   "account_id": "account-id-placeholder",
   "template_id": null,
-  "name": "Example",
-  "status": "certificated",
-  "artifacts": {},
-  "is_closed": true,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
   "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder", "name": "Example"}],
-  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z",
-  "verification_code": null,
-  "verification_url": null
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z",
+  "current_signer": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false,
+    "verification_method": "Email",
+    "notification_methods": [
+      "example"
+    ],
+    "completed": false
+  },
+  "is_signer_access_closed": false,
+  "certified_copy": {
+    "available": false,
+    "notification_method": "Email",
+    "resends_left": null
+  }
+}
+```
+@param signerId Signer ID placed in the URL path.
+@param signerAccessCode One-time code sent only as `signer-access-code` in the query.
+@return The current document, including any assignment and signer-visible items.
+
+### `signerDocuments.getCurrent`
+
+Get signer's document. Set expandEnvelope to request envelope identity.
+
+Wire operation: `GET /v1/signers/{signerId}/document`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z",
+  "current_signer": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false,
+    "verification_method": "Email",
+    "notification_methods": [
+      "example"
+    ],
+    "completed": false
+  },
+  "is_signer_access_closed": false,
+  "certified_copy": {
+    "available": false,
+    "notification_method": "Email",
+    "resends_left": null
+  }
 }
 ```
 
 ### `signerDocuments.getAssignment`
 
-`GET /v1/sign`
+Opens the assignment as the signer sees it and records the document as viewed.
 
-Parameters: `has_accepted_terms` (query, optional).
+Wire request: `GET /sign?signer-access-code={code}&has_accepted_terms={boolean}`. The terms
+query is omitted when [hasAcceptedTerms] is null and preserves an explicit false. A `409`
+means document preparation is still in progress. The [DocumentDetails] response contains the
+same complete document shape as [getCurrent], with signer-facing assignment content such as:
+A `DigitalCertificate` signer must call [confirmData] and [acceptTerms] before this request;
+accepting terms only through this request's query is too late for that verification method.
+
+Wire operation: `GET /v1/sign`.
 
 Request body: none.
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+Response `data` inside `{status,message,data}`:
 ```json
 {
   "resource": "document",
   "id": "id-placeholder",
   "account_id": "account-id-placeholder",
   "template_id": null,
-  "name": "Example",
-  "status": "certificated",
-  "artifacts": {},
-  "is_closed": true,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
   "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
   "decline_reason": null,
-  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder", "name": "Example"}],
-  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z",
-  "verification_code": null,
-  "verification_url": null
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z",
+  "current_signer": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false,
+    "verification_method": "Email",
+    "notification_methods": [
+      "example"
+    ],
+    "completed": false
+  },
+  "is_signer_access_closed": false,
+  "certified_copy": {
+    "available": false,
+    "notification_method": "Email",
+    "resends_left": null
+  }
+}
+```
+@param signerAccessCode One-time signer code sent as a query parameter.
+@param hasAcceptedTerms Optional terms-acceptance value sent as `has_accepted_terms`.
+@return The document, pages, assignment, signers, and signer-visible assignment items.
+
+### `signerDocuments.getAssignment`
+
+View document to sign. Set expandEnvelope to request envelope identity; closed codes return a reduced projection with certified_copy availability.
+
+Wire operation: `GET /v1/sign`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "document",
+  "id": "id-placeholder",
+  "account_id": "account-id-placeholder",
+  "template_id": null,
+  "name": "document.pdf",
+  "status": "metadata_ready",
+  "artifacts": {
+    "original": "https://example.com/resource"
+  },
+  "is_closed": false,
+  "signing_url": "https://example.com/resource",
+  "verification_code": "verification-code-placeholder",
+  "verification_url": "https://example.com/resource",
+  "decline_reason": null,
+  "declined_by": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false
+  },
+  "tags": [
+    {
+      "id": "example",
+      "name": "example",
+      "color": "ff8800"
+    }
+  ],
+  "assignment": {
+    "resource": "assignment",
+    "id": "id-placeholder",
+    "document_id": "document-id-placeholder",
+    "created_at": "2026-06-03T03:54:16Z",
+    "sender_email": "person@example.com",
+    "method": "virtual",
+    "expires_at": null,
+    "message": "example",
+    "signers": [
+      {
+        "resource": "signer",
+        "id": "id-placeholder",
+        "full_name": "Example Person",
+        "email": "person@example.com",
+        "whatsapp_phone_number": "+5548999990000",
+        "government_id": "government-id-placeholder",
+        "has_accepted_terms": false,
+        "verification_method": "Email",
+        "notification_methods": [
+          "example"
+        ],
+        "step": 1,
+        "notified": true,
+        "identity_verification_status": "InReview",
+        "completed": true,
+        "notification_history": [
+          {
+            "event": "signature_request",
+            "status": "failed",
+            "error_code": "MailboxFull",
+            "error_message": "A caixa de entrada do destinatário está cheia. Peça ao signatário para liberar espaço ou use outro e-mail.",
+            "sent_at": "2026-07-07T12:00:00Z",
+            "failed_at": "2026-07-07T12:05:00Z"
+          }
+        ]
+      }
+    ],
+    "copy_receivers": [
+      {}
+    ],
+    "items": [
+      {
+        "id": "example",
+        "page": {
+          "id": "id-placeholder",
+          "number": 1,
+          "height": 2100,
+          "width": 1275,
+          "download_url": "https://example.com/resource"
+        },
+        "signer": {},
+        "field": {},
+        "display_settings": null,
+        "value": null,
+        "completed": true
+      }
+    ],
+    "summary": {
+      "signer_count": 1,
+      "completed_count": 1,
+      "signers": [
+        {}
+      ]
+    },
+    "signing_urls": [
+      {
+        "signer_id": "example",
+        "url": "https://example.com/resource",
+        "embedded": false
+      }
+    ]
+  },
+  "pages": [
+    {
+      "id": "id-placeholder",
+      "number": 1,
+      "height": 2100,
+      "width": 1275,
+      "download_url": "https://example.com/resource"
+    }
+  ],
+  "envelope_id": null,
+  "envelope": {
+    "id": "id-placeholder",
+    "name": "Contrato de prestação de serviços"
+  },
+  "has_contract": true,
+  "created_at": "2026-06-03T03:54:16Z",
+  "updated_at": "2026-06-03T03:54:16Z",
+  "current_signer": {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": "+5548999990000",
+    "government_id": "government-id-placeholder",
+    "has_accepted_terms": false,
+    "verification_method": "Email",
+    "notification_methods": [
+      "example"
+    ],
+    "completed": false
+  },
+  "is_signer_access_closed": false,
+  "certified_copy": {
+    "available": false,
+    "notification_method": "Email",
+    "resends_left": null
+  }
 }
 ```
 
 ### `signerDocuments.sign`
 
-`POST /v1/documents/{documentId}/assignments/{assignmentId}`
+Submits signer field values and signs one assignment.
 
-Parameters: `documentId` (path, required), `assignmentId` (path, required).
+Wire request:
+`POST /documents/{documentId}/assignments/{assignmentId}?signer-access-code={code}` with a
+JSON-array body. Virtual assignments must first call [confirmData], then send an empty array.
+Digital-certificate signers cannot use this operation; the service references separate
+certificate routes that are not defined by the current v1 OpenAPI. Every collect
+[SignAssignmentItemRequest] is emitted in the exact API shape:
+The typed result preserves the operation-defined response object, for example
+`{"signed": true}`, as a `Map<String, Any>` without inventing undocumented keys.
+
+Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2514,11 +5853,22 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param documentId Document ID placed in the URL path.
+@param assignmentId Assignment ID placed in the URL path.
+@param signerAccessCode One-time signer code sent only in the query.
+@param entries Assignment-item values, or an empty list for a confirmed virtual assignment.
+@return The API's signing-result object.
+
 ### `signerDocuments.decline`
 
-`PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject`
+Declines one assignment as the signer.
 
-Parameters: `documentId` (path, required), `assignmentId` (path, required).
+Wire request:
+`PUT /documents/{documentId}/assignments/{assignmentId}/reject?signer-access-code={code}`
+with the complete JSON body `{"decline_reason":"Reason shown to the sender"}`. The API's
+successful envelope is `{"status":200,"data":[]}` and is intentionally returned as [Unit].
+
+Wire operation: `PUT /v1/documents/{documentId}/assignments/{assignmentId}/reject`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2532,11 +5882,20 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 []
 ```
 
+@param documentId Document ID placed in the URL path.
+@param assignmentId Assignment ID placed in the URL path.
+@param signerAccessCode One-time signer code sent only in the query.
+@param declineReason Required free-text reason sent as `decline_reason`.
+
 ### `signerDocuments.signMultiple`
 
-`PUT /v1/signers/documents/sign-multiple`
+Signs several virtual-method documents for the same signer.
 
-Parameters: none.
+Wire request: `PUT /signers/documents/sign-multiple?signer-access-code={code}` with the
+complete body `{"document_ids":["doc_1","doc_2"]}`. The documented success payload is an
+empty data array, `{"status":200,"data":[]}`, so this function returns [Unit].
+
+Wire operation: `PUT /v1/signers/documents/sign-multiple`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2550,11 +5909,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 []
 ```
 
+@param documentIds Non-empty document-ID list serialized as `document_ids`.
+@param signerAccessCode One-time signer code sent only in the query.
+
 ### `signerDocuments.declineMultiple`
 
-`PUT /v1/signers/documents/decline-multiple`
+Declines several documents with one shared reason.
 
-Parameters: none.
+Wire request: `PUT /signers/documents/decline-multiple?signer-access-code={code}` with the
+complete body
+`{"document_ids":["doc_1","doc_2"],"decline_reason":"Unfavorable terms"}`. The documented
+`{"status":200,"data":[]}` success response is returned as [Unit].
+
+Wire operation: `PUT /v1/signers/documents/decline-multiple`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2569,11 +5936,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 []
 ```
 
+@param documentIds Non-empty document-ID list serialized as `document_ids`.
+@param declineReason Required reason serialized as `decline_reason`.
+@param signerAccessCode One-time signer code sent only in the query.
+
 ### `signerDocuments.verifyEmail`
 
-`POST /v1/verify`
+Verifies the one-time password delivered to a signer.
 
-Parameters: none.
+Wire request: `POST /verify?signer-access-code={code}`. [request] is the entire JSON body,
+`{"verification-code":"123456"}`; the body never contains `signer-access-code`. The API's
+bare success envelope is validated and returned as [Unit].
+
+Wire operation: `POST /v1/verify`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2590,17 +5965,530 @@ Response 200 body; optional members depend on document state and permissions:
 }
 ```
 
+@param signerAccessCode Signing-link access code sent only in the query.
+@param request OTP body whose exact wire key is `verification-code`.
+
 ### `signerDocuments.confirmData`
 
-`PUT /v1/documents/{documentId}/signers/confirm-data`
+Confirm signer data. Confirms contact data and explicit terms acceptance using signer-access-code. The current API returns an empty array; this method then reads GET /signers/self to preserve its Signer return value. Legacy deployments returning a signer object need no follow-up. fullName and governmentId are compatibility extensions; use the workspace signer update for persisted identity changes.
 
-Parameters: `documentId` (path, required).
+Wire operation: `PUT /v1/documents/{documentId}/signers/confirm-data`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "email": "person@example.com",
+  "whatsapp_phone_number": "+5548999990000",
+  "has_accepted_terms": true
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+[]
+```
+
+### `signerDocuments.acceptTerms`
+
+Records the signer's terms acceptance.
+
+Wire request: `PUT /signers/accept-terms?signer-access-code={code}` with no JSON body. The
+bare success envelope, typically `{"status":200,"message":"Terms accepted"}`, is validated
+and returned as [Unit]. Putting the access code in a body would leave this request
+unauthenticated, so this function always sends it in the query.
+
+Wire operation: `PUT /v1/signers/accept-terms`.
+
+Request body: none.
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+@param signerAccessCode One-time signer code sent only as `signer-access-code`.
+
+### `signerDocuments.uploadSignature`
+
+Uploads the signer's signature or initials as raw PNG bytes.
+
+Wire request: `POST /signature?signer-access-code={code}&type={type}&reuse={boolean}` with
+`Content-Type: image/png` and [imageData] as the complete raw body (not JSON or multipart).
+`type` defaults to `signature`; `reuse` is omitted when null. The bare success envelope is
+validated and returned as [Unit].
+
+Wire operation: `POST /v1/signature`.
+
+Request body (`image/png`; optional members may be omitted):
+```json
+"<binary bytes>"
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+@param signerAccessCode One-time signer code sent only in the query.
+@param imageData Non-empty PNG file bytes sent without multipart framing.
+@param type Image kind, normally [SignatureType.SIGNATURE] or [SignatureType.INITIAL].
+@param reuse Optional instruction to update the signer's reusable-signature preference.
+
+### `signerDocuments.downloadSignature`
+
+Downloads the signer's stored signature or initials.
+
+Wire request: `GET /signature/{type}?signer-access-code={code}` with no body. The path type
+and access code are URL-encoded. The response is returned unchanged as PNG [ByteArray]
+content; a missing stored image surfaces as the API's `404` exception.
+
+Wire operation: `GET /v1/signature/{signatureType}`.
+
+Request body: none.
+
+Response 200: raw binary bytes (`image` media types), without a JSON envelope.
+
+@param signerAccessCode One-time signer code sent only in the query.
+@param type Stored image kind, normally [SignatureType.SIGNATURE] or [SignatureType.INITIAL].
+@return Raw signature/initial image bytes.
+
+### `signerDocuments.list`
+
+Lists documents belonging to a signer.
+
+Wire request: `GET /signers/{signerId}/documents?signer-access-code={code}&page={page}`
+`&per-page={perPage}`. Only the OpenAPI-documented pagination fields from [params] are sent.
+The response body is a `data` array of full [DocumentDetails] values, for example
+`{"data":[{"id":"doc_123","account_id":"account_123","name":"Agreement.pdf",
+"status":"pending_signature","artifacts":{},"tags":[],"pages":[],
+"is_closed":false}]}`. `X-Pagination-*` headers become [PaginatedResult.meta], such as
+`{currentPage=1, perPage=25, total=1, lastPage=1}`.
+
+Wire operation: `GET /v1/signers/{signerId}/documents`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "account-id-placeholder",
+    "template_id": null,
+    "name": "Example",
+    "status": "certificated",
+    "artifacts": {},
+    "is_closed": true,
+    "signing_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
+    "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
+  }
+]
+```
+
+@param signerId Signer ID placed in the URL path.
+@param signerAccessCode One-time signer code sent only in the query.
+@param params Pagination; `page` is 1-based and `perPage` is between 1 and 100.
+@return Full signer documents plus optional pagination metadata.
+
+### `signerDocuments.search`
+
+Searches documents belonging to a signer by name.
+
+Wire request:
+`GET /signers/{signerId}/documents/search?signer-access-code={code}&search={term}`; the
+`search` query is omitted when null or blank. The typed [PaginatedResult] contains the same
+complete [DocumentDetails] elements as [list], for example
+`{"data":[{"id":"doc_123","account_id":"account_123","name":"Agreement.pdf",
+"status":"pending_signature","artifacts":{},"tags":[],"pages":[],
+"is_closed":false}]}`, plus pagination metadata when the server returns pagination headers.
+
+Wire operation: `GET /v1/signers/{signerId}/documents/search`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "account-id-placeholder",
+    "template_id": null,
+    "name": "Example",
+    "status": "certificated",
+    "artifacts": {},
+    "is_closed": true,
+    "signing_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
+    "tags": [{"id": "id-placeholder", "name": "Example"}],
+    "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
+    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
+  }
+]
+```
+
+@param signerId Signer ID placed in the URL path.
+@param signerAccessCode One-time signer code sent only in the query.
+@param search Optional free-text document-name query.
+@return Matching full signer documents and any response pagination metadata.
+
+### `signerDocuments.download`
+
+Downloads an artifact from the documented public signer-link route.
+
+Wire request:
+`GET /signers/{signerId}/documents/{documentId}/download/{artifactName}`. This operation has
+an empty OpenAPI security list: it deliberately sends no signer access code, API key, bearer
+token, query parameters, or body. [artifactName] accepts `original`, `certificated`,
+`certificate-page`, `pades`, or `bundle`. The response is raw PDF bytes, except `bundle`,
+which is a ZIP archive.
+
+Wire operation: `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}`.
+
+Request body: none.
+
+Response 200: raw binary bytes (`application/pdf`), without a JSON envelope.
+
+@param signerId Signer ID placed in the public URL path.
+@param documentId Document ID placed in the public URL path.
+@param artifactName Artifact kind; defaults to [DocumentArtifact.ORIGINAL].
+@return Unmodified PDF or ZIP response bytes.
+
+### `signerDocuments.getIdentityVerification`
+
+Reads the hosted identity-document verification state.
+
+can_start is true only before a provider session exists or after it expires. InReview
+permits viewing and signing while the account reviews identity; certification waits.
+Declined or Abandoned requires a new document and assignment, not another session.
+
+Wire operation: `GET /v1/signers/identity-verification`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "can_start": false,
+  "status": "Pending",
+  "url": "https://example.com/verification#t=redacted",
+  "expires_at": "2026-10-16T13:00:00Z",
+  "completed_at": null
+}
+```
+
+@param signerAccessCode Signer access code, sent only on the credential-free transport as a query parameter.
+
+### `signerDocuments.startIdentityVerification`
+
+Records explicit biometric-processing consent and opens a hosted capture session.
+
+Open the returned URL in the browser. A live session cannot be replaced; only an Expired
+session can restart. Resending a notification never replaces it, and restarting does not
+charge again. Never log the hosted URL or obtain consent on the signer's behalf.
+
+Wire operation: `POST /v1/signers/identity-verification`.
+
+Request body: (`application/json`):
+```json
+{
+  "consent": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+{
+  "id": "verification-placeholder",
+  "url": "https://example.com/verification#t=redacted",
+  "expires_at": "2026-10-16T13:00:00Z"
+}
+```
+
+@param signerAccessCode Signer access code, sent only on the credential-free transport as a query parameter.
+@param consent The signer explicitly agreed to biometric processing; false is rejected before a request.
+
+### `signerDocuments.download`
+
+Download the document to sign. Requires signer-access-code. Only original is available; certified copies arrive through Email or WhatsApp.
+
+Wire operation: `GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}`.
+
+Request body: none.
+
+Response: raw binary bytes without a JSON envelope.
+
+### `signerDocuments.getTheme`
+
+Workspace brand for the signing page. Uses signer-access-code on the credential-free transport, including before verification and after deletion.
+
+Wire operation: `GET /v1/sign/theme`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "account_name": "Account Name",
+  "primary_color": "aabbcc",
+  "secondary_color": "ffffff",
+  "logo": "https://example.com/resource"
+}
+```
+
+### `signerDocuments.getLogo`
+
+Workspace logo for the signing page. Uses signer-access-code; returns null when no logo exists (404).
+
+Wire operation: `GET /v1/sign/logo`.
+
+Request body: none.
+
+Response: binary bytes or an empty successful response, as the operation specifies.
+
+### `signerDocuments.resendCertifiedCopy`
+
+Send the certified copy again. Uses signer-access-code. Sends only to the recorded contact and channel. Email: two-minute cooldown and ten per day; WhatsApp: one resend per request.
+
+Wire operation: `POST /v1/sign/certified-copy`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "document_id": "document-id-placeholder"
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "available": true,
+  "notification_method": "Email",
+  "resends_left": 1,
+  "sent_to": "person@example.com"
+}
+```
+
+### `signerDocuments.downloadCertifiedCopy`
+
+Download the certified copy from a sent link. The token is the credential; no account credentials are sent. Optional /pades selects the certificate-signed artifact. Expired links fail instead of returning an HTML page as PDF bytes.
+
+Wire operation: `GET /v1/signers/downloads/{token}`.
+
+Request body: none.
+
+Response: binary bytes or an empty successful response, as the operation specifies.
+
+### `signerDocuments.resendCertifiedCopyByToken`
+
+Send the certified copy again from an expired link. The expired link token is the only credential. Sends to the original contact under the same limits as resendCertifiedCopy.
+
+Wire operation: `POST /v1/signers/downloads/{token}/resend`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "available": true,
+  "notification_method": "Email",
+  "resends_left": 1,
+  "sent_to": "person@example.com"
+}
+```
+
+### `signerDocuments.search`
+
+Search signer's documents. Query: search and optional envelope_id; requires signer-access-code.
+
+Wire operation: `GET /v1/signers/{signerId}/documents/search`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+[
+  {
+    "resource": "document",
+    "id": "id-placeholder",
+    "account_id": "id-placeholder",
+    "template_id": null,
+    "name": "document.pdf",
+    "status": "metadata_ready",
+    "artifacts": {
+      "original": "https://api.assinafy.com.br/v1/documents/doc1/download/original"
+    },
+    "is_closed": false,
+    "signing_url": "https://example.com/resource",
+    "verification_code": "id-placeholder",
+    "verification_url": "https://example.com/resource",
+    "decline_reason": null,
+    "declined_by": null,
+    "tags": [
+      {
+        "id": "example",
+        "name": "example",
+        "color": "ff8800"
+      }
+    ],
+    "assignment": null,
+    "pages": [
+      {
+        "id": "id-placeholder",
+        "number": 1,
+        "height": 2100,
+        "width": 1275,
+        "download_url": "https://example.com/resource"
+      }
+    ],
+    "envelope_id": null,
+    "envelope": {
+      "id": "id-placeholder",
+      "name": "Contrato de prestação de serviços"
+    },
+    "has_contract": true,
+    "created_at": "2026-06-03T03:54:16Z",
+    "updated_at": "2026-06-03T03:54:16Z"
+  }
+]
+```
+
+### `signers.create`
+
+Creates a signer (`POST /accounts/{accountId}/signers`). Idempotent by email: if a signer with
+the same email already exists in the workspace it is returned instead of creating a duplicate,
+and the API's duplicate-email error (HTTP 400) is recovered by re-fetching the existing signer.
+
+Request body: `{"full_name":"John Dove","email":"john@example.com","whatsapp_phone_number":"+5548999990000"}`;
+null fields are omitted. Response `data`:
+
+Wire operation: `POST /v1/accounts/{accountId}/signers`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
 {
   "full_name": "Example",
   "email": "person@example.com",
+  "whatsapp_phone_number": "+15555550100"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "government_id": null,
+  "has_accepted_terms": true
+}
+```
+
+@param request signer details; [CreateSignerRequest.email] is validated and normalized.
+@param accountId overrides the client's default account.
+@return the created or pre-existing [Signer].
+@throws com.assinafy.sdk.exceptions.ValidationException on an invalid email or missing account.
+
+### `signers.get`
+
+Fetches a signer by ID (`GET /accounts/{accountId}/signers/{signerId}`).
+
+Request body: none. Response `data`:
+
+Wire operation: `GET /v1/accounts/{accountId}/signers/{signerId}`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "government_id": null,
+  "has_accepted_terms": true
+}
+```
+
+@param signerId Stable signer identifier.
+@param accountId Account override; otherwise the client's default account is used.
+@return Complete account signer record.
+@throws ValidationException if an account or signer ID is blank.
+
+### `signers.list`
+
+Lists signers (`GET /accounts/{accountId}/signers`).
+
+Request body: none. Query: `search`, `page`, `per-page`. Response `data` is an array of the
+signer payload documented by [get], and `X-Pagination-*` headers are exposed through
+[PaginatedResult.meta].
+
+Wire operation: `GET /v1/accounts/{accountId}/signers`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example",
+    "email": null,
+    "whatsapp_phone_number": null,
+    "government_id": null,
+    "has_accepted_terms": true
+  }
+]
+```
+
+@param params Search and pagination values; unsupported common filters are ignored.
+@param accountId Account override; otherwise the client's default account is used.
+@return Matching signer records and optional pagination-header metadata.
+
+### `signers.update`
+
+Updates a signer (`PUT /accounts/{accountId}/signers/{signerId}`). The service rejects
+changes while verification is in progress. Changing an unverified email or WhatsApp number
+rotates its access/verification codes, so resend the notification before continuing.
+
+Request body carries only the supplied fields, e.g.
+`{"full_name":"John Dove","email":"john@example.com","whatsapp_phone_number":"+5548999990000","government_id":"39053344705"}`.
+Response `data` is the complete updated signer documented by [get]. `government_id` holds the
+CPF or CNPJ that [com.assinafy.sdk.VerificationMethod.DIGITAL_CERTIFICATE] requires.
+
+Wire operation: `PUT /v1/accounts/{accountId}/signers/{signerId}`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "full_name": "Example",
+  "email": "person@example.com",
+  "whatsapp_phone_number": "+15555550100",
   "government_id": "government-id-placeholder"
 }
 ```
@@ -2618,11 +6506,188 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
-### `signerDocuments.acceptTerms`
+@param signerId Stable signer identifier.
+@param request Mutable identity/contact fields; null omits a field, an empty contact string clears it.
+Verified in-flight contact channels cannot change; unverified links/OTPs rotate and need a resend.
+@param accountId Account override; otherwise the client's default account is used.
+@return Complete updated signer record.
+@throws ValidationException if an ID is blank or a supplied email is invalid.
 
-`PUT /v1/signers/accept-terms`
+### `signers.delete`
 
-Parameters: none.
+Deletes a signer (`DELETE /accounts/{accountId}/signers/{signerId}`).
+
+Request body: none. Response `data` is an empty JSON array.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/signers/{signerId}`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+@param signerId Stable signer identifier.
+@param accountId Account override; otherwise the client's default account is used.
+
+### `signers.findByEmail`
+
+Finds a signer by exact (case-insensitive) email, paging through the `search` results.
+Returns `null` if none matches.
+
+Issues repeated `GET /accounts/{accountId}/signers?search={email}` requests with no request
+body, and returns the first record whose `email` matches exactly, in the shape documented by
+[get]. The API's `search` is a partial match, so this narrowing is done client-side.
+
+Wire operation: `GET /v1/accounts/{accountId}/signers`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "signer",
+    "id": "id-placeholder",
+    "full_name": "Example",
+    "email": null,
+    "whatsapp_phone_number": null,
+    "government_id": null,
+    "has_accepted_terms": true
+  }
+]
+```
+
+@param email Valid email to match after trimming.
+@param accountId Account override; otherwise the client's default account is used.
+@return Exact signer match, or `null` when no page contains one.
+@throws ValidationException if the email or account is invalid.
+
+### `signers.listDocumentsAsWorkspace`
+
+Lists the documents a workspace signer is party to, authenticated with the workspace API key
+or bearer token. The signer must belong to the credential's workspace. For the signer's own
+view with an access code, use [SignerDocumentResource.list].
+
+Wire operation: `GET /v1/signers/{signerId}/documents` with query `page`, `per-page`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`), with `X-Pagination-*` headers
+exposed through [PaginatedResult.meta]:
+```json
+[
+  {
+    "resource": "document",
+    "id": "doc-id",
+    "account_id": "account-id",
+    "template_id": null,
+    "name": "Agreement.pdf",
+    "status": "pending_signature",
+    "artifacts": {"original": "https://api.assinafy.com.br/v1/documents/doc-id/download/original"},
+    "is_closed": false,
+    "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
+    "decline_reason": null,
+    "declined_by": null,
+    "tags": [],
+    "assignment": null,
+    "pages": [],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
+  }
+]
+```
+
+@param signerId Signer ID placed in the URL path.
+@param params Pagination; only `page` and `perPage` are sent.
+@return The signer's documents and optional pagination metadata.
+@throws ValidationException if [signerId] is blank.
+
+### `signers.searchDocumentsAsWorkspace`
+
+Searches a workspace signer's documents by name, authenticated with the workspace API key or
+bearer token. For the signer's own view with an access code, use [SignerDocumentResource.search].
+
+Wire operation: `GET /v1/signers/{signerId}/documents/search` with query `search` (omitted
+when null or blank).
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`):
+```json
+[
+  {
+    "resource": "document",
+    "id": "doc-id",
+    "account_id": "account-id",
+    "template_id": null,
+    "name": "Agreement.pdf",
+    "status": "pending_signature",
+    "artifacts": {"original": "https://api.assinafy.com.br/v1/documents/doc-id/download/original"},
+    "is_closed": false,
+    "signing_url": "https://api.assinafy.com.br/v1/sign/doc-id",
+    "decline_reason": null,
+    "declined_by": null,
+    "tags": [],
+    "assignment": null,
+    "pages": [],
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "verification_code": null,
+    "verification_url": null
+  }
+]
+```
+
+@param signerId Signer ID placed in the URL path.
+@param search Optional document-name term.
+@return Matching documents.
+@throws ValidationException if [signerId] is blank.
+
+### `signers.getSelf`
+
+Fetches the current signer through a public signing-link access code.
+
+Request: `GET /signers/self?signer-access-code={code}` with no body and no account
+credential. Response `data` is the signer payload documented by [get], with the signer's
+verification state. See [SignerDocumentResource.self] for the maintained version.
+
+Wire operation: `GET /v1/signers/self`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "signer",
+  "id": "id-placeholder",
+  "full_name": "Example",
+  "email": null,
+  "whatsapp_phone_number": null,
+  "government_id": null,
+  "has_accepted_terms": true,
+  "verification_method": "Email",
+  "has_signature": true,
+  "has_initial": true,
+  "is_signature_reusable": true
+}
+```
+
+@param signerAccessCode One-time signer code sent only in the query string.
+@return Current signer identity and signature state returned by the API.
+
+### `signers.acceptTerms`
+
+Records signer terms acceptance (`PUT /signers/accept-terms`).
+
+Request: the access code only as the `signer-access-code` query parameter, with an empty
+body. Response `data` is returned as a map. See [SignerDocumentResource.acceptTerms] for the
+maintained version.
+
+Wire operation: `PUT /v1/signers/accept-terms`.
 
 Request body: none.
 
@@ -2634,11 +6699,49 @@ Response 200 body; optional members depend on document state and permissions:
 }
 ```
 
-### `signerDocuments.uploadSignature`
+@param signerAccessCode One-time signer code sent only in the query string.
+@return API success data normalized to a map.
 
-`POST /v1/signature`
+### `signers.verifyEmail`
 
-Parameters: `type` (query, optional), `reuse` (query, optional).
+Verifies the signer's email or WhatsApp one-time password (`POST /verify`).
+
+Request: the access code as the `signer-access-code` query parameter and
+`{"verification-code":"123456"}` as the body — the wire key is hyphenated, and the same key
+carries a code delivered over WhatsApp. Response `data` is returned as a map. See
+[SignerDocumentResource.verifyEmail] for the maintained version.
+
+Wire operation: `POST /v1/verify`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "verification-code": "123456"
+}
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+@param signerAccessCode One-time signer code sent only in the query string.
+@param verificationCode Verification value sent using the exact `verification-code` JSON key.
+@return API success data normalized to a map.
+
+### `signers.uploadSignature`
+
+Uploads the signer's signature or initial image (`POST /signature`).
+
+Request: the access code, `type`, and `reuse` as query parameters, and the **raw image bytes**
+as the body with an `image/png` or `image/jpeg` content type — not multipart form data.
+Response `data` is returned as a map. See [SignerDocumentResource.uploadSignature] for the
+maintained version, which accepts PNG only.
+
+Wire operation: `POST /v1/signature`.
 
 Request body (`image/png`; optional members may be omitted):
 ```json
@@ -2653,154 +6756,41 @@ Response 200 body; optional members depend on document state and permissions:
 }
 ```
 
-### `signerDocuments.downloadSignature`
+@param type `"signature"` or `"initial"`.
+@param imageData Raw PNG or legacy JPEG bytes.
+@param contentType MIME type of [imageData]. The current API documents `image/png`; JPEG is
+retained for compatibility with older deployments.
+@param reuse Optional instruction to update whether the image can be reused.
+@throws ValidationException if the access code/type is blank, bytes are empty, or MIME type is unsupported.
 
-`GET /v1/signature/{signatureType}`
+### `signers.downloadSignature`
 
-Parameters: `signatureType` (path, required).
+Downloads a signer's stored signature or initials as raw image bytes
+(`GET /signature/{signatureType}`).
 
-Request body: none.
+Request: the access code as the `signer-access-code` query parameter, no body. The response
+is the raw image rather than the JSON envelope. See [SignerDocumentResource.downloadSignature]
+for the maintained version.
 
-Response 200: raw binary bytes (`image/*`), without a JSON envelope.
-
-### `signerDocuments.list`
-
-`GET /v1/signers/{signerId}/documents`
-
-Parameters: `signerId` (path, required), `page` (query, optional), `per-page` (query, optional).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "resource": "document",
-    "id": "id-placeholder",
-    "account_id": "account-id-placeholder",
-    "template_id": null,
-    "name": "Example",
-    "status": "certificated",
-    "artifacts": {},
-    "is_closed": true,
-    "signing_url": "https://example.com/resource",
-    "decline_reason": null,
-    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-    "tags": [{"id": "id-placeholder", "name": "Example"}],
-    "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-    "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z",
-    "verification_code": null,
-    "verification_url": null
-  }
-]
-```
-
-### `signerDocuments.search`
-
-`GET /v1/signers/{signerId}/documents/search`
-
-Parameters: `signerId` (path, required), `search` (query, optional).
+Wire operation: `GET /v1/signature/{signatureType}`.
 
 Request body: none.
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-[
-  {
-    "resource": "document",
-    "id": "id-placeholder",
-    "account_id": "account-id-placeholder",
-    "template_id": null,
-    "name": "Example",
-    "status": "certificated",
-    "artifacts": {},
-    "is_closed": true,
-    "signing_url": "https://example.com/resource",
-    "decline_reason": null,
-    "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-    "tags": [{"id": "id-placeholder", "name": "Example"}],
-    "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-    "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-    "created_at": "2026-01-01T00:00:00Z",
-    "updated_at": "2026-01-01T00:00:00Z",
-    "verification_code": null,
-    "verification_url": null
-  }
-]
-```
+Response 200: raw binary bytes (`image` media types), without a JSON envelope.
 
-### `signerDocuments.download`
-
-`GET /v1/signers/{signerId}/documents/{documentId}/download/{artifactName}`
-
-Parameters: `signerId` (path, required), `documentId` (path, required), `artifactName` (path, required).
-
-Request body: none.
-
-Response 200: raw binary bytes (`application/pdf`), without a JSON envelope.
-
-### `documents.getPublic`
-
-`GET /v1/public/documents/{documentId}`
-
-Parameters: `documentId` (path, required).
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
-```json
-{
-  "resource": "document",
-  "id": "id-placeholder",
-  "account_id": "account-id-placeholder",
-  "template_id": null,
-  "name": "Example",
-  "status": "certificated",
-  "artifacts": {},
-  "is_closed": true,
-  "signing_url": "https://example.com/resource",
-  "decline_reason": null,
-  "declined_by": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true},
-  "tags": [{"id": "id-placeholder", "name": "Example"}],
-  "assignment": {"resource": "assignment", "id": "id-placeholder", "sender_email": "person@example.com", "method": "virtual", "expires_at": null, "message": null, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true, "verification_method": null, "identity_verification_status": null, "notification_methods": ["Email"], "step": 1, "notified": true, "completed": true, "notification_history": [{"event": "signature_request", "status": "sent", "error_code": null, "error_message": null, "sent_at": null, "failed_at": null}]}], "copy_receivers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}], "items": [{"id": "id-placeholder", "page": {"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}, "signer": {"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}, "field": {"resource": "field", "id": "id-placeholder", "name": "Example", "type": "text", "regex": null, "is_pre_defined": true, "is_active": true, "is_required": true, "is_standard": true, "is_read_only": true, "is_visible": true}, "display_settings": {"left": 1, "top": 1, "width": 1, "height": 1, "fontFamily": "Arial", "fontSize": 1, "backgroundColor": "#D5EBFF"}, "value": null, "completed": true}], "summary": {"signer_count": 1, "completed_count": 1, "signers": [{"resource": "signer", "id": "id-placeholder", "full_name": "Example", "email": null, "whatsapp_phone_number": null, "government_id": null, "has_accepted_terms": true}]}, "signing_urls": [{"signer_id": "signer-id-placeholder", "url": "https://example.com/resource"}], "document_id": "document-placeholder", "created_at": "2026-01-01T00:00:00Z"},
-  "pages": [{"id": "id-placeholder", "number": 1, "height": 1, "width": 1, "download_url": "https://example.com/resource"}],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z",
-  "verification_code": null,
-  "verification_url": null
-}
-```
-
-### `documents.sendAccessToken`
-
-`PUT /v1/public/documents/{documentId}/send-token` (public; the deprecated `documents.sendToken` sends the same request)
-
-Parameters: `documentId` (path, required).
-
-Request body (`application/json`; both members required):
-```json
-{
-  "channel": "email",
-  "recipient": "signer@example.com"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`):
-```json
-{
-  "document": {"resource": "document","id": "id-placeholder","name": "Agreement.pdf","page_count": 3,"created_by": "Sender Name"},
-  "channel": "email",
-  "recipient": "signer@example.com"
-}
-```
+@param signerAccessCode One-time signer code sent only in the query string.
+@param type Stored image kind, normally [com.assinafy.sdk.SignatureType.SIGNATURE] or
+[com.assinafy.sdk.SignatureType.INITIAL].
+@return Raw PNG or legacy JPEG response bytes.
+@throws ValidationException if the signer access code or image type is blank.
 
 ### `tags.list`
 
-`GET /v1/accounts/{accountId}/tags`
+Lists workspace tags with `GET /accounts/{accountId}/tags`, ordered alphabetically.
 
-Parameters: `accountId` (path, required), `search` (query, optional).
+Request body: none. Optional query: `search`. Response `data`:
+
+Wire operation: `GET /v1/accounts/{accountId}/tags`.
 
 Request body: none.
 
@@ -2818,11 +6808,18 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@param search Optional case-insensitive partial name filter.
+@param accountId Account override; otherwise the client's default account is used.
+@return Matching tags.
+
 ### `tags.create`
 
-`POST /v1/accounts/{accountId}/tags`
+Creates a workspace tag with `POST /accounts/{accountId}/tags`.
 
-Parameters: `accountId` (path, required).
+Request body: `{"name":"Contracts","color":"ff8800"}`; `color` is omitted when not supplied.
+Response `data` is the complete created tag:
+
+Wire operation: `POST /v1/accounts/{accountId}/tags`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2843,12 +6840,22 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
   "updated_at": "2026-01-01T00:00:00Z"
 }
 ```
+
+@param name Non-blank name, collapsed to single spaces and limited to 64 Unicode characters.
+@param color Optional six-digit hexadecimal value; a leading `#` is accepted and removed before sending.
+@param accountId Account override; otherwise the client's default account is used.
+@return Created tag.
+@throws ValidationException for an invalid account, name, or color.
 
 ### `tags.update`
 
-`PUT /v1/accounts/{accountId}/tags/{tagId}`
+Updates a tag's [name] and/or [color] with `PUT /accounts/{accountId}/tags/{tagId}`. Omit a
+parameter to leave it unchanged. Pass [clearColor] = `true` to remove the color.
 
-Parameters: `accountId` (path, required), `tagId` (path, required).
+Request body carries only the supplied fields, e.g. `{"name":"Signed Contracts","color":"00aa55"}`;
+clearing sends an explicit `{"color":null}`. Response `data` is the complete updated tag:
+
+Wire operation: `PUT /v1/accounts/{accountId}/tags/{tagId}`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -2870,11 +6877,24 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param tagId Stable tag identifier.
+@param name Optional replacement name.
+@param color Optional replacement six-digit hexadecimal color.
+@param clearColor Whether to send an explicit JSON `null` and remove the current color.
+@param accountId Account override; otherwise the client's default account is used.
+@return Complete updated tag.
+@throws ValidationException for an empty update, conflicting color options, or invalid input.
+
 ### `tags.delete`
 
-`DELETE /v1/accounts/{accountId}/tags/{tagId}`
+Deletes a tag with `DELETE /accounts/{accountId}/tags/{tagId}`. By default fails with a 409
+if the tag is still attached to anything; pass [force] = `true` to detach it from all
+documents and templates first.
 
-Parameters: `accountId` (path, required), `tagId` (path, required), `force` (query, optional).
+Request body: none; [force] is sent as the `?force=true` query. Response `data`:
+`{"deleted":true}`.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/tags/{tagId}`.
 
 Request body: none.
 
@@ -2885,11 +6905,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param tagId Stable tag identifier.
+@param force Whether the server should detach all uses before deletion.
+@param accountId Account override; otherwise the client's default account is used.
+
 ### `templates.list`
 
-`GET /v1/accounts/{accountId}/templates`
+Lists templates with `GET /accounts/{accountId}/templates`.
 
-Parameters: `accountId` (path, required), `search` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Request body: none. Optional query: `search`, `page`, `per-page`. Response `data` is an array
+of templates; a list entry omits the page/role detail a single template carries:
+`X-Pagination-*` headers are exposed through [PaginatedResult.meta].
+
+Wire operation: `GET /v1/accounts/{accountId}/templates`.
 
 Request body: none.
 
@@ -2912,11 +6940,18 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@param params Search and pagination values; unsupported common filters are ignored.
+@param accountId Account override; otherwise the client's default account is used.
+@return Matching templates and optional pagination-header metadata.
+
 ### `users.getCurrent`
 
-`GET /v1/users/self`
+Retrieves the authenticated profile with `GET /users/self`.
 
-Parameters: none.
+Request body/query: none. Response `data`:
+The older `{ "user": {...}, "accounts": [...] }` data variant is normalized to the same model.
+
+Wire operation: `GET /v1/users/self`.
 
 Request body: none.
 
@@ -2935,11 +6970,15 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@return Complete authenticated-user profile.
+
 ### `users.getStats`
 
-`GET /v1/users/self/stats`
+Retrieves cross-account KPIs with `GET /users/self/stats`.
 
-Parameters: `granularity` (query, optional), `month` (query, optional).
+Query shape: optional `granularity=monthly|daily` and `month=YYYY-MM`; request body: none.
+
+Wire operation: `GET /v1/users/self/stats`.
 
 Request body: none.
 
@@ -2965,11 +7004,17 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@param query Monthly/daily granularity and optional target month.
+@return Zero-filled KPI periods, most recent first.
+@throws ValidationException when daily granularity lacks a month or month is not `YYYY-MM`.
+
 ### `users.getNotificationPreferences`
 
-`GET /v1/users/self/notification-preferences`
+Retrieves settings with `GET /users/self/notification-preferences`.
 
-Parameters: none.
+Request body/query: none. Response `data` always contains all nine booleans:
+
+Wire operation: `GET /v1/users/self/notification-preferences`.
 
 Request body: none.
 
@@ -2992,11 +7037,17 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@return Complete owner-facing email notification preferences.
+
 ### `users.updateNotificationPreferences`
 
-`PUT /v1/users/self/notification-preferences`
+Merges settings with `PUT /users/self/notification-preferences`.
 
-Parameters: none.
+Request body is a non-empty subset such as `{"DocumentCompleted":false,"SignerDeclined":true}`.
+Omitted keys retain their current value. Response `data` is the complete nine-boolean map documented by
+[getNotificationPreferences].
+
+Wire operation: `PUT /v1/users/self/notification-preferences`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -3036,32 +7087,77 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
-### `webhooks.get`
+@param request One or more owner-facing email preferences to merge.
+@return Complete preferences after the merge.
+@throws ValidationException when no preference is supplied.
 
-`GET /v1/accounts/{accountId}/webhooks/subscriptions`
+### `users.getPushPreferences`
 
-Parameters: `accountId` (path, required).
+Get my push notification preferences. Personal settings; third-party OAuth applications receive 403.
+
+Wire operation: `GET /v1/users/self/push-preferences`.
 
 Request body: none.
 
-Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+Response `data` inside `{status,message,data}`:
 ```json
 {
-  "events": ["document_ready"],
-  "is_active": true,
-  "url": null,
-  "email": null,
-  "updated_at": null,
-  "is_held": false,
-  "held_since": null
+  "SignerViewed": true,
+  "SignerSigned": true,
+  "DocumentCompleted": true,
+  "SignerDeclined": true,
+  "DocumentAboutToExpire": true,
+  "DocumentExpired": true,
+  "SignerIdentityReviewRequired": true,
+  "SignerWhatsappFailed": true
+}
+```
+
+### `users.updatePushPreferences`
+
+Update my push notification preferences. Merges only supplied switches; separate from email preferences. Third-party OAuth applications receive 403.
+
+Wire operation: `PUT /v1/users/self/push-preferences`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "SignerViewed": true,
+  "SignerSigned": true,
+  "DocumentCompleted": true,
+  "SignerDeclined": true,
+  "DocumentAboutToExpire": true,
+  "DocumentExpired": true,
+  "SignerIdentityReviewRequired": true,
+  "SignerWhatsappFailed": true
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "SignerViewed": true,
+  "SignerSigned": true,
+  "DocumentCompleted": true,
+  "SignerDeclined": true,
+  "DocumentAboutToExpire": true,
+  "DocumentExpired": true,
+  "SignerIdentityReviewRequired": true,
+  "SignerWhatsappFailed": true
 }
 ```
 
 ### `webhooks.register`
 
-`PUT /v1/accounts/{accountId}/webhooks/subscriptions`
+Updates the account's oldest webhook endpoint, creating it when the account has none
+(`PUT /accounts/{accountId}/webhooks/subscriptions`). Use [updateEndpoint] to target one
+endpoint of several. When [RegisterWebhookRequest.events] is
+null, [RegisterWebhookRequest.DEFAULT_EVENTS] is used; an explicit empty list is preserved.
 
-Parameters: `accountId` (path, required).
+Request body:
+Response `data` is the complete stored subscription:
+
+Wire operation: `PUT /v1/accounts/{accountId}/webhooks/subscriptions`.
 
 Request body (`application/json`; optional members may be omitted):
 ```json
@@ -3086,11 +7182,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
-### `webhooks.inactivate`
+@param request Destination URL, delivery contact, event IDs, and active state.
+@param accountId Account override; otherwise the client's default account is used.
+@return Complete subscription stored for the account.
+@throws com.assinafy.sdk.exceptions.ValidationException on an invalid URL or email.
 
-`PUT /v1/accounts/{accountId}/webhooks/inactivate`
+### `webhooks.get`
 
-Parameters: `accountId` (path, required).
+Fetches the account's oldest webhook endpoint
+(`GET /accounts/{accountId}/webhooks/subscriptions`). Use [listEndpoints] to see all of them.
+
+Request body: none. Response `data`:
+
+Wire operation: `GET /v1/accounts/{accountId}/webhooks/subscriptions`.
 
 Request body: none.
 
@@ -3107,11 +7211,47 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param accountId Account override; otherwise the client's default account is used.
+@return Subscription, or `null` when the API returns HTTP 404.
+
+### `webhooks.inactivate`
+
+Deactivates the account's oldest endpoint without deleting it
+(`PUT /accounts/{accountId}/webhooks/inactivate`); other endpoints are unaffected. To remove an
+endpoint and free its slot, use [deleteEndpoint].
+
+Request body: none. Response `data` is the complete subscription with `is_active` now false,
+in the shape documented by [get].
+
+Wire operation: `PUT /v1/accounts/{accountId}/webhooks/inactivate`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "events": ["document_ready"],
+  "is_active": true,
+  "url": null,
+  "email": null,
+  "updated_at": null,
+  "is_held": false,
+  "held_since": null
+}
+```
+
+@param accountId Account override; otherwise the client's default account is used.
+@return Complete inactive subscription.
+
 ### `webhooks.listEventTypes`
 
-`GET /v1/webhooks/event-types`
+Lists webhook event types (`GET /webhooks/event-types`).
 
-Parameters: none.
+Request body/query: none. Response `data`:
+Reading this catalog lets an integration accept new server events without an SDK update;
+[com.assinafy.sdk.WebhookEvent] holds the identifiers known at release time.
+
+Wire operation: `GET /v1/webhooks/event-types`.
 
 Request body: none.
 
@@ -3125,11 +7265,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@return Wire event IDs and human-readable descriptions.
+
 ### `webhooks.listDispatches`
 
-`GET /v1/accounts/{accountId}/webhooks`
+Lists past webhook dispatches using legacy common-list pagination values.
 
-Parameters: `accountId` (path, required), `endpoint_id` (query, optional), `event` (query, optional), `delivered` (query, optional), `from` (query, optional), `to` (query, optional), `page` (query, optional), `per-page` (query, optional).
+Only [ListParams.page] and [ListParams.perPage] are sent because the webhook endpoint does not
+accept the document-specific filters in [ListParams].
+
+Request body: none. Response `data` is an array of dispatch records in the shape documented
+by [retryDispatch].
+
+Wire operation: `GET /v1/accounts/{accountId}/webhooks`.
 
 Request body: none.
 
@@ -3158,11 +7306,61 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 ]
 ```
 
+@param params Pagination values; all other [ListParams] fields are ignored.
+@param accountId Account override; otherwise the client's default account is used.
+@return Dispatch attempts and optional pagination-header metadata.
+
+### `webhooks.listDispatches`
+
+Lists dispatch history with every current API filter
+(`GET /accounts/{accountId}/webhooks`).
+
+Request body: none. Query: `endpoint_id`, `event`, `delivered`, `from`, `to`, `page`, `per-page`. Response
+`data` is an array of dispatch records in the shape documented by [retryDispatch], and
+`X-Pagination-*` headers are exposed through [PaginatedResult.meta].
+
+Wire operation: `GET /v1/accounts/{accountId}/webhooks`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "activity_dispatching_history",
+    "id": "id-placeholder",
+    "event": "document_ready",
+    "activity_id": 1,
+    "endpoint_id": "id-placeholder",
+    "endpoint": "https://example.com/webhooks/assinafy",
+    "payload": {},
+    "delivered": true,
+    "http_status": 1,
+    "response_body": null,
+    "error": null,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "webhook_id": "delivery-placeholder",
+    "attempt": 1,
+    "kind": "scheduled",
+    "will_retry": false
+  }
+]
+```
+
+@param params Endpoint, event, delivery-state, timestamp-range, and pagination filters.
+@param accountId Account override; otherwise the client's default account is used.
+@return Matching dispatch attempts and optional pagination-header metadata.
+@throws ValidationException for an invalid timestamp range or pagination value.
+
 ### `webhooks.retryDispatch`
 
-`POST /v1/accounts/{accountId}/webhooks/{historyId}/retry`
+Retries a failed webhook dispatch
+(`POST /accounts/{accountId}/webhooks/{historyId}/retry`).
 
-Parameters: `accountId` (path, required), `historyId` (path, required).
+Request body: none. Response `data` is the updated delivery record:
+
+Wire operation: `POST /v1/accounts/{accountId}/webhooks/{historyId}/retry`.
 
 Request body: none.
 
@@ -3189,15 +7387,19 @@ Response 200 `data` payload (inside `{status,message,data}`); optional members d
 }
 ```
 
+@param dispatchId Stable delivery-attempt identifier.
+@param accountId Account override; otherwise the client's default account is used.
+@return Updated dispatch record for the retry.
+
 ### `webhooks.listEndpoints`
 
-`GET /v1/accounts/{accountId}/webhooks/endpoints`
+Lists the account's webhook endpoints, oldest first.
 
-Parameters: `accountId` (path, required), `url` (query, optional).
+Wire operation: `GET /v1/accounts/{accountId}/webhooks/endpoints`.
 
 Request body: none.
 
-Response 200 `data` payload (inside `{status,message,data}`) is an array of endpoints, oldest first:
+Response 200 `data` payload (inside `{status,message,data}`) is an array of endpoints:
 ```json
 [
   {
@@ -3217,11 +7419,49 @@ Response 200 `data` payload (inside `{status,message,data}`) is an array of endp
 ]
 ```
 
+@param accountId Account override; otherwise the client's default account is used.
+@return Every endpoint of the account, oldest first.
+
+### `webhooks.listEndpoints`
+
+Lists the account's webhook endpoints, oldest first.
+
+Wire operation: `GET /v1/accounts/{accountId}/webhooks/endpoints`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`) is an array of endpoints:
+```json
+[
+  {
+    "id": "id-placeholder",
+    "name": "ERP",
+    "url": "https://example.com/webhooks/assinafy",
+    "email": "ops@example.com",
+    "events": ["document_ready"],
+    "is_active": true,
+    "signing_enabled": true,
+    "created_at": "2026-01-01T00:00:00Z",
+    "updated_at": "2026-01-01T00:00:00Z",
+    "is_held": false,
+    "held_since": null,
+    "resource": "webhook_endpoint"
+  }
+]
+```
+
+@param url Optional exact registered endpoint URL; omitted to return all endpoints.
+@param accountId Account override; otherwise the client's default account is used.
+@return Every endpoint of the account, oldest first.
+
 ### `webhooks.createEndpoint`
 
-`POST /v1/accounts/{accountId}/webhooks/endpoints`
+Registers a new URL to receive the account's webhook events. An account can have 1 endpoint,
+or up to 3 on paid plans; one past the limit answers `403`, and a `url` another endpoint of
+the workspace already uses answers `400`. With `signing_enabled: true` a secret is generated;
+store [WebhookEndpoint.secret] from this response; OAuth applications cannot read it later.
 
-Parameters: `accountId` (path, required).
+Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints`.
 
 Request body (`application/json`; `name`, `is_active` and `signing_enabled` are optional):
 ```json
@@ -3238,7 +7478,7 @@ Request body (`application/json`; `name`, `is_active` and `signing_enabled` are 
 }
 ```
 
-Response 200 `data` payload (inside `{status,message,data}`):
+Response 200 `data` payload (inside `{status,message,data}`) is the created endpoint:
 ```json
 {
   "id": "id-placeholder",
@@ -3257,15 +7497,19 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
-Past the plan's endpoint limit the API answers `403`; a `url` already used in the workspace answers `400`.
+The response may include a one-time `secret` when signing is first enabled; store it on the server.
 
-Store `WebhookEndpoint.secret` from creation with signing enabled. It is absent from reads; OAuth applications cannot fetch it later.
+@param request URL, contact email, events and optional label, state and signing flag.
+@param accountId Account override; otherwise the client's default account is used.
+@return The created endpoint.
+@throws ValidationException on an invalid URL or email, or an empty event list.
+@throws com.assinafy.sdk.exceptions.ApiException with status 403 when the plan's endpoint limit is reached.
 
 ### `webhooks.getEndpoint`
 
-`GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+Fetches one webhook endpoint.
 
-Parameters: `accountId` (path, required), `endpointId` (path, required).
+Wire operation: `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`.
 
 Request body: none.
 
@@ -3287,13 +7531,19 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
+@param endpointId Endpoint identifier.
+@param accountId Account override; otherwise the client's default account is used.
+@return The endpoint, or `null` when the API returns HTTP 404.
+
 ### `webhooks.updateEndpoint`
 
-`PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+Changes a webhook endpoint; only the non-null fields of [request] are sent and updated. A
+`url` another endpoint of the workspace already uses answers `400`. `signing_enabled: true`
+generates a secret when the endpoint has none and keeps it otherwise; `false` discards it.
 
-Parameters: `accountId` (path, required), `endpointId` (path, required).
+Wire operation: `PUT /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`.
 
-Request body (`application/json`; every member optional, at least one required):
+Request body (`application/json`; every member is optional, at least one is required):
 ```json
 {
   "url": "https://example.com/webhooks/assinafy",
@@ -3307,7 +7557,7 @@ Request body (`application/json`; every member optional, at least one required):
 }
 ```
 
-Response 200 `data` payload (inside `{status,message,data}`):
+Response 200 `data` payload (inside `{status,message,data}`) is the updated endpoint; `secret` appears only when this request turns signing on:
 ```json
 {
   "id": "id-placeholder",
@@ -3326,13 +7576,19 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
-`signing_enabled: true` generates a secret when the endpoint has none and keeps it otherwise; `false` discards it.
+Enabling signing returns a one-time secret when the endpoint has none; store it immediately.
+
+@param endpointId Endpoint identifier.
+@param request Fields to change.
+@param accountId Account override; otherwise the client's default account is used.
+@return The updated endpoint.
+@throws ValidationException when no field is supplied, or on an invalid URL, email or empty event list.
 
 ### `webhooks.deleteEndpoint`
 
-`DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`
+Stops delivering events to an endpoint and frees its slot.
 
-Parameters: `accountId` (path, required), `endpointId` (path, required).
+Wire operation: `DELETE /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}`.
 
 Request body: none.
 
@@ -3341,11 +7597,16 @@ Response 200 `data` payload (inside `{status,message,data}`):
 []
 ```
 
+@param endpointId Endpoint identifier.
+@param accountId Account override; otherwise the client's default account is used.
+
 ### `webhooks.getEndpointSecret`
 
-`GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret` (API key; not available to OAuth applications)
+Returns the secret that signs deliveries to this endpoint; pass it to
+[com.assinafy.sdk.support.WebhookVerifier]. Answers `400` when signing is disabled. Not
+available to OAuth applications, so call it with an API key.
 
-Parameters: `accountId` (path, required), `endpointId` (path, required).
+Wire operation: `GET /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret`.
 
 Request body: none.
 
@@ -3356,28 +7617,550 @@ Response 200 `data` payload (inside `{status,message,data}`):
 }
 ```
 
-Answers `400` when signing is disabled.
+@param endpointId Endpoint identifier.
+@param accountId Account override; otherwise the client's default account is used.
+@return The current signing secret.
 
 ### `webhooks.rotateEndpointSecret`
 
-`POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate` (API key or OAuth `webhooks:write`)
+Replaces the endpoint's signing secret and returns the new one. The old secret stops working
+immediately, so update the receiver right away. Answers `400` when signing is disabled.
+OAuth applications need `webhooks:write`; an API key can also rotate it.
 
-Parameters: `accountId` (path, required), `endpointId` (path, required).
+Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "keep_previous": false
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+  "previous_secret_expires_at": "2026-10-30T15:00:00Z"
+}
+```
+@param endpointId Endpoint identifier.
+@param accountId Account override; otherwise the client's default account is used.
+@return The new signing secret.
+
+### `webhooks.rotateEndpointSecret`
+
+Rotate webhook endpoint signing secret. keep_previous=true lets the previous secret sign for 24 hours. Persist the returned secret securely.
+
+Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/secret/rotate`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "keep_previous": false
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+  "previous_secret_expires_at": "2026-10-30T15:00:00Z"
+}
+```
+
+### `webhooks.deleteEndpointByUrl`
+
+Deletes an endpoint by its exact registered URL, freeing its slot and stopping deliveries.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/webhooks/endpoints?url={url}`.
 
 Request body: none.
 
 Response 200 `data` payload (inside `{status,message,data}`):
 ```json
+[]
+```
+
+@param url Exact URL used at registration; sent as a URL-encoded query parameter.
+@param accountId Explicit account or the client's configured default.
+@throws com.assinafy.sdk.exceptions.ApiException if no endpoint uses the URL (404).
+
+### `webhooks.testEndpoint`
+
+Send a test delivery. Sends a webhook_test event even to inactive or paused endpoints; does not change pause state. Maximum ten tests per user per ten minutes.
+
+Wire operation: `POST /v1/accounts/{accountId}/webhooks/endpoints/{endpointId}/test`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
 {
-  "secret": "whsec_<base64-key>"
+  "resource": "activity_dispatching_history",
+  "id": "id-placeholder",
+  "event": "document_ready",
+  "activity_id": 456,
+  "endpoint_id": "endpoint-id-placeholder",
+  "endpoint": "https://example.com/resource",
+  "payload": {},
+  "delivered": true,
+  "webhook_id": "webhook-id-placeholder",
+  "attempt": 2,
+  "kind": "scheduled",
+  "will_retry": true,
+  "duration_ms": 184,
+  "http_status": 200,
+  "response_body": "OK",
+  "error": null,
+  "created_at": "2024-01-15T10:30:00Z",
+  "updated_at": "2024-01-15T10:30:00Z"
 }
 ```
 
-The previous secret stops working immediately. Answers `400` when signing is disabled.
+### `workspaces.create`
 
-## OAuth method payloads
+Creates a workspace (`POST /accounts`).
 
-OAuth responses are flat objects; form-field JSON below illustrates members, not the encoding sent on the wire.
+Request body: `{"name":"Acme Inc.","notification_sender_type":"Account"}`; null fields are
+omitted. Response `data`:
+
+Wire operation: `POST /v1/accounts`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "notification_sender_type": "User"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "account",
+  "id": "id-placeholder",
+  "name": "Example",
+  "primary_color": null,
+  "secondary_color": null,
+  "notification_sender_type": "User",
+  "roles": ["owner"],
+  "is_delete_allowed": true,
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+@param request Name, sender identity, and optional legacy branding colors.
+@return Complete created account.
+@throws ValidationException for a blank name, unsupported sender type, or invalid color.
+
+### `workspaces.list`
+
+Lists workspaces accessible to the credential (`GET /accounts`).
+
+Request body/query: none. Response `data` is an array of the account payload documented by
+[get]. With an OAuth token it holds exactly the one workspace the user approved, so
+`list().data.first().id` is how an OAuth integration finds its workspace id.
+
+Wire operation: `GET /v1/accounts`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "resource": "account",
+    "id": "id-placeholder",
+    "name": "Example",
+    "primary_color": null,
+    "secondary_color": null,
+    "notification_sender_type": "User",
+    "roles": ["owner"],
+    "is_delete_allowed": true,
+    "created_at": "2026-01-01T00:00:00Z"
+  }
+]
+```
+
+@return Accounts and optional pagination-header metadata.
+
+### `workspaces.get`
+
+Fetches a workspace by ID (`GET /accounts/{accountId}`).
+
+Request body: none. Response `data`:
+
+Wire operation: `GET /v1/accounts/{accountId}`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "account",
+  "id": "id-placeholder",
+  "name": "Example",
+  "primary_color": null,
+  "secondary_color": null,
+  "notification_sender_type": "User",
+  "roles": ["owner"],
+  "is_delete_allowed": true,
+  "created_at": "2026-01-01T00:00:00Z",
+  "limits": {"webhook_endpoints": 3}
+}
+```
+
+@param accountId Stable account identifier.
+@return Complete account record.
+
+### `workspaces.get`
+
+Get account. Set expandSigningFeatures to send expand=signing_features. Feature flags describe current entitlements; estimates still check balances and request rules.
+
+Wire operation: `GET /v1/accounts/{accountId}`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "resource": "account",
+  "id": "id-placeholder",
+  "name": "Acme Inc.",
+  "primary_color": "aabbcc",
+  "secondary_color": "112233",
+  "notification_sender_type": "User",
+  "roles": [
+    "example"
+  ],
+  "is_delete_allowed": true,
+  "limits": {
+    "webhook_endpoints": 1
+  },
+  "signing_features": {
+    "DigitalCertificate": true,
+    "VerificationIdDocumentFaceMatchBasic": false,
+    "WhatsappNotification": true,
+    "VerificationBypass": false,
+    "Embed": false
+  },
+  "created_at": "2026-06-03T03:54:16Z"
+}
+```
+
+### `workspaces.update`
+
+Updates a workspace (`PUT /accounts/{accountId}`).
+
+Request body carries only the supplied fields, e.g.
+`{"name":"Acme Inc.","notification_sender_type":"Account"}`. Response `data` is the complete
+updated account documented by [get].
+
+Wire operation: `PUT /v1/accounts/{accountId}`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "name": "Example",
+  "notification_sender_type": "User"
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "resource": "account",
+  "id": "id-placeholder",
+  "name": "Example",
+  "primary_color": null,
+  "secondary_color": null,
+  "notification_sender_type": "User",
+  "roles": ["owner"],
+  "is_delete_allowed": true,
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+@param accountId Stable account identifier.
+@param request Non-empty set of account fields to replace.
+@return Complete updated account.
+@throws ValidationException for blank IDs/names, empty updates, unsupported sender types, or invalid colors.
+
+### `workspaces.delete`
+
+Deletes a workspace (`DELETE /accounts/{accountId}`).
+
+Request body: `{"force":false}`, sent only when [force] is supplied. Response `data` is an
+empty JSON array.
+
+Wire operation: `DELETE /v1/accounts/{accountId}`.
+
+Request body (`application/json`; optional members may be omitted):
+```json
+{
+  "force": true
+}
+```
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[]
+```
+
+@param accountId Stable account identifier.
+@param force Optional server-side force flag; omit it to use normal deletion safeguards.
+
+### `workspaces.getTheme`
+
+Fetches the account's branding theme (`GET /accounts/{accountId}/theme`).
+
+Request body: none. Response `data`:
+
+Wire operation: `GET /v1/accounts/{accountId}/theme`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+{
+  "account_name": "example",
+  "primary_color": "2072b9",
+  "secondary_color": null,
+  "logo": "https://example.com/resource"
+}
+```
+
+@param accountId Stable account identifier.
+@return Account name, colors, and optional logo URL.
+
+### `workspaces.getLogo`
+
+Downloads the account logo image as raw bytes (`GET /accounts/{accountId}/logo`).
+Returns `null` when the account has no logo set (the API responds `404`).
+
+Request body: none. The response is the raw image, not the JSON envelope, and its bytes are
+returned unchanged.
+
+Wire operation: `GET /v1/accounts/{accountId}/logo`.
+
+Request body: none.
+
+Response 200: raw binary bytes (`image` media types), without a JSON envelope.
+
+@param accountId Stable account identifier.
+@return Unmodified image bytes, or `null` for HTTP 404.
+
+### `workspaces.uploadLogo`
+
+Uploads or replaces the account logo as a single multipart `file` part
+(`POST /accounts/{accountId}/logo`).
+
+Request body: `multipart/form-data` with one `file` part carrying the image bytes and
+[contentType]. Response is the success envelope with no `data` payload:
+`{"status":200,"message":""}`.
+
+Wire operation: `POST /v1/accounts/{accountId}/logo`.
+
+Request body (`multipart/form-data`; optional members may be omitted):
+```json
+{
+  "file": "<binary bytes>"
+}
+```
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+@param accountId Stable account identifier.
+@param fileData Non-empty image bytes.
+@param fileName Non-blank multipart file name.
+@param contentType Image MIME type, defaulting to `image/png`.
+@throws ValidationException for blank identifiers/names, empty bytes, or a non-image MIME type.
+
+### `workspaces.deleteLogo`
+
+Deletes the account's current logo (`DELETE /accounts/{accountId}/logo`).
+
+Request body: none. Response is the success envelope with no `data` payload:
+`{"status":200,"message":""}`.
+
+Wire operation: `DELETE /v1/accounts/{accountId}/logo`.
+
+Request body: none.
+
+Response 200 body; optional members depend on document state and permissions:
+```json
+{
+  "status": 200,
+  "message": "example"
+}
+```
+
+@param accountId Stable account identifier.
+
+### `workspaces.getStats`
+
+Returns account document and signature KPIs.
+
+Wire operation: `GET /v1/accounts/{accountId}/stats`.
+
+Request body: none.
+
+Response 200 `data` payload (inside `{status,message,data}`); optional members depend on document state and permissions:
+```json
+[
+  {
+    "period": "2026-10",
+    "documents_uploaded": 1,
+    "documents_sent": 1,
+    "signature_requests": 1,
+    "signature_requests_notification_email": 1,
+    "signature_requests_notification_whatsapp": 0,
+    "signature_requests_notification_bypass": 0,
+    "signature_requests_verification_email": 1,
+    "signature_requests_verification_whatsapp": 0,
+    "signature_requests_verification_bypass": 0,
+    "signature_requests_verification_digital_certificate": 0,
+    "signature_requests_viewed": 1,
+    "signature_requests_completed": 1,
+    "documents_certified": 1
+  }
+]
+```
+
+@param accountId Stable account identifier.
+@param granularity `monthly`, `daily`, or `null` for the API default.
+Request body: none. Query: optional `granularity=monthly|daily` and `month=YYYY-MM`.
+
+@param month Required `YYYY-MM` target when [granularity] is `daily`.
+@return Zero-filled KPI periods, newest-first. Monthly queries default to 12 rows;
+notification counters can exceed total requests because a signer notified through multiple
+channels counts once per channel, while verification counters partition the request total.
+@throws ValidationException for a blank account, unsupported granularity, or invalid/missing month.
+
+### `workspaces.getUsage`
+
+Get account usage. Uses account:read; balances can be unlimited (null).
+
+Wire operation: `GET /v1/accounts/{accountId}/usage`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "plan": "Pro",
+  "documents_renewal_date": "2026-12-01",
+  "balances": {
+    "documents": {
+      "balance": 100,
+      "limit": 100,
+      "spent": 0
+    },
+    "credits": {
+      "balance": 100,
+      "limit": 100,
+      "spent": 0
+    }
+  }
+}
+```
+
+### `workspaces.getNotificationPolicy`
+
+Get the workspace notification policy.
+
+Wire operation: `GET /v1/accounts/{accountId}/notification-policy`.
+
+Request body: none.
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "editable": true,
+  "owners_receive_all": false,
+  "events": {
+    "DocumentCompleted": true,
+    "SignerDeclined": true,
+    "DocumentCancelled": true,
+    "DocumentAboutToExpire": true,
+    "DocumentExpired": true,
+    "DocumentExpirationReset": true,
+    "DocumentProcessingFailed": true,
+    "TemplateProcessingFailed": true,
+    "SignerWhatsappFailed": true,
+    "ContractRenewalNotice": true,
+    "ContractExpiring": true,
+    "ContractExpired": true,
+    "ContractRenewed": true,
+    "SignerViewed": false,
+    "SignerSigned": true,
+    "SignerIdentityReviewRequired": true
+  }
+}
+```
+
+### `workspaces.updateNotificationPolicy`
+
+Update the workspace notification policy. Owners only. Omitted keys remain unchanged; identity-review email cannot be disabled.
+
+Wire operation: `PUT /v1/accounts/{accountId}/notification-policy`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "events": {
+    "DocumentCompleted": true,
+    "SignerDeclined": true,
+    "DocumentCancelled": true,
+    "DocumentAboutToExpire": true,
+    "DocumentExpired": true,
+    "DocumentExpirationReset": true,
+    "DocumentProcessingFailed": true,
+    "TemplateProcessingFailed": true,
+    "SignerWhatsappFailed": true,
+    "ContractRenewalNotice": true,
+    "ContractExpiring": true,
+    "ContractExpired": true,
+    "ContractRenewed": true,
+    "SignerViewed": false,
+    "SignerSigned": true,
+    "SignerIdentityReviewRequired": true
+  },
+  "owners_receive_all": true
+}
+```
+
+Response `data` inside `{status,message,data}`:
+```json
+{
+  "editable": true,
+  "owners_receive_all": false,
+  "events": {
+    "DocumentCompleted": true,
+    "SignerDeclined": true,
+    "DocumentCancelled": true,
+    "DocumentAboutToExpire": true,
+    "DocumentExpired": true,
+    "DocumentExpirationReset": true,
+    "DocumentProcessingFailed": true,
+    "TemplateProcessingFailed": true,
+    "SignerWhatsappFailed": true,
+    "ContractRenewalNotice": true,
+    "ContractExpiring": true,
+    "ContractExpired": true,
+    "ContractRenewed": true,
+    "SignerViewed": false,
+    "SignerSigned": true,
+    "SignerIdentityReviewRequired": true
+  }
+}
+```
 
 ### `oauth.authorizationRequest`
 
@@ -3559,724 +8342,3 @@ Authorization-code exchange response:
 ```
 
 ## Identity verification method payloads
-
-### `assignments.getIdentityVerification`
-
-Reads an account-facing identity review without fetching evidence images.
-
-InReview permits signing to continue, but certification waits for the account decision.
-Evidence is a summary; images are fetched separately and are available only while the review is open.
-
-Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification`.
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`):
-```json
-{
-  "id": "verification-placeholder",
-  "status": "InReview",
-  "provider": "AssinafyVerify",
-  "verification_method": "IdDocumentFaceMatchBasic",
-  "reason_codes": [
-    {
-      "code": "NAME_MISMATCH",
-      "description": "Registered and captured names differ"
-    }
-  ],
-  "evidence_available": true,
-  "expected": {
-    "name": "Example Signer",
-    "cpf": "00000000000"
-  },
-  "document": {
-    "type": "CNH",
-    "name": "Example Signer",
-    "cpf": "00000000000"
-  },
-  "matches": {
-    "cpf": true,
-    "name": 0.52,
-    "birth_date": null
-  },
-  "checks": [
-    {
-      "name": "name",
-      "result": "review",
-      "score": 0.52,
-      "reasons": [
-        "NAME_MISMATCH"
-      ]
-    }
-  ],
-  "images": [
-    "document_front",
-    "document_back",
-    "face"
-  ],
-  "ruleset_version": "example",
-  "evidence_sha256": "digest-placeholder",
-  "reviewed_by": {
-    "id": "reviewer-placeholder",
-    "name": "Example Reviewer"
-  },
-  "reviewed_at": null,
-  "review_note": null,
-  "completed_at": null
-}
-```
-
-`documentId`: Document identifier.
-
-`assignmentId`: Assignment identifier.
-
-`signerId`: Signer identifier within the assignment.
-
-
-### `assignments.downloadIdentityVerificationImage`
-
-Downloads a reviewer evidence image or digital-document PDF.
-
-The API sends Cache-Control: no-store. Do not cache the sensitive evidence.
-Images return 404 after a review decision; the SDK propagates `com.assinafy.sdk.exceptions.ApiException`.
-
-Wire operation: `GET /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/images/{name}`.
-
-Request body: none.
-
-Response 200 payload: raw `image/jpeg`, `image/png`, or `application/pdf` bytes; no JSON envelope.
-
-`documentId`: Document identifier.
-
-`assignmentId`: Assignment identifier.
-
-`signerId`: Signer identifier within the assignment.
-
-`name`: One of `IdentityReviewImage`, as listed in the open review.
-
-
-### `assignments.reviewIdentityVerification`
-
-Approves or rejects an open account identity review.
-
-Approval permits certification after every signature and review completes. Rejection cancels
-the document and sends the cancellation notice to signers and copy receivers.
-The document must still be pending_signature or pending_identity_review.
-
-Wire operation: `POST /v1/documents/{documentId}/assignments/{assignmentId}/signers/{signerId}/identity-verification/review`.
-
-Request body: (`application/json`):
-```json
-{
-  "decision": "Approved",
-  "note": "Identity checked by the account reviewer"
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`):
-```json
-{
-  "id": "verification-placeholder",
-  "status": "Approved",
-  "provider": "AssinafyVerify",
-  "verification_method": "IdDocumentFaceMatchBasic",
-  "reason_codes": [
-    {
-      "code": "NAME_MISMATCH",
-      "description": "Registered and captured names differ"
-    }
-  ],
-  "evidence_available": true,
-  "expected": {
-    "name": "Example Signer",
-    "cpf": "00000000000"
-  },
-  "document": {
-    "type": "CNH",
-    "name": "Example Signer",
-    "cpf": "00000000000"
-  },
-  "matches": {
-    "cpf": true,
-    "name": 0.52,
-    "birth_date": null
-  },
-  "checks": [
-    {
-      "name": "name",
-      "result": "review",
-      "score": 0.52,
-      "reasons": [
-        "NAME_MISMATCH"
-      ]
-    }
-  ],
-  "images": [],
-  "ruleset_version": "example",
-  "evidence_sha256": "digest-placeholder",
-  "reviewed_by": {
-    "id": "reviewer-placeholder",
-    "name": "Example Reviewer"
-  },
-  "reviewed_at": "2026-10-16T12:00:00Z",
-  "review_note": "Identity checked by the account reviewer",
-  "completed_at": "2026-10-16T12:00:00Z"
-}
-```
-
-`documentId`: Document identifier.
-
-`assignmentId`: Assignment identifier.
-
-`signerId`: Signer identifier within the assignment.
-
-`decision`: `IdentityReviewDecision.APPROVED` or `IdentityReviewDecision.REJECTED`.
-
-`note`: Optional internal note, at most 2000 Unicode characters; never shown to the signer.
-
-
-### `signerDocuments.getIdentityVerification`
-
-Reads the hosted identity-document verification state.
-
-can_start is true only before a provider session exists or after it expires. InReview
-permits viewing and signing while the account reviews identity; certification waits.
-Declined or Abandoned requires a new document and assignment, not another session.
-
-Wire operation: `GET /v1/signers/identity-verification`.
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`):
-```json
-{
-  "can_start": false,
-  "status": "Pending",
-  "url": "https://example.com/verification#t=redacted",
-  "expires_at": "2026-10-16T13:00:00Z",
-  "completed_at": null
-}
-```
-
-`signerAccessCode`: Signer access code, sent only on the credential-free transport as a query parameter.
-
-
-### `signerDocuments.startIdentityVerification`
-
-Records explicit biometric-processing consent and opens a hosted capture session.
-
-Open the returned URL in the browser. A live session cannot be replaced; only an Expired
-session can restart. Resending a notification never replaces it, and restarting does not
-charge again. Never log the hosted URL or obtain consent on the signer's behalf.
-
-Wire operation: `POST /v1/signers/identity-verification`.
-
-Request body: (`application/json`):
-```json
-{
-  "consent": true
-}
-```
-
-Response 200 `data` payload (inside `{status,message,data}`):
-```json
-{
-  "id": "verification-placeholder",
-  "url": "https://example.com/verification#t=redacted",
-  "expires_at": "2026-10-16T13:00:00Z"
-}
-```
-
-`signerAccessCode`: Signer access code, sent only on the credential-free transport as a query parameter.
-
-`consent`: The signer explicitly agreed to biometric processing; false is rejected before a request.
-
-
-## Webhook URL method payload
-
-### `webhooks.deleteEndpointByUrl`
-
-Deletes an endpoint by its exact registered URL, freeing its slot and stopping deliveries.
-
-Wire operation: `DELETE /v1/accounts/{accountId}/webhooks/endpoints?url={url}`.
-
-Request body: none.
-
-Response 200 `data` payload (inside `{status,message,data}`):
-```json
-[]
-```
-
-`url`: Exact URL used at registration; sent as a URL-encoded query parameter.
-
-`accountId`: Explicit account or the client's configured default.
-
-Raises `com.assinafy.sdk.exceptions.ApiException` if no endpoint uses the URL (404).
-
-## Contract request and response payloads
-
-### `contracts.list`
-
-Lists contracts, most recently updated first by default.
-
-Filters include status (comma-separated), counterparty, search, end_date_from/to, ending_within_days,
-external_system/id, sort, expand=document, page and per-page. X-Pagination-* headers supply metadata.
-For reconciliation, page by updated_at until records predate the last sync.
-
-Wire operation: `GET /v1/accounts/{accountId}/contracts`.
-
-Request body: none.
-
-Response 200 `data`, with optional document expansion (inside `{status,message,data}`):
-```json
-[
-  {
-    "resource": "document_contract",
-    "document_id": "document-placeholder",
-    "status": "active",
-    "counterparty_name": "Acme Ltda",
-    "counterparty_taxpayer_id": "11222333000181",
-    "value": 120000.5,
-    "currency": "BRL",
-    "start_date": "2026-11-01",
-    "end_date": "2027-10-31",
-    "auto_renew": true,
-    "renewal_term_months": 12,
-    "notice_period_days": 30,
-    "term": 1,
-    "owner_id": "owner-placeholder",
-    "metadata": {
-      "crm_stage": "won"
-    },
-    "external_references": [
-      {
-        "system": "hubspot",
-        "id": "98765"
-      }
-    ],
-    "created_at": "2026-10-23T12:00:00Z",
-    "updated_at": "2026-10-23T12:00:00Z",
-    "document": {
-      "id": "document-placeholder",
-      "account_id": "document-placeholder",
-      "template_id": null,
-      "name": "Contrato de prestação de serviços.pdf",
-      "status": "certificated",
-      "artifacts": {
-        "original": "https://example.com/resource"
-      },
-      "is_closed": true,
-      "signing_url": "https://example.com/resource",
-      "verification_code": "document-placeholder",
-      "verification_url": "https://example.com/resource",
-      "decline_reason": null,
-      "declined_by": null,
-      "tags": [],
-      "created_at": "2026-10-20T14:00:00Z",
-      "updated_at": "2026-10-22T09:00:00Z"
-    }
-  }
-]
-```
-
-
-### `contracts.get`
-
-Reads a document's own contract terms or its amendment link.
-
-The concrete ContractRecord type distinguishes terms from an instrument. A missing contract returns
-HTTP 404; reads remain available when the workspace plan lapses.
-
-Wire operation: `GET /v1/accounts/{accountId}/documents/{documentId}/contract`.
-
-Request body: none.
-
-Response 200 `data` for a root contract (inside `{status,message,data}`):
-```json
-{
-  "resource": "document_contract",
-  "document_id": "document-placeholder",
-  "status": "active",
-  "counterparty_name": "Acme Ltda",
-  "counterparty_taxpayer_id": "11222333000181",
-  "value": 130000,
-  "currency": "BRL",
-  "start_date": "2026-11-01",
-  "end_date": "2028-06-30",
-  "auto_renew": true,
-  "renewal_term_months": 12,
-  "notice_period_days": 30,
-  "term": 2,
-  "owner_id": "owner-placeholder",
-  "metadata": {
-    "crm_stage": "won"
-  },
-  "external_references": [
-    {
-      "system": "hubspot",
-      "id": "98765"
-    }
-  ],
-  "created_at": "2026-10-23T12:00:00Z",
-  "updated_at": "2027-05-12T18:20:00Z",
-  "amendments": [
-    {
-      "document_id": "document-placeholder",
-      "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
-      "parent_document_id": "document-placeholder",
-      "relation_type": "amendment",
-      "number": 1,
-      "status": "applied",
-      "document_status": "certificated",
-      "apply_error": null,
-      "currency": "BRL",
-      "terms": {
-        "value": 130000,
-        "end_date": "2028-06-30"
-      },
-      "changes": {
-        "value": {
-          "from": 120000.5,
-          "to": 130000
-        },
-        "end_date": {
-          "from": "2027-10-31",
-          "to": "2028-06-30"
-        },
-        "term": {
-          "from": 1,
-          "to": 2
-        }
-      },
-      "applied_at": "2027-05-12T18:20:00Z",
-      "created_at": "2027-05-10T15:00:00Z",
-      "updated_at": "2027-05-12T18:20:00Z"
-    }
-  ]
-}
-```
-
-Alternative response 200 `data` for an instrument (inside `{status,message,data}`):
-```json
-{
-  "resource": "document_contract_amendment",
-  "document_id": "document-placeholder",
-  "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
-  "parent_document_id": "document-placeholder",
-  "relation_type": "amendment",
-  "number": null,
-  "status": "pending",
-  "document_status": "pending_signature",
-  "apply_error": null,
-  "currency": "BRL",
-  "terms": {
-    "value": 130000,
-    "end_date": "2028-06-30"
-  },
-  "changes": {
-    "value": {
-      "from": 120000.5,
-      "to": 130000
-    },
-    "end_date": {
-      "from": "2027-10-31",
-      "to": "2028-06-30"
-    },
-    "term": {
-      "from": 1,
-      "to": 2
-    }
-  },
-  "applied_at": null,
-  "created_at": "2027-05-10T15:00:00Z",
-  "updated_at": "2027-05-10T15:00:00Z"
-}
-```
-
-
-### `contracts.update`
-
-Creates terms or changes only the supplied attributes.
-
-Use clearFields for explicit nulls and externalReferences for whole-list replacement. A pending
-instrument null removes that term from its delta. Send parent_document_id and relation_type to link;
-clear parent_document_id to unlink a pending instrument. Applied instruments cannot change.
-An amendment may change the value, currency, dates, auto-renew, renewal/notice periods, counterparty
-and metadata; a renewal only end_date/value; a termination only end_date. The API applies signed
-instruments in certification order. Send the last-read updated_at to refuse stale writes with 409.
-Link request example: {"parent_document_id":"parent-placeholder","relation_type":"amendment","value":130000}.
-
-Wire operation: `PUT /v1/accounts/{accountId}/documents/{documentId}/contract`.
-
-Request body (`application/json`; omit unchanged fields):
-```json
-{
-  "status": "active",
-  "counterparty_name": "Acme Ltda",
-  "counterparty_taxpayer_id": "11.222.333/0001-81",
-  "value": 120000.5,
-  "currency": "BRL",
-  "start_date": "2026-11-01",
-  "end_date": "2027-10-31",
-  "auto_renew": true,
-  "renewal_term_months": 12,
-  "notice_period_days": 30,
-  "owner_id": "owner-placeholder",
-  "metadata": {
-    "crm_stage": "won"
-  },
-  "external_references": [
-    {
-      "system": "hubspot",
-      "id": "98765"
-    }
-  ],
-  "updated_at": "2026-10-23T12:00:00Z"
-}
-```
-
-Response 200 `data` for contract terms (inside `{status,message,data}`):
-```json
-{
-  "resource": "document_contract",
-  "document_id": "document-placeholder",
-  "status": "active",
-  "counterparty_name": "Acme Ltda",
-  "counterparty_taxpayer_id": "11222333000181",
-  "value": 120000.5,
-  "currency": "BRL",
-  "start_date": "2026-11-01",
-  "end_date": "2027-10-31",
-  "auto_renew": true,
-  "renewal_term_months": 12,
-  "notice_period_days": 30,
-  "term": 1,
-  "owner_id": "owner-placeholder",
-  "metadata": {
-    "crm_stage": "won"
-  },
-  "external_references": [
-    {
-      "system": "hubspot",
-      "id": "98765"
-    }
-  ],
-  "created_at": "2026-10-23T12:00:00Z",
-  "updated_at": "2026-10-23T12:00:00Z"
-}
-```
-
-Alternative response 200 `data` for an instrument (inside `{status,message,data}`):
-```json
-{
-  "resource": "document_contract_amendment",
-  "document_id": "document-placeholder",
-  "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
-  "parent_document_id": "document-placeholder",
-  "relation_type": "amendment",
-  "number": null,
-  "status": "pending",
-  "document_status": "pending_signature",
-  "apply_error": null,
-  "currency": "BRL",
-  "terms": {
-    "value": 130000,
-    "end_date": "2028-06-30"
-  },
-  "changes": {
-    "value": {
-      "from": 120000.5,
-      "to": 130000
-    },
-    "end_date": {
-      "from": "2027-10-31",
-      "to": "2028-06-30"
-    },
-    "term": {
-      "from": 1,
-      "to": 2
-    }
-  },
-  "applied_at": null,
-  "created_at": "2027-05-10T15:00:00Z",
-  "updated_at": "2027-05-10T15:00:00Z"
-}
-```
-
-
-### `contracts.related`
-
-Reads the root contract and every linked instrument from any document in its family.
-
-Applied instruments are ordered by number, followed by pending instruments. A missing family returns 404.
-
-Wire operation: `GET /v1/accounts/{accountId}/documents/{documentId}/contract/related`.
-
-Request body: none.
-
-Response 200 `data` (inside `{status,message,data}`):
-```json
-{
-  "resource": "document_contract",
-  "document_id": "document-placeholder",
-  "status": "active",
-  "counterparty_name": "Acme Ltda",
-  "counterparty_taxpayer_id": "11222333000181",
-  "value": 130000,
-  "currency": "BRL",
-  "start_date": "2026-11-01",
-  "end_date": "2028-06-30",
-  "auto_renew": true,
-  "renewal_term_months": 12,
-  "notice_period_days": 30,
-  "term": 2,
-  "owner_id": "owner-placeholder",
-  "metadata": {
-    "crm_stage": "won"
-  },
-  "external_references": [
-    {
-      "system": "hubspot",
-      "id": "98765"
-    }
-  ],
-  "created_at": "2026-10-23T12:00:00Z",
-  "updated_at": "2027-05-12T18:20:00Z",
-  "amendments": [
-    {
-      "document_id": "document-placeholder",
-      "document_name": "Aditivo 1 - Contrato de prestação de serviços.pdf",
-      "parent_document_id": "document-placeholder",
-      "relation_type": "amendment",
-      "number": 1,
-      "status": "applied",
-      "document_status": "certificated",
-      "apply_error": null,
-      "currency": "BRL",
-      "terms": {
-        "value": 130000,
-        "end_date": "2028-06-30"
-      },
-      "changes": {
-        "value": {
-          "from": 120000.5,
-          "to": 130000
-        },
-        "end_date": {
-          "from": "2027-10-31",
-          "to": "2028-06-30"
-        },
-        "term": {
-          "from": 1,
-          "to": 2
-        }
-      },
-      "applied_at": "2027-05-12T18:20:00Z",
-      "created_at": "2027-05-10T15:00:00Z",
-      "updated_at": "2027-05-12T18:20:00Z"
-    }
-  ]
-}
-```
-
-
-### `contracts.renew`
-
-Starts the next term and reopens an expired contract.
-
-Supply the current term or an explicit end date later than the current one. With no end date the
-server advances by renewal_term_months (12 when unset), until the date is in the future. Repeated
-preconditions are refused, so a renewal cannot advance twice. Terminated contracts cannot renew.
-Omit value to retain it; clearValue sends null. A stale updated_at returns 409.
-
-Wire operation: `POST /v1/accounts/{accountId}/documents/{documentId}/contract/renew`.
-
-Request body (`application/json`; omit unchanged fields):
-```json
-{
-  "term": 1,
-  "end_date": "2029-06-30",
-  "value": 130000,
-  "updated_at": "2026-10-23T12:00:00Z"
-}
-```
-
-Response 200 `data` (inside `{status,message,data}`):
-```json
-{
-  "resource": "document_contract",
-  "document_id": "document-placeholder",
-  "status": "active",
-  "counterparty_name": "Acme Ltda",
-  "counterparty_taxpayer_id": "11222333000181",
-  "value": 130000,
-  "currency": "BRL",
-  "start_date": "2026-11-01",
-  "end_date": "2029-06-30",
-  "auto_renew": true,
-  "renewal_term_months": 12,
-  "notice_period_days": 30,
-  "term": 2,
-  "owner_id": "owner-placeholder",
-  "metadata": {
-    "crm_stage": "won"
-  },
-  "external_references": [
-    {
-      "system": "hubspot",
-      "id": "98765"
-    }
-  ],
-  "created_at": "2026-10-23T12:00:00Z",
-  "updated_at": "2027-10-15T09:30:00Z"
-}
-```
-
-
-### `contracts.terminate`
-
-Closes a contract and stops its lifecycle alerts.
-
-The reason is recorded in document_contract_terminated. The server strips HTML. A contract already
-terminated is refused; stale updated_at returns 409. The signed document itself is preserved.
-
-Wire operation: `POST /v1/accounts/{accountId}/documents/{documentId}/contract/terminate`.
-
-Request body (`application/json`; omit unchanged fields):
-```json
-{
-  "reason": "Supplier replaced",
-  "updated_at": "2026-10-23T12:00:00Z"
-}
-```
-
-Response 200 `data` (inside `{status,message,data}`):
-```json
-{
-  "resource": "document_contract",
-  "document_id": "document-placeholder",
-  "status": "terminated",
-  "counterparty_name": "Acme Ltda",
-  "counterparty_taxpayer_id": "11222333000181",
-  "value": 120000.5,
-  "currency": "BRL",
-  "start_date": "2026-11-01",
-  "end_date": "2027-10-31",
-  "auto_renew": true,
-  "renewal_term_months": 12,
-  "notice_period_days": 30,
-  "term": 1,
-  "owner_id": "owner-placeholder",
-  "metadata": {
-    "crm_stage": "won"
-  },
-  "external_references": [
-    {
-      "system": "hubspot",
-      "id": "98765"
-    }
-  ],
-  "created_at": "2026-10-23T12:00:00Z",
-  "updated_at": "2027-03-02T14:00:00Z"
-}
-```

@@ -2,6 +2,7 @@ package com.assinafy.sdk.request
 
 import com.assinafy.sdk.AssignmentMethod
 import com.google.gson.annotations.SerializedName
+import java.math.BigDecimal
 
 /**
  * Rectangle and optional text styling used to place a collect field on a 150-DPI page image.
@@ -59,6 +60,7 @@ data class AssignmentEntry(
  * @property copyReceivers Optional signer IDs for recipients who only receive a copy.
  * @property entries Page/field placements required for collect assignments and omitted for virtual assignments.
  * Every collect signer must own at least one field.
+ * @property maxTotalCredits Maximum credits the server may spend; a higher price fails without charging.
  */
 data class CreateAssignmentRequest(
     @SerializedName("method") val method: String = AssignmentMethod.VIRTUAL,
@@ -67,4 +69,5 @@ data class CreateAssignmentRequest(
     @SerializedName("expires_at") val expiresAt: String? = null,
     @SerializedName("copy_receivers") val copyReceivers: List<String>? = null,
     @SerializedName("entries") val entries: List<AssignmentEntry>? = null,
+    @SerializedName("max_total_credits") val maxTotalCredits: BigDecimal? = null,
 )

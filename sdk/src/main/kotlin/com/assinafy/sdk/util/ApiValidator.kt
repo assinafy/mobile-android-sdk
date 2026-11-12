@@ -89,4 +89,19 @@ internal object ApiValidator {
             )
         }
     }
+    fun requireCreditCeiling(value: java.math.BigDecimal?) {
+        if (value != null && value.signum() < 0) throw ValidationException("Credit ceiling must not be negative")
+    }
+
+    fun requireIdempotencyKey(value: String?) {
+        if (value != null && (value.isBlank() || value.any { it.code !in 32..126 })) {
+            throw ValidationException("Idempotency key must be nonblank printable ASCII")
+        }
+    }
+
+    fun requireEmbeddedMethod(embedded: Boolean?, verification: String?) {
+        if (embedded == true && verification != null && verification !in setOf(VerificationMethod.EMAIL, VerificationMethod.WHATSAPP)) {
+            throw ValidationException("Embedded signing requires Email or Whatsapp verification")
+        }
+    }
 }

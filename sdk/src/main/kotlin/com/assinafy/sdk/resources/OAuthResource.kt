@@ -678,6 +678,7 @@ class OAuthResource internal constructor(
         }
         if (uri.scheme != "https" ||
             uri.host.isNullOrBlank() ||
+            (uri.port != -1 && uri.port !in 1..65535) ||
             uri.rawUserInfo != null ||
             uri.rawFragment != null ||
             (!allowQuery && uri.rawQuery != null)
