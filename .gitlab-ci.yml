@@ -1,3 +1,9 @@
+include:
+  - component: git.febacapital.com/infra/gitlab-components/security-scan@main
+    inputs:
+      stage: verify
+      image_stage: release-verification
+
 image: eclipse-temurin:25.0.4_7-jdk-noble@sha256:534968c051301957beae735e7ba1db54d99ddecf08746d3b9d4f318cc132dbc3
 
 stages:
