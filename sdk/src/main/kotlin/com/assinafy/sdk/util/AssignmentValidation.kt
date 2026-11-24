@@ -1,6 +1,7 @@
 package com.assinafy.sdk.util
 
 import com.assinafy.sdk.AssignmentMethod
+import com.assinafy.sdk.SignerCapacity
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.SignerReference
@@ -31,26 +32,40 @@ internal object AssignmentValidation {
                 request.maxTotalCredits?.let { put("max_total_credits", it) }
                 request.message?.let { put("message", it) }
                 request.expiresAt?.let { put("expires_at", it.trim()) }
-                request.copyReceivers?.let { put("copy_receivers", it.map { id -> ApiValidator.requireNonBlank(id, "Copy receiver signer ID") }) }
+                request.copyReceivers?.let {
+                    put(
+                        "copy_receivers",
+                        it.map { id -> ApiValidator.requireNonBlank(id, "Copy receiver signer ID") },
+                    )
+                }
             }
         }
     }
 
-    private fun normaliseRef(ref: SignerReference, estimate: Boolean): Map<String, Any?> {
+    private fun normaliseRef(
+        ref: SignerReference,
+        estimate: Boolean,
+    ): Map<String, Any?> {
         if (!estimate) ApiValidator.requireNonBlank(ref.id, "Signer ID")
         return buildMap {
             if (!estimate) ref.id?.trim()?.let { put("id", it) }
             ref.verificationMethod?.let { put("verification_method", it) }
             ref.notificationMethods?.let { put("notification_methods", it) }
+            ref.signAs?.let { put("sign_as", it) }
             if (!estimate) ref.step?.let { put("step", it) }
             if (!estimate) ref.embedded?.let { put("embedded", it) }
         }
     }
 
-    fun validateRequest(request: CreateAssignmentRequest, estimate: Boolean) {
+    fun validateRequest(
+        request: CreateAssignmentRequest,
+        estimate: Boolean,
+    ) {
         ApiValidator.requireCreditCeiling(request.maxTotalCredits)
         val method = ApiValidator.requireNonBlank(request.method, "Assignment method")
-        if (method !in setOf(AssignmentMethod.VIRTUAL, AssignmentMethod.COLLECT)) throw ValidationException("Assignment method must be virtual or collect")
+        if (method !in setOf(AssignmentMethod.VIRTUAL, AssignmentMethod.COLLECT)) {
+            throw ValidationException("Assignment method must be virtual or collect")
+        }
         // Required for both methods: creation needs to know who signs, and an estimate is priced
         // per signer. The contract marks `signers` required only for `virtual`, but the API
         // answers a signer-less body with 400 "Pelo menos um signatários precisa ser informado."
@@ -65,6 +80,7 @@ internal object AssignmentValidation {
             throw ValidationException("At least one field-placement entry is required for a collect assignment")
         }
         request.signers.forEach { signer ->
+            if (signer.signAs != null && signer.signAs !in SignerCapacity.ALL) throw ValidationException("Unsupported signer capacity")
             ApiValidator.requireValidSignerChannels(signer.verificationMethod, signer.notificationMethods)
             ApiValidator.requireEmbeddedMethod(signer.embedded, signer.verificationMethod)
         }
@@ -89,7 +105,13 @@ internal object AssignmentValidation {
                     ApiValidator.requireNonBlank(field.signerId, "Assignment field signer ID")
                     ApiValidator.requireNonBlank(field.fieldId, "Assignment field ID")
                     field.displaySettings?.let { settings ->
-                        if (listOf(settings.left, settings.top, settings.width, settings.height, settings.fontSize).any { !it.isFinite() } ||
+                        if (listOf(
+                                settings.left,
+                                settings.top,
+                                settings.width,
+                                settings.height,
+                                settings.fontSize,
+                            ).any { !it.isFinite() } ||
                             settings.left < 0 ||
                             settings.top < 0 ||
                             settings.width <= 0 ||

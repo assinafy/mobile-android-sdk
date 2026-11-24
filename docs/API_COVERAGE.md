@@ -2,7 +2,7 @@
 
 Integration mappings for the [live API contract](https://api.assinafy.com.br/v1/docs/openapi.json).
 
-The contract defines 147 operations. The SDK maps 146 integration operations; the embed-token exchange is performed only by the hosted signing page.
+Production defines 147 operations and staging defines 157. The SDK maps 156 integration operations across both hosts; the embed-token exchange is performed only by the hosted signing page. The scheduled sending and delivery operations below require their deployment on the chosen host.
 
 Account calls use an API key or scoped bearer token. Signer calls use the credential-free transport
 and their access code. Download links carry their own token. Public OAuth uses PKCE without a client
@@ -132,8 +132,8 @@ secret; internal token-exchange grants are outside the Android client.
 | `GET /v1/accounts/{accountId}/fields/{fieldId}` | `fields.get` | apiKeyAuth, bearerAuth |
 | `PUT /v1/accounts/{accountId}/fields/{fieldId}` | `fields.update` | apiKeyAuth, bearerAuth |
 | `DELETE /v1/accounts/{accountId}/fields/{fieldId}` | `fields.delete` | apiKeyAuth, bearerAuth |
-| `POST /v1/accounts/{accountId}/fields/{fieldId}/validate` | `fields.validate` | apiKeyAuth, bearerAuth, signerAccessCode |
-| `POST /v1/accounts/{accountId}/fields/validate-multiple` | `fields.validateMultiple` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `POST /v1/accounts/{accountId}/fields/{fieldId}/validate` | `fields.validate / validateAsSigner` | apiKeyAuth, bearerAuth, signerAccessCode |
+| `POST /v1/accounts/{accountId}/fields/validate-multiple` | `fields.validateMultiple / validateMultipleAsSigner` | apiKeyAuth, bearerAuth, signerAccessCode |
 | `GET /v1/field-types` | `fields.listTypes` | apiKeyAuth, bearerAuth |
 
 ## Users
@@ -237,3 +237,20 @@ Certificate start/complete routes require the Web PKI browser extension; use the
 page for A1/A3 completion. Public request/response examples, overloads and compatibility extensions
 are described in [API_REFERENCE.md](API_REFERENCE.md). Test prerequisites and live-test boundaries
 are described in [TESTING.md](TESTING.md).
+
+## Scheduled sending and delivery
+
+These operations require a host exposing the [staging contract](https://api.angry-pisco.stage.assinafy.com.br/v1/docs).
+
+| Operation | SDK entry point | API security schemes |
+|---|---|---|
+| `GET /v1/documents/{documentId}/signer-capacities` | `assignments.getSignerCapacities` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}/notification-history` | `assignments.getNotificationHistory` | apiKeyAuth, bearerAuth |
+| `POST /v1/documents/{documentId}/scheduled-sends` | `assignments.schedule` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/scheduled-sends` | `assignments.scheduleEnvelope` | apiKeyAuth, bearerAuth |
+| `GET /v1/accounts/{accountId}/scheduled-sends` | `assignments.listScheduledSends` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/cancel` | `assignments.cancelScheduledSend` | apiKeyAuth, bearerAuth |
+| `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/send` | `assignments.sendScheduledNow` | apiKeyAuth, bearerAuth |
+| `GET /v1/documents/{documentId}/watchers` | `documents.listWatchers` | apiKeyAuth, bearerAuth |
+| `PUT /v1/documents/{documentId}/watchers` | `documents.setWatchers` | apiKeyAuth, bearerAuth |
+| `POST /v1/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/estimate-resend-cost` | `envelopes.estimateResendCost` | apiKeyAuth, bearerAuth |

@@ -33,3 +33,8 @@ origins and single-use sessions minted by a trusted backend. Creation supports s
 and explicit idempotency keys. Workspace entitlements, balances and notification policy are separate
 from personal push preferences. Certified copies are delivered only to the original signing contact;
 signer-facing downloads require a capability code, while account downloads remain authenticated.
+
+Scheduled assignments and envelopes use `assignments.schedule` and `scheduleEnvelope`; list, cancel,
+or send pending requests immediately through the same resource. Document watchers receive completion
+notifications without document access. Signer capacities and delivery timestamps have separate reads.
+These operations require a host exposing the staging contract.

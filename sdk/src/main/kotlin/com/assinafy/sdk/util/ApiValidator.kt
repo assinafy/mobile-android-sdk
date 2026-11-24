@@ -8,14 +8,27 @@ import com.assinafy.sdk.exceptions.ValidationException
 
 internal object ApiValidator {
 
-    fun requireNonBlank(value: String?, name: String): String {
+    fun requireSendAt(epochSeconds: Long) {
+        val now = System.currentTimeMillis() / 1_000
+        if (epochSeconds !in (now + 3_600)..(now + 90 * 86_400)) {
+            throw ValidationException("Send time must be one hour to 90 days ahead in Unix seconds")
+        }
+    }
+
+    fun requireNonBlank(
+        value: String?,
+        name: String,
+    ): String {
         if (value.isNullOrBlank()) {
             throw ValidationException("$name is required")
         }
         return value.trim()
     }
 
-    fun requireAccountId(explicit: String?, default: String?): String {
+    fun requireAccountId(
+        explicit: String?,
+        default: String?,
+    ): String {
         val id = explicit ?: default
         if (id.isNullOrBlank()) {
             throw ValidationException(
@@ -25,7 +38,10 @@ internal object ApiValidator {
         return id.trim()
     }
 
-    fun requireAtLeastOne(items: List<*>, name: String) {
+    fun requireAtLeastOne(
+        items: List<*>,
+        name: String,
+    ) {
         if (items.isEmpty()) {
             throw ValidationException("At least one $name is required")
         }
@@ -54,7 +70,10 @@ internal object ApiValidator {
      * paired with the same notification channel; `DigitalCertificate` accepts either. Omitting a
      * side leaves it for the API to infer, and omitting both defaults to `Email`.
      */
-    fun requireValidSignerChannels(verification: String?, notifications: List<String>?) {
+    fun requireValidSignerChannels(
+        verification: String?,
+        notifications: List<String>?,
+    ) {
         if (verification != null && verification !in VerificationMethod.ALL) {
             throw ValidationException("Unsupported verification method: $verification")
         }
@@ -78,7 +97,10 @@ internal object ApiValidator {
         }
     }
 
-    fun requireDigitalCertificateVirtualAssignment(method: String, verificationMethods: List<String?>) {
+    fun requireDigitalCertificateVirtualAssignment(
+        method: String,
+        verificationMethods: List<String?>,
+    ) {
         if (method != AssignmentMethod.VIRTUAL && VerificationMethod.DIGITAL_CERTIFICATE in verificationMethods) {
             throw ValidationException(
                 "DigitalCertificate signers require a virtual assignment",
@@ -99,7 +121,10 @@ internal object ApiValidator {
         }
     }
 
-    fun requireEmbeddedMethod(embedded: Boolean?, verification: String?) {
+    fun requireEmbeddedMethod(
+        embedded: Boolean?,
+        verification: String?,
+    ) {
         if (embedded == true && verification != null && verification !in setOf(VerificationMethod.EMAIL, VerificationMethod.WHATSAPP)) {
             throw ValidationException("Embedded signing requires Email or Whatsapp verification")
         }

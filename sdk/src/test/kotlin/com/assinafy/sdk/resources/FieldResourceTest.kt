@@ -188,4 +188,63 @@ class FieldResourceTest {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `signer validation uses only the public transport and retains zero and null values`() =
+        runTest {
+            val authenticated = MockApiHttpClient()
+            val public = MockApiHttpClient()
+            val client =
+                com.assinafy.sdk.AssinafyClient.create(
+                    com.assinafy.sdk.AssinafyClientConfig(apiKey = "test-key", accountId = "account"),
+                    authenticated,
+                    public,
+                )
+            public.enqueue(ok("""{"type":"number","success":true,"error_message":""}"""))
+            assertThat(client.fields.validateAsSigner(" field/id ", 0, "code+/=").success).isTrue()
+            assertThat(
+                public.lastCall(),
+            ).isEqualTo(
+                MockApiHttpClient.Call(
+                    "POST",
+                    "/accounts/account/fields/field%2Fid/validate?signer-access-code=code%2B%2F%3D",
+                    """{"value":0}""",
+                ),
+            )
+            public.enqueue(ok("""[{"field_id":"field","type":"text","success":true,"error_message":""}]"""))
+            val entries =
+                listOf(
+                    com.assinafy.sdk.request
+                        .FieldValidationEntry(" field ", null),
+                )
+            assertThat(
+                client.fields
+                    .validateMultipleAsSigner(entries, "code", "override")
+                    .single()
+                    .success,
+            ).isTrue()
+            assertThat(
+                public.lastCall(),
+            ).isEqualTo(
+                MockApiHttpClient.Call(
+                    "POST",
+                    "/accounts/override/fields/validate-multiple?signer-access-code=code",
+                    """[{"field_id":"field","value":null}]""",
+                ),
+            )
+            assertThat(authenticated.calls).isEmpty()
+            assertThatThrownBy {
+                runBlocking {
+                    client.fields.validateAsSigner(
+                        "field",
+                        0,
+                        " ",
+                    )
+                }
+            }.isInstanceOf(ValidationException::class.java)
+            assertThatThrownBy {
+                runBlocking { client.fields.validateMultipleAsSigner(emptyList(), "code") }
+            }.isInstanceOf(ValidationException::class.java)
+            assertThat(public.callCount()).isEqualTo(2)
+        }
 }

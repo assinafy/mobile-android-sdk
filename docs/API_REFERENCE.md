@@ -10,7 +10,7 @@ See [Supported Assinafy v1 operations](API_COVERAGE.md) for the operation index.
 
 ## Transport, authentication, and errors
 
-Production is `https://api.assinafy.com.br/v1`; sandbox is `https://sandbox.assinafy.com.br/v1`. Use credentials issued for the selected environment.
+Production is `https://api.assinafy.com.br/v1`; sandbox is `https://sandbox.assinafy.com.br/v1`; staging is `https://api.angry-pisco.stage.assinafy.com.br/v1`. Use credentials issued for the selected environment.
 
 ```kotlin
 val client = AssinafyClient.create(
@@ -408,7 +408,7 @@ current OpenAPI more precisely.
 | `getSelf(accessCode)` | `GET /v1/signers/self?signer-access-code=...` | none | Compatibility `Signer`; prefer `signerDocuments.self` |
 | `acceptTerms(accessCode)` | `PUT /v1/signers/accept-terms?signer-access-code=...` | none | Compatibility `Map<String,Any>` |
 | `verifyEmail(accessCode, verificationCode)` | `POST /v1/verify?signer-access-code=...` | `{"verification-code":string}` | Compatibility `Map<String,Any>` |
-| `uploadSignature(accessCode, type, imageData, contentType, reuse)` | `POST /v1/signature?signer-access-code=...&type=...&reuse=...` | Raw image body; current API specifies PNG | `Unit` |
+| `uploadSignature(accessCode, type, imageData, contentType, reuse)` | `POST /v1/signature?signer-access-code=...&type=...&reuse=...` | Raw PNG or JPEG image body | `Unit` |
 | `downloadSignature(accessCode, type)` | `GET /v1/signature/{type}?signer-access-code=...` | none | Raw `ByteArray` |
 | `listDocumentsAsWorkspace(signerId, ListParams)` | `GET /v1/signers/{signerId}/documents` with the workspace API key or bearer token | Query uses only `page`, `per-page` | `PaginatedResult<DocumentDetails>` |
 | `searchDocumentsAsWorkspace(signerId, search)` | `GET /v1/signers/{signerId}/documents/search` with the workspace API key or bearer token | `search` (omitted when blank) | `PaginatedResult<DocumentDetails>` |
@@ -1024,6 +1024,7 @@ Request body (`application/json`; optional fields may be omitted):
         "Email"
       ],
       "embedded": false,
+      "sign_as": "Sign",
       "step": 1
     }
   ],
@@ -1156,7 +1157,7 @@ Request body (`application/json`; optional members may be omitted):
 ```json
 {
   "method": "collect",
-  "signers": [{"verification_method": "Whatsapp", "notification_methods": ["Whatsapp"]}],
+  "signers": [{"verification_method": "Whatsapp", "notification_methods": ["Whatsapp"], "sign_as": "Sign"}],
   "entries": [{"page_id": "page-placeholder", "fields": [{"signer_id": "signer-placeholder", "field_id": "field-placeholder", "display_settings": {"left": 72, "top": 640, "width": 180, "height": 40, "fontSize": 12}}]}]
 }
 ```
@@ -3882,7 +3883,7 @@ Response `data` inside `{status,message,data}`:
 Derives signing counts and percentage from the current assignment summary.
 
 Sends no request of its own: derived from [details], so it costs one
-`GET /documents/{documentId}` and reads its `assignment.summary`.
+`GET /documents/{documentId}` and reads its `assignments.summary`.
 
 Wire operation: `GET /v1/documents/{documentId}`.
 
@@ -6739,7 +6740,7 @@ Uploads the signer's signature or initial image (`POST /signature`).
 Request: the access code, `type`, and `reuse` as query parameters, and the **raw image bytes**
 as the body with an `image/png` or `image/jpeg` content type — not multipart form data.
 Response `data` is returned as a map. See [SignerDocumentResource.uploadSignature] for the
-maintained version, which accepts PNG only.
+maintained version, which accepts PNG and JPEG.
 
 Wire operation: `POST /v1/signature`.
 
@@ -6757,7 +6758,7 @@ Response 200 body; optional members depend on document state and permissions:
 ```
 
 @param type `"signature"` or `"initial"`.
-@param imageData Raw PNG or legacy JPEG bytes.
+@param imageData Raw PNG or JPEG bytes.
 @param contentType MIME type of [imageData]. The current API documents `image/png`; JPEG is
 retained for compatibility with older deployments.
 @param reuse Optional instruction to update whether the image can be reused.
@@ -6781,7 +6782,7 @@ Response 200: raw binary bytes (`image` media types), without a JSON envelope.
 @param signerAccessCode One-time signer code sent only in the query string.
 @param type Stored image kind, normally [com.assinafy.sdk.SignatureType.SIGNATURE] or
 [com.assinafy.sdk.SignatureType.INITIAL].
-@return Raw PNG or legacy JPEG response bytes.
+@return Raw PNG or JPEG response bytes.
 @throws ValidationException if the signer access code or image type is blank.
 
 ### `tags.list`
@@ -8342,3 +8343,411 @@ Authorization-code exchange response:
 ```
 
 ## Identity verification method payloads
+
+
+## Scheduled sending and delivery
+
+These methods require a host exposing the staging operations. A host without them can return 404; existing production operations remain available. Use the selected host’s own credentials.
+
+### `assignments.getSignerCapacities`
+
+Reads sender-declared capacities. Requires documents:read. Unassigned documents return an empty list; capacities appear only here and on the certificate page.
+
+Wire operation: `GET /v1/documents/{documentId}/signer-capacities`.
+
+Request body: none.
+
+Response 200 `data` payload:
+```json
+[
+  {
+    "signer_id": "example",
+    "sign_as": "Sign"
+  }
+]
+```
+
+
+### `assignments.getNotificationHistory`
+
+Reads delivery attempts with delivered_at and opened_at for each signer. Requires documents:read. Open times are hints, not proof of reading, and may be null. Unassigned documents return an empty list.
+
+Wire operation: `GET /v1/documents/{documentId}/notification-history`.
+
+Request body: none.
+
+Response 200 `data` payload:
+```json
+[
+  {
+    "signer_id": "example",
+    "notification_history": [
+      {
+        "event": "signature_request",
+        "status": "sent",
+        "error_code": null,
+        "error_message": null,
+        "sent_at": "2027-01-01T12:00:00Z",
+        "failed_at": null,
+        "delivered_at": "2027-01-01T12:00:00Z",
+        "opened_at": "2027-01-01T12:00:00Z"
+      }
+    ]
+  }
+]
+```
+
+
+### `assignments.schedule`
+
+Schedules an assignment without sending or charging now. sendAt is Unix seconds, one hour to 90 days ahead. The server checks expiration is at least two hours later. Requires documents:write. Only one pending send may include a document; the job checks every five minutes. Creation is not retried. A later failure records its reason and notifies the scheduling member (or active owners if the member left).
+
+Wire operation: `POST /v1/documents/{documentId}/scheduled-sends`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "method": "virtual",
+  "signers": [
+    {
+      "id": "example",
+      "verification_method": "Email",
+      "notification_methods": [
+        "Email"
+      ],
+      "embedded": false,
+      "step": 1,
+      "sign_as": "Sign"
+    }
+  ],
+  "entries": [
+    {
+      "page_id": "example",
+      "fields": [
+        {
+          "signer_id": "example",
+          "field_id": "example",
+          "display_settings": {
+            "left": 0,
+            "top": 0,
+            "width": 1,
+            "height": 1,
+            "fontFamily": "Arial",
+            "fontSize": 1,
+            "backgroundColor": "#D5EBFF"
+          }
+        }
+      ]
+    }
+  ],
+  "message": "example",
+  "expires_at": "2027-01-02T12:00:00Z",
+  "copy_receivers": [
+    "example"
+  ],
+  "max_total_credits": 1,
+  "send_at": 1798804800
+}
+```
+
+Response 200 `data` payload:
+```json
+{
+  "resource": "scheduled_send",
+  "id": "example",
+  "type": "assignment",
+  "document_ids": [
+    "example"
+  ],
+  "status": "pending",
+  "send_at": "2027-01-01T12:00:00Z",
+  "assignment_id": null,
+  "envelope_id": null,
+  "failure_reason": null,
+  "created_at": "2027-01-01T10:00:00Z",
+  "processed_at": null
+}
+```
+
+
+### `assignments.scheduleEnvelope`
+
+Schedules an envelope without creating it or charging now. sendAt is Unix seconds, one hour to 90 days ahead; document expirations must be at least two hours later. Requires documents:write and the Envelopes feature. Each call creates a separate send: idempotencyKey is unsupported and must be null. The job checks every five minutes; failures retain the reason and notify the scheduling member or active owners.
+
+Wire operation: `POST /v1/accounts/{accountId}/scheduled-sends`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "name": "example",
+  "message": "example",
+  "max_total_credits": 0,
+  "signers": [
+    {
+      "id": "example",
+      "verification_method": "Email",
+      "notification_methods": [
+        "Email"
+      ],
+      "embedded": false
+    }
+  ],
+  "documents": [
+    {
+      "id": "example",
+      "method": "virtual",
+      "entries": [
+        {
+          "page_id": "example",
+          "fields": [
+            {
+              "signer_id": "example",
+              "field_id": "example",
+              "display_settings": {
+                "left": 0,
+                "top": 0,
+                "width": 1,
+                "height": 1,
+                "fontFamily": "Arial",
+                "fontSize": 1,
+                "backgroundColor": "#D5EBFF"
+              }
+            }
+          ]
+        }
+      ],
+      "signer_ids": [
+        "example"
+      ],
+      "expires_at": "2027-01-02T12:00:00Z",
+      "copy_receiver_ids": [
+        "example"
+      ]
+    }
+  ],
+  "send_at": 1798804800
+}
+```
+
+Response 200 `data` payload:
+```json
+{
+  "resource": "scheduled_send",
+  "id": "example",
+  "type": "envelope",
+  "document_ids": [
+    "example"
+  ],
+  "status": "pending",
+  "send_at": "2027-01-01T12:00:00Z",
+  "assignment_id": null,
+  "envelope_id": null,
+  "failure_reason": null,
+  "created_at": "2027-01-01T10:00:00Z",
+  "processed_at": null
+}
+```
+
+
+### `assignments.listScheduledSends`
+
+Lists assignment and envelope sends newest first, in every state. Requires documents:write, including for this read. Pagination uses page and per-page, with X-Pagination headers; documentId optionally filters the list.
+
+Wire operation: `GET /v1/accounts/{accountId}/scheduled-sends`.
+
+Query parameters: `page`, `per-page`, and `document_id`.
+
+Request body: none.
+
+Response 200 `data` payload:
+```json
+[
+  {
+    "resource": "scheduled_send",
+    "id": "example",
+    "type": "assignment",
+    "document_ids": [
+      "example"
+    ],
+    "status": "pending",
+    "send_at": "2027-01-01T12:00:00Z",
+    "assignment_id": null,
+    "envelope_id": null,
+    "failure_reason": null,
+    "created_at": "2027-01-01T10:00:00Z",
+    "processed_at": null
+  }
+]
+```
+
+
+### `assignments.cancelScheduledSend`
+
+Cancels a pending send without sending or charging. Requires documents:write; any non-pending state returns 409.
+
+Wire operation: `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/cancel`.
+
+Request body: none.
+
+Response 200 `data` payload:
+```json
+{
+  "resource": "scheduled_send",
+  "id": "example",
+  "type": "assignment",
+  "document_ids": [
+    "example"
+  ],
+  "status": "cancelled",
+  "send_at": "2027-01-01T12:00:00Z",
+  "assignment_id": null,
+  "envelope_id": null,
+  "failure_reason": null,
+  "created_at": "2027-01-01T10:00:00Z",
+  "processed_at": "2027-01-01T10:30:00Z"
+}
+```
+
+
+### `assignments.sendScheduledNow`
+
+Sends a pending request immediately as the scheduling member, with current permissions, checks and prices. Requires documents:write. A refusal leaves it pending for its scheduled time; cancel explicitly to stop that later attempt. Non-pending states return 409. Never automatically retry this mutation.
+
+Wire operation: `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/send`.
+
+Request body: none.
+
+Response 200 `data` payload:
+```json
+{
+  "resource": "scheduled_send",
+  "id": "example",
+  "type": "assignment",
+  "document_ids": [
+    "example"
+  ],
+  "status": "sent",
+  "send_at": "2027-01-01T12:00:00Z",
+  "assignment_id": "assignment-placeholder",
+  "envelope_id": null,
+  "failure_reason": null,
+  "created_at": "2027-01-01T10:00:00Z",
+  "processed_at": "2027-01-01T10:30:00Z"
+}
+```
+
+
+### `documents.listWatchers`
+
+Lists contacts following document completion without signing, in configured order. Deleted contacts are omitted. Requires documents:read.
+
+Wire operation: `GET /v1/documents/{documentId}/watchers`.
+
+Request body: none.
+
+Response 200 `data` payload:
+```json
+[
+  {
+    "resource": "signer",
+    "id": "example",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": null,
+    "government_id": null,
+    "has_accepted_terms": false
+  }
+]
+```
+
+
+### `documents.setWatchers`
+
+Replaces up to ten workspace contacts with email addresses; an empty list clears them. Duplicates count once. Requires documents:write; watchers can change until the document ends. They receive a queued email on decline, expiration or completion, with no link or file, independently of workspace notification preferences.
+
+Wire operation: `PUT /v1/documents/{documentId}/watchers`.
+
+Request body (`application/json`; optional fields may be omitted):
+```json
+{
+  "watcher_ids": [
+    "signer-placeholder"
+  ]
+}
+```
+
+Response 200 `data` payload:
+```json
+[
+  {
+    "resource": "signer",
+    "id": "example",
+    "full_name": "Example Person",
+    "email": "person@example.com",
+    "whatsapp_phone_number": null,
+    "government_id": null,
+    "has_accepted_terms": false
+  }
+]
+```
+
+
+### `envelopes.estimateResendCost`
+
+Estimates one reminder for all documents of the signer without sending or charging. Requires documents:write. Pricing does not establish eligibility: resend still rejects closed envelopes, expired documents and reminder limits. The total and sufficiency fields map to CostEstimate.legacyTotal and legacyHasSufficientCredits.
+
+Wire operation: `POST /v1/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/estimate-resend-cost`.
+
+Request body: none.
+
+Response 200 `data` payload:
+```json
+{
+  "total": 1,
+  "breakdown": [
+    {
+      "code": "example",
+      "name": "example",
+      "cost": 1
+    }
+  ],
+  "credit_balance": 1,
+  "has_sufficient_credits": false
+}
+```
+
+
+### `signerDocuments.uploadSignature` with a content type
+
+`uploadSignature(code, imageData, type = SignatureType.INITIAL, reuse = false, contentType = "image/jpeg")` sends `POST /v1/signature?signer-access-code={code}&type=initial&reuse=false` with raw JPEG bytes and `Content-Type: image/jpeg`. PNG uses `image/png`; the original overload retains that default. Only `signature` and `initial` are valid image kinds. The response is `{"status":200,"message":"OK"}` with no data model.
+
+
+### `fields.validateAsSigner` / `fields.validateMultipleAsSigner`
+
+These variants use the credential-free transport and a required signer access code. Supply the document's workspace ID explicitly or as the client default. Account credentials never accompany the code.
+
+`validateAsSigner(fieldId, value, code, accountId)` sends `POST /v1/accounts/{accountId}/fields/{fieldId}/validate?signer-access-code={code}`:
+
+```json
+{"value":0}
+```
+
+Response `data`:
+
+```json
+{"type":"number","success":true,"error_message":""}
+```
+
+`validateMultipleAsSigner(entries, code, accountId)` sends `POST /v1/accounts/{accountId}/fields/validate-multiple?signer-access-code={code}`:
+
+```json
+[{"field_id":"field-placeholder","value":null}]
+```
+
+Response `data`:
+
+```json
+[{"field_id":"field-placeholder","type":"text","success":true,"error_message":""}]
+```
+
+Zero is a value. Null is serialized explicitly so the server can apply the field's required/optional rule.

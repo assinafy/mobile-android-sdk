@@ -235,7 +235,7 @@ class AssinafyClient internal constructor(
                 signerDocuments = SignerDocumentResource(publicHttpClient),
                 workspaces = WorkspaceResource(httpClient, logger),
                 assignments = AssignmentResource(httpClient, config.accountId, logger, publicHttpClient),
-                fields = FieldResource(httpClient, config.accountId, logger),
+                fields = FieldResource(httpClient, config.accountId, logger, publicHttpClient),
                 users = UserResource(httpClient, config.accountId, logger),
                 webhooks = WebhookResource(httpClient, config.accountId, logger),
                 templates = TemplateResource(httpClient, config.accountId, logger),

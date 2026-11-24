@@ -17,11 +17,13 @@ import com.assinafy.sdk.request.UpdateFieldRequest
  * @param http Authenticated API transport.
  * @param defaultAccountId Account used when a method does not receive an explicit override.
  * @param logger SDK logger.
+ * @param publicHttp Credential-free transport for signer value validation.
  */
 class FieldResource internal constructor(
     http: ApiHttpClient,
     defaultAccountId: String? = null,
     logger: Logger = NoOpLogger,
+    private val publicHttp: ApiHttpClient = http,
 ) : BaseResource(http, defaultAccountId, logger) {
 
     /**
@@ -64,7 +66,10 @@ class FieldResource internal constructor(
      * @return Created field definition.
      * @throws ValidationException when the account, name, or type is blank.
      */
-    suspend fun create(request: CreateFieldRequest, accountId: String? = null): FieldDefinition {
+    suspend fun create(
+        request: CreateFieldRequest,
+        accountId: String? = null,
+    ): FieldDefinition {
         val id = accountId(accountId)
         val normalized = request.copy(
             name = requireId(request.name, "Field name"),
@@ -156,7 +161,10 @@ class FieldResource internal constructor(
      * @return Complete field definition.
      * @throws ValidationException when the account or field identifier is blank.
      */
-    suspend fun get(fieldId: String, accountId: String? = null): FieldDefinition {
+    suspend fun get(
+        fieldId: String,
+        accountId: String? = null,
+    ): FieldDefinition {
         val id = accountId(accountId)
         val fid = requireId(fieldId, "Field ID")
         return call("Failed to fetch field definition", FieldDefinition::class.java) {
@@ -251,7 +259,10 @@ class FieldResource internal constructor(
      * @param accountId Account override; otherwise the resource default is used.
      * @throws ValidationException when the account or field identifier is blank.
      */
-    suspend fun delete(fieldId: String, accountId: String? = null) {
+    suspend fun delete(
+        fieldId: String,
+        accountId: String? = null,
+    ) {
         val id = accountId(accountId)
         val fid = requireId(fieldId, "Field ID")
         callVoid("Failed to delete field definition") {
@@ -293,16 +304,7 @@ class FieldResource internal constructor(
         fieldId: String,
         value: Any?,
         accountId: String? = null,
-    ): FieldValidationResult {
-        val id = accountId(accountId)
-        val fid = requireId(fieldId, "Field ID")
-        return call("Failed to validate field value", FieldValidationResult::class.java) {
-            http.post(
-                "/accounts/${pathSegment(id)}/fields/${pathSegment(fid)}/validate",
-                toJsonAllowNulls(mapOf("value" to value)),
-            )
-        }
-    }
+    ): FieldValidationResult = validateValue(fieldId, value, accountId, null)
 
     /**
      * Validates values in one request with `POST /accounts/{accountId}/fields/validate-multiple`.
@@ -342,17 +344,7 @@ class FieldResource internal constructor(
     suspend fun validateMultiple(
         entries: List<FieldValidationEntry>,
         accountId: String? = null,
-    ): List<FieldValidationResult> {
-        val id = accountId(accountId)
-        if (entries.isEmpty()) throw ValidationException("At least one field value is required")
-        entries.forEach { requireId(it.fieldId, "Field ID") }
-        return callList("Failed to validate field values", FieldValidationResult::class.java) {
-            http.post(
-                "/accounts/${pathSegment(id)}/fields/validate-multiple",
-                toJsonAllowNulls(entries),
-            )
-        }.data
-    }
+    ): List<FieldValidationResult> = validateValues(entries, accountId, null)
 
     /**
      * Lists supported types with `GET /field-types`.
@@ -379,4 +371,79 @@ class FieldResource internal constructor(
         "Failed to list field types",
         FieldType::class.java,
     ) { http.get("/field-types") }.data
+
+/**
+     * Validates one field using only the signer credential, without workspace authentication.
+     * Wire operation: `POST /v1/accounts/{accountId}/fields/{fieldId}/validate?signer-access-code={code}`.
+     * Request body (null and numeric zero are retained):
+     * ```json
+     * {"value":0}
+     * ```
+     * Response 200 data:
+     * ```json
+     * {"type":"number","success":true,"error_message":""}
+     * ```
+     */
+    suspend fun validateAsSigner(
+        fieldId: String,
+        value: Any?,
+        signerAccessCode: String,
+        accountId: String? = null,
+    ): FieldValidationResult = validateValue(fieldId, value, accountId, requireId(signerAccessCode, "Signer access code"))
+
+    /**
+     * Validates multiple fields using only the signer credential, without workspace authentication.
+     * Wire operation: `POST /v1/accounts/{accountId}/fields/validate-multiple?signer-access-code={code}`.
+     * Request body (null values are retained):
+     * ```json
+     * [{"field_id":"field-placeholder","value":null}]
+     * ```
+     * Response 200 data:
+     * ```json
+     * [{"field_id":"field-placeholder","type":"text","success":true,"error_message":""}]
+     * ```
+     */
+    suspend fun validateMultipleAsSigner(
+        entries: List<FieldValidationEntry>,
+        signerAccessCode: String,
+        accountId: String? = null,
+    ): List<FieldValidationResult> = validateValues(entries, accountId, requireId(signerAccessCode, "Signer access code"))
+
+    private suspend fun validateValue(
+        fieldId: String,
+        value: Any?,
+        accountId: String?,
+        signerCode: String?,
+    ): FieldValidationResult {
+        val id = pathSegment(accountId(accountId))
+        val fid = pathSegment(requireId(fieldId, "Field ID"))
+        val transport = if (signerCode == null) http else publicHttp
+        return call("Failed to validate field value", FieldValidationResult::class.java) {
+            transport.post(
+                "/accounts/$id/fields/$fid/validate" + queryString("signer-access-code" to signerCode),
+                toJsonAllowNulls(
+                    mapOf(
+                        "value" to value,
+                    ),
+                ),
+            )
+        }
+    }
+
+    private suspend fun validateValues(
+        entries: List<FieldValidationEntry>,
+        accountId: String?,
+        signerCode: String?,
+    ): List<FieldValidationResult> {
+        val id = pathSegment(accountId(accountId))
+        if (entries.isEmpty()) throw ValidationException("At least one field value is required")
+        val normalized = entries.map { it.copy(fieldId = requireId(it.fieldId, "Field ID")) }
+        val transport = if (signerCode == null) http else publicHttp
+        return callList("Failed to validate field values", FieldValidationResult::class.java) {
+            transport.post(
+                "/accounts/$id/fields/validate-multiple" + queryString("signer-access-code" to signerCode),
+                toJsonAllowNulls(normalized),
+            )
+        }.data
+    }
 }

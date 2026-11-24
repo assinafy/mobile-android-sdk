@@ -1761,8 +1761,8 @@ class DocumentResource internal constructor(
     suspend fun isFullySigned(documentId: String): Boolean {
         val doc = details(documentId)
         if (doc.status == DocumentStatus.CERTIFICATED) return true
-        val summary = doc.assignment?.summary ?: return false
-        return summary.signerCount > 0 && summary.signerCount == summary.completedCount
+        val progress = signingProgress(doc)
+        return progress.total > 0 && progress.signed == progress.total
     }
 
     /**
@@ -1903,8 +1903,11 @@ class DocumentResource internal constructor(
      * @param documentId Stable document identifier.
      * @return Signed, total, pending, and percentage values; all zero when no assignment exists.
      */
-    suspend fun getSigningProgress(documentId: String): SigningProgress {
-        val doc = details(documentId)
+    suspend fun getSigningProgress(documentId: String): SigningProgress = signingProgress(
+        details(documentId),
+    )
+
+    private fun signingProgress(doc: DocumentDetails): SigningProgress {
         val summary = doc.assignment?.summary
         val total = summary?.signerCount ?: doc.assignment?.signers?.size ?: 0
         val signed = summary?.completedCount ?: doc.assignment?.signers?.count { it.completed == true } ?: 0
@@ -2200,5 +2203,74 @@ class DocumentResource internal constructor(
     companion object {
         private const val ACCESS_TOKEN_CHANNEL = "email"
         private val PDF_MAGIC = "%PDF-".toByteArray(Charsets.US_ASCII)
+    }
+
+/**
+     * Lists contacts following document completion without signing, in configured order. Deleted contacts are omitted. Requires documents:read.
+     *
+     * Wire operation: `GET /v1/documents/{documentId}/watchers`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * [
+     *   {
+     *     "resource": "signer",
+     *     "id": "example",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": null,
+     *     "government_id": null,
+     *     "has_accepted_terms": false
+     *   }
+     * ]
+     * ```
+     */
+    suspend fun listWatchers(documentId: String): List<Signer> {
+        val id = pathSegment(requireId(documentId, "Document ID"))
+        return callList("Failed to list document watchers", Signer::class.java) { http.get("/documents/$id/watchers") }
+            .data
+    }
+
+    /**
+     * Replaces up to ten workspace contacts with email addresses; an empty list clears them. Duplicates count once. Requires documents:write; watchers can change until the document ends. They receive a queued email on decline, expiration or completion, with no link or file, independently of workspace notification preferences.
+     *
+     * Wire operation: `PUT /v1/documents/{documentId}/watchers`.
+     *
+     * Request body (`application/json`; optional fields may be omitted):
+     * ```json
+     * {
+     *   "watcher_ids": [
+     *     "signer-placeholder"
+     *   ]
+     * }
+     * ```
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * [
+     *   {
+     *     "resource": "signer",
+     *     "id": "example",
+     *     "full_name": "Example Person",
+     *     "email": "person@example.com",
+     *     "whatsapp_phone_number": null,
+     *     "government_id": null,
+     *     "has_accepted_terms": false
+     *   }
+     * ]
+     * ```
+     */
+    suspend fun setWatchers(
+        documentId: String,
+        watcherIds: List<String>,
+    ): List<Signer> {
+        val id = pathSegment(requireId(documentId, "Document ID"))
+        val ids = watcherIds.map { requireId(it, "Watcher ID") }.distinct()
+        if (ids.size > 10) throw ValidationException("A document supports at most ten watchers")
+        return callList("Failed to set document watchers", Signer::class.java) {
+            http.put("/documents/$id/watchers", toJson(mapOf("watcher_ids" to ids)))
+        }.data
     }
 }

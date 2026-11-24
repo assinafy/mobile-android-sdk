@@ -23,6 +23,40 @@ class SmokeApplication : Application() {
         client.workspaces.get("account", expandSigningFeatures = true)
         client.workspaces.getUsage("account")
         client.envelopes.list()
+        client.assignments.listScheduledSends()
+        client.assignments.getSignerCapacities("document")
+        client.assignments.getNotificationHistory("document")
+        client.assignments.schedule(
+            "document",
+            CreateAssignmentRequest(signers = listOf(SignerReference.ofId("signer"))),
+            System.currentTimeMillis() / 1_000 + 7_200,
+        )
+        client.assignments.cancelScheduledSend("scheduled")
+        client.assignments.sendScheduledNow("scheduled")
+        client.documents.listWatchers("document")
+        client.documents.setWatchers("document", emptyList())
+        client.envelopes.estimateResendCost("envelope", "signer")
+        client.signerDocuments.uploadSignature("signer-code", byteArrayOf(1), contentType = "image/jpeg")
+        client.fields.validateAsSigner("field", 0, "signer-code", "account")
+        client.fields.validateMultipleAsSigner(
+            listOf(
+                com.assinafy.sdk.request
+                    .FieldValidationEntry("field", null),
+            ),
+            "signer-code",
+            "account",
+        )
+        client.assignments.scheduleEnvelope(
+            com.assinafy.sdk.request.CreateEnvelopeRequest(
+                "Envelope",
+                listOf(SignerReference.ofId("signer")),
+                listOf(
+                    com.assinafy.sdk.request
+                        .EnvelopeDocumentRequest("document", listOf("signer")),
+                ),
+            ),
+            System.currentTimeMillis() / 1_000 + 7_200,
+        )
         client.embeddedSigning.listOrigins()
         client.signerDocuments.download("signer", "document", "original", "signer-code")
         client.contracts.list(com.assinafy.sdk.request.ContractListParams(endingWithinDays = 30))

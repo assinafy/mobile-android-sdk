@@ -7,12 +7,12 @@ Cliente Kotlin coroutine-first para a [API Assinafy v1](https://api.assinafy.com
 ## Requisitos e instalação
 
 - Android API 21+, Java 17 para o consumidor e TLS 1.2+.
-- Build do SDK: Kotlin 2.4.21, Gradle 9.5, AGP 9.3.3 e JDK 25 LTS.
+- Build do SDK: Kotlin 2.4.21, Gradle 9.9.2, AGP 9.5.1 e JDK 25 LTS.
 - Dependências de runtime: OkHttp 5, Gson e kotlinx-coroutines-core.
 
 ```kotlin
 // settings.gradle.kts: google(); mavenCentral()
-dependencies { implementation("com.assinafy:assinafy-android-sdk:2.9.0") }
+dependencies { implementation("com.assinafy:assinafy-android-sdk:2.10.0") }
 ```
 
 O AAR declara `INTERNET` e inclui regras R8 de consumidor. Veja [API_REFERENCE.md](docs/API_REFERENCE.md) para toda operação e payload, [API_COVERAGE.md](docs/API_COVERAGE.md) para o mapa de endpoints e [TESTING.md](docs/TESTING.md) para os testes.
@@ -58,7 +58,7 @@ val authorized = AssinafyClient.create(AssinafyClientConfig(token = tokens.acces
 
 O código expira em 60 segundos. Guarde `state` e o verifier só até a troca. O access token dura uma hora. Se `offline_access` foi consentido, cada `refresh(latestRefreshToken)` devolve um refresh token novo e invalida o anterior; persista o novo par atomicamente e nunca repita um refresh incerto. `revoke` encerra a conexão. Escopo insuficiente retorna `ApiException.challenge`; reconecte pedindo o escopo indicado, sem retry.
 
-Em sandbox, leia o emissor por `protectedResourceMetadata()`; produção usa `https://auth.assinafy.com.br`. Login com MFA lança `MfaRequiredException`; conclua com `authentication.verifyMfa(...)`.
+Em outros ambientes, leia `protectedResourceMetadata()` e configure `OAuthConfig.authorizationServerUrl` e `resource` com os valores anunciados; eles podem diferir do host da API. Produção usa `https://auth.assinafy.com.br`. Login com MFA lança `MfaRequiredException`; conclua com `authentication.verifyMfa(...)`.
 
 ## Fluxo completo: PDF até certificado
 
@@ -137,6 +137,12 @@ A criação não garante entrega: consulte o histórico de notificações. Use `
 Para incorporar, registre uma origem HTTPS com `embeddedSigning.addOrigin` no backend e crie o signatário do assignment com `embedded=true` (Email/Whatsapp). Gere `createSession(documentId, assignmentId, signerId)` a cada abertura; carregue a URL uma vez, em cinco minutos, num iframe da origem autorizada. Não a registre nem faça prefetch. O app nativo abre essa página de integração hospedada; a Assinafy troca o token internamente.
 
 `workspaces.get(accountId, expandSigningFeatures=true)` mostra permissões do plano; `getUsage` mostra saldos. Política de alertas e preferências pessoais de push têm métodos separados, indisponíveis a OAuth de terceiros. Downloads do signatário exigem código e permitem apenas `original`; após assinar, consulte `certifiedCopy` e use `resendCertifiedCopy` para receber a cópia pelo canal original.
+
+## Envios agendados e entrega
+
+Nos hosts com agendamento, use `assignments.schedule(document.id, request, sendAt)` com segundos Unix de uma hora a 90 dias no futuro, ou `scheduleEnvelope(envelopeRequest.copy(idempotencyKey = null), sendAt)`. Nada é enviado ou cobrado antes da execução. Acompanhe `listScheduledSends`, cancele com `cancelScheduledSend` ou execute com `sendScheduledNow`; uma tentativa imediata recusada continua pendente. A expiração deve ocorrer pelo menos duas horas após o envio.
+
+Defina `SignerReference.signAs = SignerCapacity.WITNESS` antes de criar/agendar a assinatura; consulte `getSignerCapacities`. Use `documents.setWatchers(document.id, contactIds)` para avisos de conclusão sem acesso ou arquivos, e `assignments.getNotificationHistory(document.id)` para horários de entrega/abertura. Consulte `envelopes.estimateResendCost` antes de reenviar um lembrete. Veja [payloads e disponibilidade por host](docs/API_REFERENCE.md).
 
 ## Webhooks
 

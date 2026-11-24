@@ -98,7 +98,9 @@ class DocumentResourceTest {
     fun `isFullySigned returns true when status is certificated`() = runTest {
         val mock = MockApiHttpClient()
         mock.enqueue(
-            successResponse("""{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"certificated","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":true}"""),
+            successResponse(
+                """{"id":"doc-1","account_id":"acc","name":"test.pdf","status":"certificated","created_at":"2024-01-01","updated_at":"2024-01-01","is_closed":true}""",
+            ),
         )
         assertThat(DocumentResource(mock, "acc").isFullySigned("doc-1")).isTrue
     }
@@ -529,7 +531,13 @@ class DocumentResourceTest {
             { it.createFromTemplate("template", listOf(signer, TemplateSigner("copy-role", "copy-signer"))) },
             { it.estimateCostFromTemplate("template", listOf(signer)) },
         ).forEach { action ->
-            val mock = MockApiHttpClient(HttpRawResponse(400, """{"status":400,"message":"Certificate requires a virtual assignment","code":"digital_certificate_requires_virtual_assignment"}""", emptyMap()))
+            val mock = MockApiHttpClient(
+                HttpRawResponse(
+                    400,
+                    """{"status":400,"message":"Certificate requires a virtual assignment","code":"digital_certificate_requires_virtual_assignment"}""",
+                    emptyMap(),
+                ),
+            )
             assertThatThrownBy { runBlocking { action(DocumentResource(mock, "acc")) } }
                 .isInstanceOf(com.assinafy.sdk.exceptions.ApiException::class.java)
                 .hasFieldOrPropertyWithValue("statusCode", 400)
@@ -543,7 +551,14 @@ class DocumentResourceTest {
         val result = DocumentResource(mock, "acc").createFromTemplate(
             "template",
             listOf(
-                TemplateSigner("signing-role", email = "signer@example.com", name = "Example Signer", whatsappPhoneNumber = "+5511999990000", step = 1, verificationMethod = "DigitalCertificate"),
+                TemplateSigner(
+                    "signing-role",
+                    email = "signer@example.com",
+                    name = "Example Signer",
+                    whatsappPhoneNumber = "+5511999990000",
+                    step = 1,
+                    verificationMethod = "DigitalCertificate",
+                ),
                 TemplateSigner("copy-role", "copy-signer"),
             ),
         )
@@ -551,8 +566,32 @@ class DocumentResourceTest {
         assertThat(result.assignment).isNull()
         assertThat(mock.calls.map { it.method }).containsExactly("POST")
         assertThat(mock.lastCall().path).isEqualTo("/accounts/acc/templates/template/documents")
-        assertThat(com.google.gson.JsonParser.parseString(mock.lastCall().body)).isEqualTo(
-            com.google.gson.JsonParser.parseString("""{"signers":[{"role_id":"signing-role","email":"signer@example.com","name":"Example Signer","whatsapp_phone_number":"+5511999990000","step":1,"verification_method":"DigitalCertificate"},{"role_id":"copy-role","id":"copy-signer"}]}"""),
+        assertThat(
+            com.google.gson.JsonParser.parseString(mock.lastCall().body),
+        ).isEqualTo(
+            com.google.gson.JsonParser.parseString(
+                """{"signers":[{"role_id":"signing-role","email":"signer@example.com","name":"Example Signer","whatsapp_phone_number":"+5511999990000","step":1,"verification_method":"DigitalCertificate"},{"role_id":"copy-role","id":"copy-signer"}]}""",
+            ),
         )
     }
+
+    @Test
+    fun `isFullySigned uses completed signers when summary is absent`() =
+        runTest {
+            for ((flags, expected) in listOf(listOf(true, true) to true, listOf(true, false) to false, emptyList<Boolean>() to false)) {
+                val signers = flags.mapIndexed { index, completed -> "{\"id\":\"s-$index\",\"completed\":$completed}" }
+                    .joinToString(",")
+                val mock =
+                    MockApiHttpClient(
+                        HttpRawResponse(
+                            200,
+                            """{"status":200,"data":{"id":"doc","name":"Example","status":"certificating","assignment":{"id":"assignment","signers":[$signers]}}}""",
+                            emptyMap(),
+                        ),
+                    )
+                assertThat(DocumentResource(mock).isFullySigned("doc")).isEqualTo(expected)
+                assertThat(mock.lastCall().path).isEqualTo("/documents/doc")
+                assertThat(mock.callCount()).isEqualTo(1)
+            }
+        }
 }

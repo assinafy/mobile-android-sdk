@@ -2,6 +2,25 @@
 
 All notable changes to the Assinafy Android SDK will be documented in this file.
 
+## [2.10.0] - 2026-11-24
+
+### Added
+
+- Schedule assignments and envelopes, list scheduled sends, cancel pending sends, and send them immediately.
+- Set and read document watchers, signer capacities, and notification delivery/open timestamps.
+- Estimate envelope reminder costs without sending notifications.
+- Validate single or multiple fields with signer access codes on the credential-free transport.
+- Upload JPEG signatures through `signerDocuments.uploadSignature` while retaining the PNG overload.
+
+### Changed
+
+- Use Gradle 9.9.2, Dokka 2.3.0, and the pinned setup-java 6.3.0 action.
+
+### Fixed
+
+- Reject unsupported signature image kinds before uploading.
+- Derive full signing completion from signer flags when the API omits the assignment summary.
+
 ## [2.9.0] - 2026-11-11
 
 ### Added

@@ -543,3 +543,130 @@ object DocumentExpansion {
     /** Every workspace document expansion. */
     val ALL = setOf(ENVELOPE_ID, ENVELOPE)
 }
+
+/** Sender-declared signing capacities printed on the certificate page. */
+object SignerCapacity {
+    /** Sign capacity. */
+    const val SIGN = "Sign"
+
+    /** Approve capacity. */
+    const val APPROVE = "Approve"
+
+    /** Acknowledge capacity. */
+    const val ACKNOWLEDGE = "Acknowledge"
+
+    /** Party capacity. */
+    const val PARTY = "Party"
+
+    /** Witness capacity. */
+    const val WITNESS = "Witness"
+
+    /** Intervening capacity. */
+    const val INTERVENING = "Intervening"
+
+    /** Receipt capacity. */
+    const val RECEIPT = "Receipt"
+
+    /** Issuer Endorser Guarantor capacity. */
+    const val ISSUER_ENDORSER_GUARANTOR = "IssuerEndorserGuarantor"
+
+    /** Issuer Endorser Guarantor Surety capacity. */
+    const val ISSUER_ENDORSER_GUARANTOR_SURETY = "IssuerEndorserGuarantorSurety"
+
+    /** Surety capacity. */
+    const val SURETY = "Surety"
+
+    /** Party Surety capacity. */
+    const val PARTY_SURETY = "PartySurety"
+
+    /** Joint Debtor capacity. */
+    const val JOINT_DEBTOR = "JointDebtor"
+
+    /** Party Joint Debtor capacity. */
+    const val PARTY_JOINT_DEBTOR = "PartyJointDebtor"
+
+    /** Contracting Party capacity. */
+    const val CONTRACTING_PARTY = "ContractingParty"
+
+    /** Contracted Party capacity. */
+    const val CONTRACTED_PARTY = "ContractedParty"
+
+    /** Landlord capacity. */
+    const val LANDLORD = "Landlord"
+
+    /** Tenant capacity. */
+    const val TENANT = "Tenant"
+
+    /** Buyer capacity. */
+    const val BUYER = "Buyer"
+
+    /** Seller capacity. */
+    const val SELLER = "Seller"
+
+    /** Attorney In Fact capacity. */
+    const val ATTORNEY_IN_FACT = "AttorneyInFact"
+
+    /** Legal Representative capacity. */
+    const val LEGAL_REPRESENTATIVE = "LegalRepresentative"
+
+    /** Employer capacity. */
+    const val EMPLOYER = "Employer"
+
+    /** Employee capacity. */
+    const val EMPLOYEE = "Employee"
+
+    /** Every supported capacity; omitted capacity means [SIGN]. */
+    val ALL =
+        setOf(
+            SIGN,
+            APPROVE,
+            ACKNOWLEDGE,
+            PARTY,
+            WITNESS,
+            INTERVENING,
+            RECEIPT,
+            ISSUER_ENDORSER_GUARANTOR,
+            ISSUER_ENDORSER_GUARANTOR_SURETY,
+            SURETY,
+            PARTY_SURETY,
+            JOINT_DEBTOR,
+            PARTY_JOINT_DEBTOR,
+            CONTRACTING_PARTY,
+            CONTRACTED_PARTY,
+            LANDLORD,
+            TENANT,
+            BUYER,
+            SELLER,
+            ATTORNEY_IN_FACT,
+            LEGAL_REPRESENTATIVE,
+            EMPLOYER,
+            EMPLOYEE,
+        )
+}
+
+/** States of a scheduled assignment or envelope. */
+object ScheduledSendStatus {
+    /** Pending state or kind. */
+    const val PENDING = "pending"
+
+    /** Processing state or kind. */
+    const val PROCESSING = "processing"
+
+    /** Sent state or kind. */
+    const val SENT = "sent"
+
+    /** Cancelled state or kind. */
+    const val CANCELLED = "cancelled"
+
+    /** Failed state or kind. */
+    const val FAILED = "failed"
+}
+
+/** Kinds of scheduled requests. */
+object ScheduledSendType {
+    /** Assignment state or kind. */
+    const val ASSIGNMENT = "assignment"
+
+    /** Envelope state or kind. */
+    const val ENVELOPE = "envelope"
+}

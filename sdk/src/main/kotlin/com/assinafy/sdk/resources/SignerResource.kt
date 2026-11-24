@@ -66,7 +66,10 @@ class SignerResource internal constructor(
      * @return the created or pre-existing [Signer].
      * @throws com.assinafy.sdk.exceptions.ValidationException on an invalid email or missing account.
      */
-    suspend fun create(request: CreateSignerRequest, accountId: String? = null): Signer {
+    suspend fun create(
+        request: CreateSignerRequest,
+        accountId: String? = null,
+    ): Signer {
         val fullName = requireId(request.fullName, "Signer full name")
         val normalizedEmail = request.email?.let { requireValidEmail(it) }
         val normalizedRequest = request.copy(fullName = fullName, email = normalizedEmail)
@@ -124,7 +127,10 @@ class SignerResource internal constructor(
      * @return Complete account signer record.
      * @throws ValidationException if an account or signer ID is blank.
      */
-    suspend fun get(signerId: String, accountId: String? = null): Signer {
+    suspend fun get(
+        signerId: String,
+        accountId: String? = null,
+    ): Signer {
         val id = accountId(accountId)
         val sid = requireId(signerId, "Signer ID")
         return call("Failed to fetch signer", Signer::class.java) {
@@ -162,7 +168,10 @@ class SignerResource internal constructor(
      * @param accountId Account override; otherwise the client's default account is used.
      * @return Matching signer records and optional pagination-header metadata.
      */
-    suspend fun list(params: ListParams = ListParams(), accountId: String? = null): PaginatedResult<Signer> {
+    suspend fun list(
+        params: ListParams = ListParams(),
+        accountId: String? = null,
+    ): PaginatedResult<Signer> {
         val id = accountId(accountId)
         val query = buildMap<String, Any> {
             params.search?.let { put("search", it) }
@@ -216,7 +225,11 @@ class SignerResource internal constructor(
      * @return Complete updated signer record.
      * @throws ValidationException if an ID is blank or a supplied email is invalid.
      */
-    suspend fun update(signerId: String, request: UpdateSignerRequest, accountId: String? = null): Signer {
+    suspend fun update(
+        signerId: String,
+        request: UpdateSignerRequest,
+        accountId: String? = null,
+    ): Signer {
         val id = accountId(accountId)
         val sid = requireId(signerId, "Signer ID")
         val normalizedRequest = request.copy(
@@ -250,7 +263,10 @@ class SignerResource internal constructor(
      * @param signerId Stable signer identifier.
      * @param accountId Account override; otherwise the client's default account is used.
      */
-    suspend fun delete(signerId: String, accountId: String? = null) {
+    suspend fun delete(
+        signerId: String,
+        accountId: String? = null,
+    ) {
         val id = accountId(accountId)
         val sid = requireId(signerId, "Signer ID")
         callVoid("Failed to delete signer") {
@@ -290,7 +306,10 @@ class SignerResource internal constructor(
      * @return Exact signer match, or `null` when no page contains one.
      * @throws ValidationException if the email or account is invalid.
      */
-    suspend fun findByEmail(email: String, accountId: String? = null): Signer? {
+    suspend fun findByEmail(
+        email: String,
+        accountId: String? = null,
+    ): Signer? {
         val normalizedEmail = requireValidEmail(email)
         var page = 1
         while (true) {
@@ -399,7 +418,10 @@ class SignerResource internal constructor(
      * @return Matching documents.
      * @throws ValidationException if [signerId] is blank.
      */
-    suspend fun searchDocumentsAsWorkspace(signerId: String, search: String? = null): PaginatedResult<DocumentDetails> {
+    suspend fun searchDocumentsAsWorkspace(
+        signerId: String,
+        search: String? = null,
+    ): PaginatedResult<DocumentDetails> {
         val sid = requireId(signerId, "Signer ID")
         val term = search?.trim()?.takeIf { it.isNotEmpty() }
         return callList("Failed to search signer documents", DocumentDetails::class.java) {
@@ -514,7 +536,10 @@ class SignerResource internal constructor(
      * @return API success data normalized to a map.
      */
     @Deprecated("Use AssinafyClient.signerDocuments.verifyEmail")
-    suspend fun verifyEmail(signerAccessCode: String, verificationCode: String): Map<String, Any> {
+    suspend fun verifyEmail(
+        signerAccessCode: String,
+        verificationCode: String,
+    ): Map<String, Any> {
         val code = requireId(signerAccessCode, "Signer access code")
         val verification = requireId(verificationCode, "Verification code")
         val body = mapOf("verification-code" to verification)
@@ -528,8 +553,8 @@ class SignerResource internal constructor(
      *
      * Request: the access code, `type`, and `reuse` as query parameters, and the **raw image bytes**
      * as the body with an `image/png` or `image/jpeg` content type — not multipart form data.
-     * Response `data` is returned as a map. See [SignerDocumentResource.uploadSignature] for the
-     * maintained version, which accepts PNG only.
+     * The success envelope is validated. See [SignerDocumentResource.uploadSignature] for the
+     * maintained PNG/JPEG overloads.
      *
      * Wire operation: `POST /v1/signature`.
      *
@@ -547,13 +572,12 @@ class SignerResource internal constructor(
      * ```
      *
      * @param type `"signature"` or `"initial"`.
-     * @param imageData Raw PNG or legacy JPEG bytes.
-     * @param contentType MIME type of [imageData]. The current API documents `image/png`; JPEG is
-     * retained for compatibility with older deployments.
+     * @param imageData Raw PNG or JPEG bytes.
+     * @param contentType MIME type of [imageData]: `image/png` or `image/jpeg`.
      * @param reuse Optional instruction to update whether the image can be reused.
      * @throws ValidationException if the access code/type is blank, bytes are empty, or MIME type is unsupported.
      */
-    @Deprecated("Use AssinafyClient.signerDocuments.uploadSignature; JPEG is a legacy extension")
+    @Deprecated("Use AssinafyClient.signerDocuments.uploadSignature")
     suspend fun uploadSignature(
         signerAccessCode: String,
         type: String,
@@ -561,25 +585,7 @@ class SignerResource internal constructor(
         contentType: String = "image/png",
         reuse: Boolean? = null,
     ) {
-        val code = requireId(signerAccessCode, "Signer access code")
-        val signatureType = requireId(type, "Signature type")
-        if (imageData.isEmpty()) {
-            throw ValidationException("Signature image data is empty")
-        }
-        if (contentType !in setOf("image/png", "image/jpeg")) {
-            throw ValidationException("Signature content type must be image/png or image/jpeg")
-        }
-        logger.info("Uploading signature", mapOf("type" to signatureType))
-        if (contentType == "image/png") {
-            return SignerDocumentResource(publicHttp).uploadSignature(code, imageData, signatureType, reuse)
-        }
-        callVoid("Failed to upload signature") {
-            publicHttp.postSignature(
-                "/signature${queryString("signer-access-code" to code, "type" to signatureType, "reuse" to reuse)}",
-                imageData,
-                contentType,
-            )
-        }
+        SignerDocumentResource(publicHttp).uploadSignature(signerAccessCode, imageData, type, reuse, contentType)
     }
 
     /**
@@ -599,11 +605,14 @@ class SignerResource internal constructor(
      * @param signerAccessCode One-time signer code sent only in the query string.
      * @param type Stored image kind, normally [com.assinafy.sdk.SignatureType.SIGNATURE] or
      * [com.assinafy.sdk.SignatureType.INITIAL].
-     * @return Raw PNG or legacy JPEG response bytes.
+     * @return Raw PNG or JPEG response bytes.
      * @throws ValidationException if the signer access code or image type is blank.
      */
     @Deprecated("Use AssinafyClient.signerDocuments.downloadSignature")
-    suspend fun downloadSignature(signerAccessCode: String, type: String): ByteArray =
+    suspend fun downloadSignature(
+        signerAccessCode: String,
+        type: String,
+    ): ByteArray =
         SignerDocumentResource(publicHttp).downloadSignature(signerAccessCode, type)
 
     private fun normalise(request: CreateSignerRequest): Map<String, Any> = buildMap {

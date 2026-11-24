@@ -238,7 +238,10 @@ class SignerDocumentResource internal constructor(
      * @param signerAccessCode One-time code sent only as `signer-access-code` in the query.
      * @return The current document, including any assignment and signer-visible items.
      */
-    suspend fun getCurrent(signerId: String, signerAccessCode: String): DocumentDetails = getCurrent(signerId, signerAccessCode, false)
+    suspend fun getCurrent(
+        signerId: String,
+        signerAccessCode: String,
+    ): DocumentDetails = getCurrent(signerId, signerAccessCode, false)
 
     /**
      * Get signer's document. Set expandEnvelope to request envelope identity.
@@ -393,10 +396,20 @@ class SignerDocumentResource internal constructor(
      * }
      * ```
      */
-    suspend fun getCurrent(signerId: String, signerAccessCode: String, expandEnvelope: Boolean): DocumentDetails {
+    suspend fun getCurrent(
+        signerId: String,
+        signerAccessCode: String,
+        expandEnvelope: Boolean,
+    ): DocumentDetails {
         val sid = requireId(signerId, "Signer ID")
         return call("Failed to fetch current signer document", DocumentDetails::class.java) {
-            http.get(withSignerCode("/signers/${pathSegment(sid)}/document", signerAccessCode, "expand" to if (expandEnvelope) com.assinafy.sdk.DocumentExpansion.ENVELOPE else null))
+            http.get(
+                withSignerCode(
+                    "/signers/${pathSegment(sid)}/document",
+                    signerAccessCode,
+                    "expand" to if (expandEnvelope) com.assinafy.sdk.DocumentExpansion.ENVELOPE else null,
+                ),
+            )
         }
     }
 
@@ -563,7 +576,10 @@ class SignerDocumentResource internal constructor(
      * @param hasAcceptedTerms Optional terms-acceptance value sent as `has_accepted_terms`.
      * @return The document, pages, assignment, signers, and signer-visible assignment items.
      */
-    suspend fun getAssignment(signerAccessCode: String, hasAcceptedTerms: Boolean? = null): DocumentDetails =
+    suspend fun getAssignment(
+        signerAccessCode: String,
+        hasAcceptedTerms: Boolean? = null,
+    ): DocumentDetails =
         getAssignment(signerAccessCode, hasAcceptedTerms, false)
 
     /**
@@ -868,7 +884,10 @@ class SignerDocumentResource internal constructor(
      * @param documentIds Non-empty document-ID list serialized as `document_ids`.
      * @param signerAccessCode One-time signer code sent only in the query.
      */
-    suspend fun signMultiple(documentIds: List<String>, signerAccessCode: String) {
+    suspend fun signMultiple(
+        documentIds: List<String>,
+        signerAccessCode: String,
+    ) {
         val ids = requireDocumentIds(documentIds)
         callVoid("Failed to sign multiple documents") {
             http.put(
@@ -947,7 +966,10 @@ class SignerDocumentResource internal constructor(
      * @param signerAccessCode Signing-link access code sent only in the query.
      * @param request OTP body whose exact wire key is `verification-code`.
      */
-    suspend fun verifyEmail(signerAccessCode: String, request: VerifySignerEmailRequest) {
+    suspend fun verifyEmail(
+        signerAccessCode: String,
+        request: VerifySignerEmailRequest,
+    ) {
         val otp = requireId(request.verificationCode, "Verification code")
         callVoid("Failed to verify signer email") {
             http.post(
@@ -1053,9 +1075,38 @@ class SignerDocumentResource internal constructor(
         imageData: ByteArray,
         type: String = SignatureType.SIGNATURE,
         reuse: Boolean? = null,
+    ) = uploadSignature(signerAccessCode, imageData, type, reuse, "image/png")
+
+    /**
+     * Uploads PNG or JPEG signature/initial bytes with their matching MIME type.
+     *
+     * Wire operation: `POST /v1/signature?signer-access-code={code}&type={type}&reuse={boolean}`.
+     * Request body: raw [imageData], with Content-Type [contentType] (`image/png` or `image/jpeg`).
+     * Response 200 body:
+     * ```json
+     * {"status":200,"message":"OK"}
+     * ```
+     * [type] is signature or initial; null [reuse] leaves the stored reuse preference unchanged.
+     */
+    suspend fun uploadSignature(
+        signerAccessCode: String,
+        imageData: ByteArray,
+        type: String = SignatureType.SIGNATURE,
+        reuse: Boolean? = null,
+        contentType: String,
     ) {
         if (imageData.isEmpty()) throw ValidationException("Signature image data is empty")
         val imageType = requireId(type, "Signature type")
+        if (imageType !in
+            setOf(SignatureType.SIGNATURE, SignatureType.INITIAL)
+        ) {
+            throw ValidationException("Signature type must be signature or initial")
+        }
+        if (contentType !in
+            setOf("image/png", "image/jpeg")
+        ) {
+            throw ValidationException("Signature content type must be image/png or image/jpeg")
+        }
         callVoid("Failed to upload signer signature") {
             http.postSignature(
                 withSignerCode(
@@ -1065,7 +1116,7 @@ class SignerDocumentResource internal constructor(
                     "reuse" to reuse,
                 ),
                 imageData,
-                "image/png",
+                contentType,
             )
         }
     }
@@ -1331,7 +1382,10 @@ class SignerDocumentResource internal constructor(
      * @param signerAccessCode Signer access code, sent only on the credential-free transport as a query parameter.
      * @param consent The signer explicitly agreed to biometric processing; false is rejected before a request.
      */
-    suspend fun startIdentityVerification(signerAccessCode: String, consent: Boolean): IdentityVerificationSession {
+    suspend fun startIdentityVerification(
+        signerAccessCode: String,
+        consent: Boolean,
+    ): IdentityVerificationSession {
         val path = withSignerCode("/signers/identity-verification", signerAccessCode)
         if (!consent) throw ValidationException("Explicit biometric-processing consent is required")
         return call("Failed to start identity verification", IdentityVerificationSession::class.java) {
@@ -1352,11 +1406,17 @@ class SignerDocumentResource internal constructor(
         if (documentIds.isEmpty()) throw ValidationException("At least one document ID is required")
         return documentIds.mapIndexed { index, id -> requireId(id, "Document ID at index $index") }
     }
-    internal suspend fun confirmDataBody(documentId: String, signerAccessCode: String, body: Map<String, Any>): Signer {
+    internal suspend fun confirmDataBody(
+        documentId: String,
+        signerAccessCode: String,
+        body: Map<String, Any>,
+    ): Signer {
         val path = withSignerCode("/documents/${pathSegment(documentId)}/signers/confirm-data", signerAccessCode)
         val result = call("Failed to confirm signer data", JsonElement::class.java) { http.put(path, toJson(body)) }
         if (result.isJsonObject) return ResponseHandler.fromJson(result, Signer::class.java)
-        if (!result.isJsonArray || result.asJsonArray.size() != 0) throw com.assinafy.sdk.exceptions.AssinafyException("Malformed signer confirmation response")
+        if (!result.isJsonArray || result.asJsonArray.size() != 0) {
+            throw com.assinafy.sdk.exceptions.AssinafyException("Malformed signer confirmation response")
+        }
         return call("Failed to fetch confirmed signer", Signer::class.java) { http.get(withSignerCode("/signers/self", signerAccessCode)) }
     }
 
@@ -1369,10 +1429,17 @@ class SignerDocumentResource internal constructor(
      *
      * Response: raw binary bytes without a JSON envelope.
      */
-    suspend fun download(signerId: String, documentId: String, artifactName: String, signerAccessCode: String): ByteArray {
+    suspend fun download(
+        signerId: String,
+        documentId: String,
+        artifactName: String,
+        signerAccessCode: String,
+    ): ByteArray {
         val sid = pathSegment(requireId(signerId, "Signer ID"))
         val did = pathSegment(requireId(documentId, "Document ID"))
-        if (artifactName != DocumentArtifact.ORIGINAL) throw ValidationException("Signer downloads support only original; request a certified copy through its delivery channel")
+        if (artifactName != DocumentArtifact.ORIGINAL) {
+            throw ValidationException("Signer downloads support only original; request a certified copy through its delivery channel")
+        }
         val path = withSignerCode("/signers/$sid/documents/$did/download/${DocumentArtifact.ORIGINAL}", signerAccessCode)
         return callBinary("Failed to download signer document") { http.getBinary(path) }
     }
@@ -1433,7 +1500,10 @@ class SignerDocumentResource internal constructor(
      * }
      * ```
      */
-    suspend fun resendCertifiedCopy(signerAccessCode: String, documentId: String? = null): CertifiedCopy {
+    suspend fun resendCertifiedCopy(
+        signerAccessCode: String,
+        documentId: String? = null,
+    ): CertifiedCopy {
         val path = withSignerCode("/sign/certified-copy", signerAccessCode)
         val body = documentId?.let { toJson(mapOf("document_id" to requireId(it, "Document ID"))) }
         return call("Failed to send certified copy", CertifiedCopy::class.java) { http.post(path, body) }
@@ -1448,7 +1518,10 @@ class SignerDocumentResource internal constructor(
      *
      * Response: binary bytes or an empty successful response, as the operation specifies.
      */
-    suspend fun downloadCertifiedCopy(token: String, pades: Boolean = false): ByteArray {
+    suspend fun downloadCertifiedCopy(
+        token: String,
+        pades: Boolean = false,
+    ): ByteArray {
         val path = "/signers/downloads/${pathSegment(requireId(token, "Download token"))}" + if (pades) "/${DocumentArtifact.PADES}" else ""
         return callBinary("Failed to download certified copy") { http.getBinary(path) }
     }
@@ -1530,7 +1603,11 @@ class SignerDocumentResource internal constructor(
      * ]
      * ```
      */
-    suspend fun search(signerId: String, signerAccessCode: String, params: ListParams): PaginatedResult<DocumentDetails> {
+    suspend fun search(
+        signerId: String,
+        signerAccessCode: String,
+        params: ListParams,
+    ): PaginatedResult<DocumentDetails> {
         val sid = requireId(signerId, "Signer ID")
         return callList("Failed to search signer documents", DocumentDetails::class.java) {
             http.get(

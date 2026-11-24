@@ -2,7 +2,7 @@
 
 ## Supported build environment
 
-- Gradle Wrapper 9.8.2; use `./gradlew`, not a machine-wide Gradle installation.
+- Gradle Wrapper 9.9.2; use `./gradlew`, not a machine-wide Gradle installation.
 - JDK 25 LTS to run Gradle and Android Gradle Plugin 9.5.1 with built-in Kotlin support and Kotlin compiler 2.4.21.
 - Java 17 toolchain and bytecode for the published library.
 - Android SDK platform 37.0 and Build Tools 36.0.0.
@@ -307,3 +307,8 @@ These scenarios verify preparation, delivery requests and cleanup; they never su
 biometric consent or certificate. OTP completion, completed-copy delivery, fresh OAuth approval,
 biometric capture/review and device-runtime tests need their own interactive fixtures. Mocked tests
 and minified consumer compilation do not substitute for those success paths.
+
+Scheduled-send request tests cover assignment/envelope bodies, pagination, capacity validation and
+conflicts without mutation replay. Delivery tests cover watcher replacement/clearing, notification
+timestamps, envelope reminder pricing, and PNG/JPEG uploads. Scheduled sending requires a host
+exposing those operations; use staging credentials only with the staging base URL.

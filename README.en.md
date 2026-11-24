@@ -7,12 +7,12 @@ Coroutine-first Kotlin client for the [Assinafy API v1](https://api.assinafy.com
 ## Requirements and installation
 
 - Android API 21+, Java 17 consumer bytecode, and TLS 1.2+.
-- SDK build: Kotlin 2.4.21, Gradle 9.5, AGP 9.3.3, and JDK 25 LTS.
+- SDK build: Kotlin 2.4.21, Gradle 9.9.2, AGP 9.5.1, and JDK 25 LTS.
 - Runtime dependencies: OkHttp 5, Gson, and kotlinx-coroutines-core.
 
 ```kotlin
 // settings.gradle.kts: google(); mavenCentral()
-dependencies { implementation("com.assinafy:assinafy-android-sdk:2.9.0") }
+dependencies { implementation("com.assinafy:assinafy-android-sdk:2.10.0") }
 ```
 
 The AAR declares `INTERNET` and ships consumer R8 rules. See [API_REFERENCE.md](docs/API_REFERENCE.md) for every operation and payload, [API_COVERAGE.md](docs/API_COVERAGE.md) for the endpoint map, and [TESTING.md](docs/TESTING.md) for test tiers.
@@ -58,7 +58,7 @@ val authorized = AssinafyClient.create(AssinafyClientConfig(token = tokens.acces
 
 The code expires in 60 seconds. Keep `state` and the verifier only until exchange. Access tokens last one hour. When `offline_access` is granted, each `refresh(latestRefreshToken)` returns a new refresh token and retires the old one; persist the new pair atomically and never replay an uncertain refresh. `revoke` ends the connection. `ApiException.challenge` reports a missing scope; reconnect with that scope instead of retrying.
 
-For sandbox, read the issuer through `protectedResourceMetadata()`; production uses `https://auth.assinafy.com.br`. Login with MFA throws `MfaRequiredException`; finish with `authentication.verifyMfa(...)`.
+For other environments, read `protectedResourceMetadata()` and set `OAuthConfig.authorizationServerUrl` and `resource` to its advertised values; aliases may differ from the API host. Production uses `https://auth.assinafy.com.br`. Login with MFA throws `MfaRequiredException`; finish with `authentication.verifyMfa(...)`.
 
 ## Complete flow: PDF to certificate
 
@@ -138,6 +138,12 @@ For embedding, register an HTTPS origin through `embeddedSigning.addOrigin` on y
 
 `workspaces.get(accountId, expandSigningFeatures=true)` exposes plan entitlements; `getUsage` exposes balances. Alert policy and personal push preferences have separate methods unavailable to third-party OAuth. Signer downloads require the code and support only `original`; after signing, read `certifiedCopy` and use `resendCertifiedCopy` for delivery through the original channel.
 
+## Scheduled sends and delivery
+
+On hosts exposing scheduled sends, use `assignments.schedule(document.id, request, sendAt)` with Unix seconds one hour to 90 days ahead, or `scheduleEnvelope(envelopeRequest.copy(idempotencyKey = null), sendAt)`. Nothing is sent or charged until execution. Follow `listScheduledSends`, cancel with `cancelScheduledSend`, or execute with `sendScheduledNow`; a refused immediate send remains pending. Expirations must be at least two hours after send time.
+
+Set `SignerReference.signAs = SignerCapacity.WITNESS` before creating/scheduling an assignment; read it with `getSignerCapacities`. Use `documents.setWatchers(document.id, contactIds)` for completion emails without access or files, and `assignments.getNotificationHistory(document.id)` for delivery/open times. Estimate an envelope reminder with `envelopes.estimateResendCost` before resending. See [payloads and host availability](docs/API_REFERENCE.md).
+
 ## Webhooks
 
 Create an HTTPS endpoint with `signingEnabled = true`, retain the one-time returned `secret`, and verify the raw body bytes. OAuth may create or rotate a secret but cannot read an existing one.
@@ -169,7 +175,7 @@ For amendments, send `parentDocumentId`, `relationType`, and only the delta, the
 
 ## Resources, responses, and errors
 
-`client` exposes `authentication`, `oauth`, `workspaces`, `documents`, `signers`, `signerDocuments`, `assignments`, `templates`, `fields`, `tags`, `contracts`, `users`, and `webhooks`. Normal responses unwrap `{status,message,data}`; OAuth uses flat RFC objects. Lists return `PaginatedResult`, with header metadata and the `per-page` query.
+`client` exposes `authentication`, `oauth`, `workspaces`, `documents`, `signers`, `signerDocuments`, `assignments`, `templates`, `fields`, `tags`, `contracts`, `envelopes`, `embeddedSigning`, `users`, and `webhooks`. Normal responses unwrap `{status,message,data}`; OAuth uses flat RFC objects. Lists return `PaginatedResult`, with header metadata and the `per-page` query.
 
 - `ValidationException`: input rejected before network I/O.
 - `ApiException`: non-2xx HTTP/envelope response, including data, challenge, and rate limits.

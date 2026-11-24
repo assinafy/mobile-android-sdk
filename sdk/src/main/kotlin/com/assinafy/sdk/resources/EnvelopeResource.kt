@@ -1,6 +1,5 @@
 package com.assinafy.sdk.resources
 
-import com.assinafy.sdk.AssignmentMethod
 import com.assinafy.sdk.DocumentArtifact
 import com.assinafy.sdk.EnvelopeStatusFilter
 import com.assinafy.sdk.Logger
@@ -13,14 +12,13 @@ import com.assinafy.sdk.models.DocumentEnvelope
 import com.assinafy.sdk.models.EnvelopeCancellation
 import com.assinafy.sdk.models.EnvelopeReminder
 import com.assinafy.sdk.models.PaginatedResult
-import com.assinafy.sdk.request.CreateAssignmentRequest
 import com.assinafy.sdk.request.CreateEnvelopeRequest
 import com.assinafy.sdk.request.EnvelopeDocumentRequest
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.request.SignerReference
 import com.assinafy.sdk.request.UpdateEnvelopeRequest
 import com.assinafy.sdk.util.ApiValidator
-import com.assinafy.sdk.util.AssignmentValidation
+import com.assinafy.sdk.util.EnvelopeValidation
 import java.math.BigDecimal
 
 /** Multiple documents sent together; requires the workspace's Envelopes entitlement. */
@@ -86,7 +84,9 @@ class EnvelopeResource internal constructor(
      */
     suspend fun list(params: ListParams = ListParams(), accountId: String? = null): PaginatedResult<DocumentEnvelope> {
         val path = envelopesPath(accountId)
-        if (params.status != null && params.status !in EnvelopeStatusFilter.ALL) throw ValidationException("Envelope status filter must be open or closed")
+        if (params.status != null && params.status !in EnvelopeStatusFilter.ALL) {
+            throw ValidationException("Envelope status filter must be open or closed")
+        }
         return callList("Failed to list envelopes", DocumentEnvelope::class.java) {
             http.get(path, params.toQueryMap().filterKeys { it in setOf("page", "per-page", "search", "status") })
         }
@@ -197,7 +197,7 @@ class EnvelopeResource internal constructor(
      */
     suspend fun create(request: CreateEnvelopeRequest, accountId: String? = null): DocumentEnvelope {
         val path = envelopesPath(accountId)
-        val body = createBody(request)
+        val body = EnvelopeValidation.normalise(request)
         return call("Failed to create envelope", DocumentEnvelope::class.java) { http.postIdempotent(path, toJson(body), request.idempotencyKey) }
     }
 
@@ -285,7 +285,7 @@ class EnvelopeResource internal constructor(
      */
     suspend fun estimateCost(request: CreateEnvelopeRequest, accountId: String? = null): CostEstimate {
         val path = envelopesPath(accountId)
-        val body = createBody(request)
+        val body = EnvelopeValidation.normalise(request)
         return call("Failed to estimate envelope cost", CostEstimate::class.java) { http.post("$path/estimate-cost", toJson(body)) }
     }
 
@@ -409,9 +409,9 @@ class EnvelopeResource internal constructor(
         val path = envelopePath(envelopeId, accountId)
         if (request.clearMessage && request.message != null) throw ValidationException("Set message or clearMessage, not both")
         val body = buildMap<String, Any?> {
-            request.name?.let { put("name", envelopeName(it)) }
+            request.name?.let { put("name", EnvelopeValidation.envelopeName(it)) }
             if (request.clearMessage) put("message", null) else request.message?.let { put("message", it) }
-            request.documentIds?.let { put("document_ids", distinctIds(it, "Document ID")) }
+            request.documentIds?.let { put("document_ids", EnvelopeValidation.distinctIds(it, "Document ID")) }
         }
         if (body.isEmpty()) throw ValidationException("At least one envelope change is required")
         return call("Failed to update envelope", DocumentEnvelope::class.java) { http.patch(path, toJsonAllowNulls(body)) }
@@ -618,7 +618,7 @@ class EnvelopeResource internal constructor(
     suspend fun addDocument(envelopeId: String, request: EnvelopeDocumentRequest, maxTotalCredits: BigDecimal? = null, accountId: String? = null): DocumentEnvelope {
         val path = envelopePath(envelopeId, accountId)
         ApiValidator.requireCreditCeiling(maxTotalCredits)
-        val body = documentBody(request, request.signerIds.map { SignerReference.ofId(it) }) + mapOf("max_total_credits" to maxTotalCredits)
+        val body = EnvelopeValidation.documentBody(request, request.signerIds.map { SignerReference.ofId(it) }) + mapOf("max_total_credits" to maxTotalCredits)
         return call("Failed to add envelope document", DocumentEnvelope::class.java) { http.post("$path/documents", toJson(body)) }
     }
 
@@ -681,56 +681,37 @@ class EnvelopeResource internal constructor(
     private fun envelopesPath(accountId: String?): String = "/accounts/${pathSegment(accountId(accountId))}/envelopes"
     private fun envelopePath(envelopeId: String, accountId: String?): String = envelopesPath(accountId) + "/${pathSegment(requireId(envelopeId, "Envelope ID"))}"
 
-    private fun envelopeName(value: String): String = requireId(value, "Envelope name").also {
-        if (it.codePointCount(0, it.length) > 255 || '<' in it) throw ValidationException("Envelope name must be at most 255 characters without <")
-    }
-
-    private fun distinctIds(values: List<String>, label: String): List<String> {
-        val ids = values.map { requireId(it, label) }
-        if (ids.isEmpty() || ids.distinct().size != ids.size) throw ValidationException("$label list must be nonempty and distinct")
-        return ids
-    }
-
-    private fun createBody(request: CreateEnvelopeRequest): Map<String, Any?> {
-        val name = envelopeName(request.name)
-        ApiValidator.requireCreditCeiling(request.maxTotalCredits)
-        ApiValidator.requireIdempotencyKey(request.idempotencyKey)
-        if (request.signers.size !in 1..20 || request.documents.size !in 1..20) throw ValidationException("An envelope requires 1..20 signers and documents")
-        val ids = distinctIds(request.signers.map { requireId(it.id, "Signer ID") }, "Signer ID")
-        distinctIds(request.documents.map { it.id }, "Document ID")
-        if (request.signers.any { it.step != null }) throw ValidationException("Envelope signers cannot have signing steps")
-        val signers = request.signers.map { signer ->
-            ApiValidator.requireValidSignerChannels(signer.verificationMethod, signer.notificationMethods)
-            ApiValidator.requireEmbeddedMethod(signer.embedded, signer.verificationMethod)
-            signer.copy(id = requireId(signer.id, "Signer ID"))
+    /**
+     * Estimates one reminder for all documents of the signer without sending or charging. Requires documents:write. Pricing does not establish eligibility: resend still rejects closed envelopes, expired documents and reminder limits. The total and sufficiency fields map to CostEstimate.legacyTotal and legacyHasSufficientCredits.
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/envelopes/{envelopeId}/signers/{signerId}/estimate-resend-cost`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * {
+     *   "total": 1,
+     *   "breakdown": [
+     *     {
+     *       "code": "example",
+     *       "name": "example",
+     *       "cost": 1
+     *     }
+     *   ],
+     *   "credit_balance": 1,
+     *   "has_sufficient_credits": false
+     * }
+     * ```
+     */
+    suspend fun estimateResendCost(
+        envelopeId: String,
+        signerId: String,
+        accountId: String? = null,
+    ): CostEstimate {
+        val path = envelopePath(envelopeId, accountId) + "/signers/${pathSegment(requireId(signerId, "Signer ID"))}/estimate-resend-cost"
+        return call("Failed to estimate envelope reminder", CostEstimate::class.java) {
+            http.post(path)
         }
-        val usedIds = request.documents.flatMap { it.signerIds }.map(String::trim).toSet()
-        if (usedIds != ids.toSet()) throw ValidationException("Every envelope signer must belong to a document and every document signer must belong to the envelope")
-        return mapOf(
-            "name" to name,
-            "message" to request.message,
-            "signers" to signers,
-            "documents" to request.documents.map { documentBody(it, signers) },
-            "max_total_credits" to request.maxTotalCredits,
-        )
-    }
-
-    private fun documentBody(document: EnvelopeDocumentRequest, signers: List<SignerReference>): Map<String, Any?> {
-        val id = requireId(document.id, "Document ID")
-        val ids = distinctIds(document.signerIds, "Signer ID")
-        val method = requireId(document.method, "Assignment method")
-        val request = CreateAssignmentRequest(method = method, signers = signers.filter { it.id?.trim() in ids }, entries = document.entries)
-        AssignmentValidation.validateRequest(request, estimate = false)
-        if (method == AssignmentMethod.COLLECT && document.entries.orEmpty().flatMap { it.fields }.any { it.displaySettings == null }) {
-            throw ValidationException("Envelope collect fields require display settings")
-        }
-        return mapOf(
-            "id" to id,
-            "signer_ids" to ids,
-            "method" to method,
-            "entries" to AssignmentValidation.normalise(request)["entries"],
-            "expires_at" to document.expiresAt,
-            "copy_receiver_ids" to document.copyReceiverIds?.map { requireId(it, "Copy receiver ID") },
-        )
     }
 }

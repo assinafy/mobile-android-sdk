@@ -270,7 +270,11 @@ class SignerResourceTest {
         )
         // 3) recovery findByEmail now returns the existing signer
         mock.enqueue(
-            HttpRawResponse(200, """{"status":200,"data":[{"id":"existing","full_name":"John","email":"john@example.com"}]}""", emptyMap()),
+            HttpRawResponse(
+                200,
+                """{"status":200,"data":[{"id":"existing","full_name":"John","email":"john@example.com"}]}""",
+                emptyMap(),
+            ),
         )
 
         val result = SignerResource(mock, "acc").create(CreateSignerRequest("John", "john@example.com"))
@@ -339,14 +343,14 @@ class SignerResourceTest {
     }
 
     @Test
-    fun `uploadSignature encodes signer access code and type`() = runTest {
+    fun `uploadSignature encodes signer access code `() = runTest {
         val mock = MockApiHttpClient(defaultResponse = HttpRawResponse(204, null, emptyMap()))
 
-        SignerResource(mock, "acc").uploadSignature("access+/=", "drawn signature", byteArrayOf(1))
+        SignerResource(mock, "acc").uploadSignature("access+/=", "signature", byteArrayOf(1))
 
         val call = mock.lastCall()
         assertThat(call.method).isEqualTo("POST_SIGNATURE")
-        assertThat(call.path).isEqualTo("/signature?signer-access-code=access%2B%2F%3D&type=drawn%20signature")
+        assertThat(call.path).isEqualTo("/signature?signer-access-code=access%2B%2F%3D&type=signature")
     }
 
     @Test

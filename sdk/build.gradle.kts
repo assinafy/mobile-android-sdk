@@ -3,7 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmDefaultMode
 
 plugins {
     id("com.android.library")
-    id("org.jetbrains.dokka") version "2.2.0"
+    id("org.jetbrains.dokka") version "2.3.0"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
     `maven-publish`
     signing
@@ -11,7 +11,7 @@ plugins {
 
 group = "com.assinafy"
 // Honor a release-automation -Pversion override and otherwise use the released version.
-version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.9.0"
+version = (findProperty("version") as String?)?.takeIf { it.isNotBlank() && it != "unspecified" } ?: "2.10.0"
 
 val okHttpVersion = "5.5.1"
 // Gson 2.15 requires Android API 24; retain API 21 compatibility.

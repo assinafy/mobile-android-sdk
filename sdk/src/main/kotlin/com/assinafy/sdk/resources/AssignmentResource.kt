@@ -7,15 +7,20 @@ import com.assinafy.sdk.NoOpLogger
 import com.assinafy.sdk.exceptions.ValidationException
 import com.assinafy.sdk.http.ApiHttpClient
 import com.assinafy.sdk.models.Assignment
+import com.assinafy.sdk.models.AssignmentSignerCapacity
 import com.assinafy.sdk.models.CostEstimate
 import com.assinafy.sdk.models.PaginatedResult
 import com.assinafy.sdk.models.ResendEmailResponse
+import com.assinafy.sdk.models.ScheduledSend
 import com.assinafy.sdk.models.SignerIdentityReview
+import com.assinafy.sdk.models.SignerNotificationHistory
 import com.assinafy.sdk.models.WhatsappNotification
 import com.assinafy.sdk.request.CreateAssignmentRequest
+import com.assinafy.sdk.request.CreateEnvelopeRequest
 import com.assinafy.sdk.request.ListParams
 import com.assinafy.sdk.util.ApiValidator
 import com.assinafy.sdk.util.AssignmentValidation
+import com.assinafy.sdk.util.EnvelopeValidation
 
 /**
  * Assignment (signature request) operations scoped to a document: create, cost estimation,
@@ -98,6 +103,7 @@ class AssignmentResource internal constructor(
      *         "Email"
      *       ],
      *       "embedded": false,
+     *       "sign_as": "Sign",
      *       "step": 1
      *     }
      *   ],
@@ -239,7 +245,7 @@ class AssignmentResource internal constructor(
      * ```json
      * {
      *   "method": "collect",
-     *   "signers": [{"verification_method": "Whatsapp", "notification_methods": ["Whatsapp"]}],
+     *   "signers": [{"verification_method": "Whatsapp", "notification_methods": ["Whatsapp"], "sign_as": "Sign"}],
      *   "entries": [{"page_id": "page-placeholder", "fields": [{"signer_id": "signer-placeholder", "field_id": "field-placeholder", "display_settings": {"left": 72, "top": 640, "width": 180, "height": 40, "fontSize": 12}}]}]
      * }
      * ```
@@ -674,7 +680,9 @@ class AssignmentResource internal constructor(
         if (decision !in setOf(IdentityReviewDecision.APPROVED, IdentityReviewDecision.REJECTED)) {
             throw ValidationException("Identity review decision must be Approved or Rejected")
         }
-        if (note != null && note.codePointCount(0, note.length) > 2000) throw ValidationException("Identity review note must not exceed 2000 characters")
+        if (note != null && note.codePointCount(0, note.length) > 2000) {
+            throw ValidationException("Identity review note must not exceed 2000 characters")
+        }
         return call("Failed to decide signer identity review", SignerIdentityReview::class.java) {
             http.post("$path/review", toJson(mapOf("decision" to decision, "note" to note)))
         }
@@ -688,5 +696,363 @@ class AssignmentResource internal constructor(
     /** Assignment-method and channel validation constants. */
     companion object {
         private val RESEND_CHANNELS = setOf("email", "whatsapp")
+    }
+
+/**
+     * Reads sender-declared capacities. Requires documents:read. Unassigned documents return an empty list; capacities appear only here and on the certificate page.
+     *
+     * Wire operation: `GET /v1/documents/{documentId}/signer-capacities`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * [
+     *   {
+     *     "signer_id": "example",
+     *     "sign_as": "Sign"
+     *   }
+     * ]
+     * ```
+     */
+    suspend fun getSignerCapacities(documentId: String): List<AssignmentSignerCapacity> {
+        val id = pathSegment(requireId(documentId, "Document ID"))
+        return callList("Failed to read signer capacities", AssignmentSignerCapacity::class.java) {
+            http.get("/documents/$id/signer-capacities")
+        }
+            .data
+    }
+
+    /**
+     * Reads delivery attempts with delivered_at and opened_at for each signer. Requires documents:read. Open times are hints, not proof of reading, and may be null. Unassigned documents return an empty list.
+     *
+     * Wire operation: `GET /v1/documents/{documentId}/notification-history`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * [
+     *   {
+     *     "signer_id": "example",
+     *     "notification_history": [
+     *       {
+     *         "event": "signature_request",
+     *         "status": "sent",
+     *         "error_code": null,
+     *         "error_message": null,
+     *         "sent_at": "2027-01-01T12:00:00Z",
+     *         "failed_at": null,
+     *         "delivered_at": "2027-01-01T12:00:00Z",
+     *         "opened_at": "2027-01-01T12:00:00Z"
+     *       }
+     *     ]
+     *   }
+     * ]
+     * ```
+     */
+    suspend fun getNotificationHistory(documentId: String): List<SignerNotificationHistory> {
+        val id = pathSegment(requireId(documentId, "Document ID"))
+        return callList("Failed to read notification history", SignerNotificationHistory::class.java) {
+            http.get("/documents/$id/notification-history")
+        }.data
+    }
+
+    /**
+     * Schedules an assignment without sending or charging now. sendAt is Unix seconds, one hour to 90 days ahead. The server checks expiration is at least two hours later. Requires documents:write. Only one pending send may include a document; the job checks every five minutes. Creation is not retried. A later failure records its reason and notifies the scheduling member (or active owners if the member left).
+     *
+     * Wire operation: `POST /v1/documents/{documentId}/scheduled-sends`.
+     *
+     * Request body (`application/json`; optional fields may be omitted):
+     * ```json
+     * {
+     *   "method": "virtual",
+     *   "signers": [
+     *     {
+     *       "id": "example",
+     *       "verification_method": "Email",
+     *       "notification_methods": [
+     *         "Email"
+     *       ],
+     *       "embedded": false,
+     *       "step": 1,
+     *       "sign_as": "Sign"
+     *     }
+     *   ],
+     *   "entries": [
+     *     {
+     *       "page_id": "example",
+     *       "fields": [
+     *         {
+     *           "signer_id": "example",
+     *           "field_id": "example",
+     *           "display_settings": {
+     *             "left": 0,
+     *             "top": 0,
+     *             "width": 1,
+     *             "height": 1,
+     *             "fontFamily": "Arial",
+     *             "fontSize": 1,
+     *             "backgroundColor": "#D5EBFF"
+     *           }
+     *         }
+     *       ]
+     *     }
+     *   ],
+     *   "message": "example",
+     *   "expires_at": "2027-01-02T12:00:00Z",
+     *   "copy_receivers": [
+     *     "example"
+     *   ],
+     *   "max_total_credits": 1,
+     *   "send_at": 1798804800
+     * }
+     * ```
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * {
+     *   "resource": "scheduled_send",
+     *   "id": "example",
+     *   "type": "assignment",
+     *   "document_ids": [
+     *     "example"
+     *   ],
+     *   "status": "pending",
+     *   "send_at": "2027-01-01T12:00:00Z",
+     *   "assignment_id": null,
+     *   "envelope_id": null,
+     *   "failure_reason": null,
+     *   "created_at": "2027-01-01T10:00:00Z",
+     *   "processed_at": null
+     * }
+     * ```
+     */
+    suspend fun schedule(
+        documentId: String,
+        request: CreateAssignmentRequest,
+        sendAt: Long,
+    ): ScheduledSend {
+        val id = pathSegment(requireId(documentId, "Document ID"))
+        ApiValidator.requireSendAt(sendAt)
+        AssignmentValidation.validateRequest(request, estimate = false)
+        val body = AssignmentValidation.normalise(request) + mapOf("send_at" to sendAt)
+        return call(
+            "Failed to schedule assignment",
+            ScheduledSend::class.java,
+        ) { http.post("/documents/$id/scheduled-sends", toJson(body)) }
+    }
+
+    /**
+     * Schedules an envelope without creating it or charging now. sendAt is Unix seconds, one hour to 90 days ahead; document expirations must be at least two hours later. Requires documents:write and the Envelopes feature. Each call creates a separate send: idempotencyKey is unsupported and must be null. The job checks every five minutes; failures retain the reason and notify the scheduling member or active owners.
+     *
+     * Wire operation: `POST /v1/accounts/{accountId}/scheduled-sends`.
+     *
+     * Request body (`application/json`; optional fields may be omitted):
+     * ```json
+     * {
+     *   "name": "example",
+     *   "message": "example",
+     *   "max_total_credits": 0,
+     *   "signers": [
+     *     {
+     *       "id": "example",
+     *       "verification_method": "Email",
+     *       "notification_methods": [
+     *         "Email"
+     *       ],
+     *       "embedded": false
+     *     }
+     *   ],
+     *   "documents": [
+     *     {
+     *       "id": "example",
+     *       "method": "virtual",
+     *       "entries": [
+     *         {
+     *           "page_id": "example",
+     *           "fields": [
+     *             {
+     *               "signer_id": "example",
+     *               "field_id": "example",
+     *               "display_settings": {
+     *                 "left": 0,
+     *                 "top": 0,
+     *                 "width": 1,
+     *                 "height": 1,
+     *                 "fontFamily": "Arial",
+     *                 "fontSize": 1,
+     *                 "backgroundColor": "#D5EBFF"
+     *               }
+     *             }
+     *           ]
+     *         }
+     *       ],
+     *       "signer_ids": [
+     *         "example"
+     *       ],
+     *       "expires_at": "2027-01-02T12:00:00Z",
+     *       "copy_receiver_ids": [
+     *         "example"
+     *       ]
+     *     }
+     *   ],
+     *   "send_at": 1798804800
+     * }
+     * ```
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * {
+     *   "resource": "scheduled_send",
+     *   "id": "example",
+     *   "type": "envelope",
+     *   "document_ids": [
+     *     "example"
+     *   ],
+     *   "status": "pending",
+     *   "send_at": "2027-01-01T12:00:00Z",
+     *   "assignment_id": null,
+     *   "envelope_id": null,
+     *   "failure_reason": null,
+     *   "created_at": "2027-01-01T10:00:00Z",
+     *   "processed_at": null
+     * }
+     * ```
+     */
+    suspend fun scheduleEnvelope(
+        request: CreateEnvelopeRequest,
+        sendAt: Long,
+        accountId: String? = null,
+    ): ScheduledSend {
+        val account = pathSegment(accountId(accountId))
+        ApiValidator.requireSendAt(sendAt)
+        if (request.idempotencyKey != null) throw ValidationException("Scheduled envelopes do not support idempotency keys")
+        val body = EnvelopeValidation.normalise(request) + mapOf("send_at" to sendAt)
+        return call(
+            "Failed to schedule envelope",
+            ScheduledSend::class.java,
+        ) { http.post("/accounts/$account/scheduled-sends", toJson(body)) }
+    }
+
+    /**
+     * Lists assignment and envelope sends newest first, in every state. Requires documents:write, including for this read. Pagination uses page and per-page, with X-Pagination headers; documentId optionally filters the list.
+     *
+     * Wire operation: `GET /v1/accounts/{accountId}/scheduled-sends`.
+     *
+     * Query parameters: `page`, `per-page`, and `document_id`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * [
+     *   {
+     *     "resource": "scheduled_send",
+     *     "id": "example",
+     *     "type": "assignment",
+     *     "document_ids": [
+     *       "example"
+     *     ],
+     *     "status": "pending",
+     *     "send_at": "2027-01-01T12:00:00Z",
+     *     "assignment_id": null,
+     *     "envelope_id": null,
+     *     "failure_reason": null,
+     *     "created_at": "2027-01-01T10:00:00Z",
+     *     "processed_at": null
+     *   }
+     * ]
+     * ```
+     */
+    suspend fun listScheduledSends(
+        params: ListParams = ListParams(),
+        documentId: String? = null,
+        accountId: String? = null,
+    ): PaginatedResult<ScheduledSend> {
+        val account = pathSegment(accountId(accountId))
+        val query =
+            mapOf(
+                "page" to params.page,
+                "per-page" to params.perPage,
+                "document_id" to documentId?.let { requireId(it, "Document ID") },
+            ).filterValues { it != null }
+        return callList(
+            "Failed to list scheduled sends",
+            ScheduledSend::class.java,
+        ) { http.get("/accounts/$account/scheduled-sends", query) }
+    }
+
+    /**
+     * Cancels a pending send without sending or charging. Requires documents:write; any non-pending state returns 409.
+     *
+     * Wire operation: `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/cancel`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * {
+     *   "resource": "scheduled_send",
+     *   "id": "example",
+     *   "type": "assignment",
+     *   "document_ids": [
+     *     "example"
+     *   ],
+     *   "status": "cancelled",
+     *   "send_at": "2027-01-01T12:00:00Z",
+     *   "assignment_id": null,
+     *   "envelope_id": null,
+     *   "failure_reason": null,
+     *   "created_at": "2027-01-01T10:00:00Z",
+     *   "processed_at": "2027-01-01T10:30:00Z"
+     * }
+     * ```
+     */
+    suspend fun cancelScheduledSend(
+        scheduledSendId: String,
+        accountId: String? = null,
+    ): ScheduledSend {
+        val account = pathSegment(accountId(accountId))
+        val id = pathSegment(requireId(scheduledSendId, "Scheduled send ID"))
+        return call(
+            "Failed to cancel scheduled send",
+            ScheduledSend::class.java,
+        ) { http.put("/accounts/$account/scheduled-sends/$id/cancel") }
+    }
+
+    /**
+     * Sends a pending request immediately as the scheduling member, with current permissions, checks and prices. Requires documents:write. A refusal leaves it pending for its scheduled time; cancel explicitly to stop that later attempt. Non-pending states return 409. Never automatically retry this mutation.
+     *
+     * Wire operation: `PUT /v1/accounts/{accountId}/scheduled-sends/{scheduledSendId}/send`.
+     *
+     * Request body: none.
+     *
+     * Response 200 `data` payload:
+     * ```json
+     * {
+     *   "resource": "scheduled_send",
+     *   "id": "example",
+     *   "type": "assignment",
+     *   "document_ids": [
+     *     "example"
+     *   ],
+     *   "status": "sent",
+     *   "send_at": "2027-01-01T12:00:00Z",
+     *   "assignment_id": "assignment-placeholder",
+     *   "envelope_id": null,
+     *   "failure_reason": null,
+     *   "created_at": "2027-01-01T10:00:00Z",
+     *   "processed_at": "2027-01-01T10:30:00Z"
+     * }
+     * ```
+     */
+    suspend fun sendScheduledNow(
+        scheduledSendId: String,
+        accountId: String? = null,
+    ): ScheduledSend {
+        val account = pathSegment(accountId(accountId))
+        val id = pathSegment(requireId(scheduledSendId, "Scheduled send ID"))
+        return call("Failed to send scheduled send", ScheduledSend::class.java) { http.put("/accounts/$account/scheduled-sends/$id/send") }
     }
 }

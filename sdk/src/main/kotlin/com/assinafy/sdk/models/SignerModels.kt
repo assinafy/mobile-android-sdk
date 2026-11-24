@@ -11,6 +11,8 @@ import com.google.gson.annotations.SerializedName
  * @property errorMessage Provider error description for a failed delivery.
  * @property sentAt ISO-8601 successful-send time.
  * @property failedAt ISO-8601 failure time.
+ * @property deliveredAt Delivery timestamp, available from assignment notification history.
+ * @property openedAt First email open/click or WhatsApp read time; a hint, not proof of reading.
  */
 data class NotificationHistoryEntry(
     @SerializedName("event") val event: String? = null,
@@ -19,6 +21,8 @@ data class NotificationHistoryEntry(
     @SerializedName("error_message") val errorMessage: String? = null,
     @SerializedName("sent_at") val sentAt: String? = null,
     @SerializedName("failed_at") val failedAt: String? = null,
+    @SerializedName("delivered_at") val deliveredAt: String? = null,
+    @SerializedName("opened_at") val openedAt: String? = null,
 )
 
 /**
